@@ -3865,6 +3865,35 @@ const rows = await newsletterDb(c).prepare(
   }
 });
 
+// Admin: List all newsletters
+app.get("/api/newsletter/admin", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+    const rows = await newsletterDb(c).prepare(
+      "SELECT * FROM newsletters ORDER BY created_at DESC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// Admin: List subscribers
+app.get("/api/newsletter/admin/subscribers", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+    const rows = await newsletterDb(c).prepare(
+      "SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// Registered after the /admin routes above so it doesn't swallow them.
 // Public: Get a single newsletter with sanitized content (newsletter site fetches this)
 app.get("/api/newsletter/:id", async (c) => {
   try {
@@ -3911,34 +3940,6 @@ app.get("/api/newsletter/subscribers/count", async (c) => {
     return c.json({ success: true, count: row?.count || 0 });
   } catch (e: any) {
     return c.json({ count: 0 });
-  }
-});
-
-// Admin: List all newsletters
-app.get("/api/newsletter/admin", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    requireBoard(c);
-    const rows = await newsletterDb(c).prepare(
-      "SELECT * FROM newsletters ORDER BY created_at DESC",
-    ).all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// Admin: List subscribers
-app.get("/api/newsletter/admin/subscribers", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    requireBoard(c);
-    const rows = await newsletterDb(c).prepare(
-      "SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC",
-    ).all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -4376,11 +4377,20 @@ const id = body.id || crypto.randomUUID();
         )
       : "";
 
-    const existing = await newsletterDb(c).prepare(
-      "SELECT id FROM newsletters WHERE id = ?",
+    const existing: any = await newsletterDb(c).prepare(
+      "SELECT id, created_by FROM newsletters WHERE id = ?",
     )
       .bind(id)
       .first();
+    // Editors may edit their own drafts and the shared editorial-sync ones,
+    // matching what GET /drafts shows them.
+    if (
+      existing &&
+      existing.created_by !== email &&
+      existing.created_by !== "editorial-sync"
+    ) {
+      return c.json({ error: "You can only edit your own drafts" }, 403);
+    }
     if (existing) {
       await newsletterDb(c).prepare(
         "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, content = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
@@ -7034,12 +7044,21 @@ async function canAccessDept(c: any, deptId: string) {
   throw new Error("Forbidden: you do not have access to this department");
 }
 
+// Read-only access for the department's own people: the members portal shows
+// every member their department's instructions and member list.
+async function canViewDept(c: any, deptId: string) {
+  const user: any = c.get("user");
+  if (user.power_level >= 100) return true;
+  if (user.department_id && user.department_id === deptId) return true;
+  throw new Error("Forbidden: you do not have access to this department");
+}
+
 // GET /api/departments/:id/overview @ all department data in one call
 app.get("/api/departments/:id/overview", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
 
     const meets = await c.env.DB.prepare(
       "SELECT * FROM department_meets WHERE department_id = ? ORDER BY scheduled_at ASC",
@@ -7083,7 +7102,7 @@ app.post("/api/departments/:id/meets", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -7144,7 +7163,7 @@ app.delete("/api/departments/:id/meets/:meetId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const meetId = c.req.param("meetId");
     await c.env.DB.prepare(
       "DELETE FROM department_meets WHERE id = ? AND department_id = ?",
@@ -7162,7 +7181,7 @@ app.post("/api/departments/:id/documents", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -7189,7 +7208,7 @@ app.delete("/api/departments/:id/documents/:docId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const docId = c.req.param("docId");
     await c.env.DB.prepare(
       "DELETE FROM department_documents WHERE id = ? AND department_id = ?",
@@ -7207,7 +7226,7 @@ app.post("/api/departments/:id/instructions", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -7233,7 +7252,7 @@ app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const instructionId = c.req.param("instructionId");
     await c.env.DB.prepare(
       "DELETE FROM department_instructions WHERE id = ? AND department_id = ?",
@@ -7251,7 +7270,7 @@ app.post("/api/departments/:id/projects", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -7276,7 +7295,7 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const projectId = c.req.param("projectId");
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -7319,7 +7338,7 @@ app.get("/api/departments/:id/members", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canViewDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id = ? ORDER BY u.name ASC",
     )
@@ -7327,7 +7346,7 @@ app.get("/api/departments/:id/members", async (c) => {
       .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return errorResponse(c, e.message, 500);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -7335,7 +7354,7 @@ app.get("/api/departments/:id/instructions", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canViewDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT * FROM department_instructions WHERE department_id = ? ORDER BY created_at DESC",
     )
@@ -7343,7 +7362,7 @@ app.get("/api/departments/:id/instructions", async (c) => {
       .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return errorResponse(c, e.message, 500);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -11720,6 +11739,9 @@ app.post("/api/admin/maintenance", async (c) => {
     )
       .bind(enabled, message, user.email)
       .run();
+    // Apply immediately in this isolate instead of after the 60 s cache.
+    maintenanceCache = { enabled, message };
+    maintenanceCacheTime = Date.now();
 
     await addAuditLog(
       c,

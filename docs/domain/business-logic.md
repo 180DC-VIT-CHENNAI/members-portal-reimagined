@@ -147,6 +147,7 @@ This document describes the system from the domain perspective. Each section cov
 - RULE-DEPT-01: Directors can only access and manage their own department.
 - RULE-DEPT-02: Board members can access and manage all departments.
 - RULE-DEPT-03: Department meets, documents, instructions, and projects are scoped to the department.
+- RULE-DEPT-04: Department routes enforce access with an awaited check. Reading a department's instructions and member list (`GET /api/departments/:id/instructions`, `/members`) is open to board and to anyone in that department (`canViewDept()`); everything else (overview, documents, meets, projects, all writes) needs board or that department's director (`canAccessDept()`).
 
 ### Department panel capabilities
 
@@ -241,6 +242,7 @@ This document describes the system from the domain perspective. Each section cov
 - RULE-NEWS-05: A 6-digit OTP is emailed and expires in 5 minutes.
 - RULE-NEWS-06: A successful OTP verification creates a 24-hour session in `newsletter_sessions`.
 - RULE-NEWS-07: Editors can create drafts, upload source files, and send newsletters or event emails.
+- RULE-NEWS-07a: An editor can update only their own drafts and the shared `editorial-sync` drafts (the ones `GET /drafts` shows them); updating anyone else's returns 403.
 - RULE-NEWS-08: Bulk sends insert one `email_queue` campaign and return `queued`/`total` immediately; the cron sends one personalized message per subscriber (1.5 s apart, within the 500-messages/hour Spacemail cap), skips subscribers who unsubscribed after the campaign was queued (except test sends), records each outcome in `email_deliveries`, and updates `recipient_count` on completion. Board members can retry only the failed recipients via `POST /api/admin/email-queue/:id/retry-failed`.
 - RULE-NEWS-09: Source files are stored in `CASE_STUDIES` R2.
 
@@ -270,7 +272,7 @@ This document describes the system from the domain perspective. Each section cov
 
 ### Business rules
 
-- RULE-MAINT-01: Board can enable/disable maintenance mode.
+- RULE-MAINT-01: Board can enable/disable maintenance mode. The change applies immediately in the isolate that handled it; other isolates pick it up within the 60 s cache.
 - RULE-MAINT-02: When enabled, all members with `power_level < 100` receive a 503 response from authenticated routes.
 - RULE-MAINT-03: The public maintenance status endpoint is readable without auth.
 

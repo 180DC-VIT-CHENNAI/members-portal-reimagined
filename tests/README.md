@@ -21,9 +21,7 @@ Useful flags (put them after `--`):
 | `--grep <regex>` | Run only tests whose name matches, e.g. `--grep "retry"` |
 | `--log` | Show the worker's own output (handy when a test fails) |
 
-A full run takes a few minutes. Most of that is `99-maintenance`, which has to
-wait out the worker's 60-second maintenance cache (known issue KNOWN-3). Add
-`--only "^(?!99)"` to skip it while iterating.
+A full run takes about two minutes.
 
 Run it after every change to `apps/admin-api/index.ts`. A test marked
 `# TODO` is a known bug (listed below): it runs and reports, but doesn't fail
@@ -86,23 +84,19 @@ The frontend isn't covered here; browser tests are a separate follow-up.
 
 ## Known issues found by the suite
 
-These are real bugs. Their tests are marked `{ todo: KNOWN.X }` in
-`tests/lib/known-issues.mjs`. When you fix one, delete its entry and the
-`todo`, and the test will guard against it coming back.
-
-| ID | Bug | Impact |
-|----|-----|--------|
-| KNOWN-1 | `canAccessDept()` is `async` but never awaited, so department routes skip their access check | **High**: any logged-in member can read and change any department's documents, instructions, projects and meets |
-| KNOWN-2 | The pnpm override `@xmldom/xmldom >=0.8.15` installs 0.9.x, which mammoth can't use | DOCX import for case studies fails |
-| KNOWN-3 | Toggling maintenance mode doesn't clear the 60 s cache | It takes up to a minute to turn on or off |
-| KNOWN-4 | Newsletter editor drafts can be updated by any editor, by id | One editor can overwrite another's draft |
-| KNOWN-5 | `GET /api/newsletter/admin` is shadowed by `GET /api/newsletter/:id` | The route always returns 404 (the frontend doesn't use it) |
+`tests/lib/known-issues.mjs` lists bugs the suite has found but that aren't
+fixed yet. Their tests are marked `{ todo: KNOWN.X }`: they run and report, but
+don't fail the run. When you fix one, delete its entry and the `todo`, and the
+test will guard against the bug coming back. The list is currently empty: the
+five bugs the suite first found (department access checks not awaited, DOCX
+import, the maintenance cache, editor draft ownership, and the shadowed
+`/api/newsletter/admin` route) are fixed and now have strict tests.
 
 Smaller issues noticed while writing the tests (no test yet):
 
 - Some board-only routes return **500** instead of 403 when a non-board user
-  calls them, for example `/api/newsletter/admin/subscribers`. The tests
-  accept either, but only when the message says "Forbidden".
+  calls them. The tests accept either, but only when the message says
+  "Forbidden".
 - `DELETE /api/case-studies/delete-image`: any member can delete any uploaded
   image or source file, including newsletter PDFs. `PUT /api/case-studies/:id`:
   any member can edit any case study.

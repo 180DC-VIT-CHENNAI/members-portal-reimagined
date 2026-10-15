@@ -6,10 +6,8 @@ import {
   get, post, del, tokens, expectOk, expectStatus, expectDenied,
   subscribe, outbox, outboxMark, drainUntilDone, findCampaign, upload, fixture, runCron,
 } from "../lib/api.mjs";
-import { KNOWN } from "../lib/known-issues.mjs";
 
 const B = { token: tokens.board };
-// The board list route is broken (KNOWN-5), so read issues via the public route.
 const issue = async (id) => expectOk(await get(`/api/newsletter/${id}`)).data;
 
 describe("drafts", () => {
@@ -29,7 +27,7 @@ describe("drafts", () => {
     expectStatus(await post("/api/newsletter", {}, B), 400);
   });
 
-  test("board lists every newsletter", { todo: KNOWN.NEWSLETTER_ADMIN_ROUTE }, async () => {
+  test("board lists every newsletter", async () => {
     const { id } = expectOk(await post("/api/newsletter", { title: "Listed " + Date.now() }, B));
     const { data } = expectOk(await get("/api/newsletter/admin", B));
     assert.ok(data.some((n) => n.id === id));

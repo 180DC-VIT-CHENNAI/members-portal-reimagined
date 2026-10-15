@@ -7,7 +7,6 @@ import {
   get, post, put, del, tokens, expectOk, expectStatus, expectDenied,
   findCampaign, drainUntilDone, outbox,
 } from "../lib/api.mjs";
-import { KNOWN } from "../lib/known-issues.mjs";
 
 const D = { token: tokens.director }; // marketing director
 const inAWeek = () => new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 16);
@@ -125,15 +124,25 @@ describe("access control", () => {
     expectOk(await get("/api/departments/finance/overview", { token: tokens.board }));
   });
 
-  test("a director cannot open another department", { todo: KNOWN.DEPT_ACCESS }, async () => {
+  test("a director cannot open another department", async () => {
     for (const [method, path, body] of denied) {
       const res = method === "GET" ? await get(path, D) : await post(path, body, D);
       expectDenied(res, `${method} ${path}`);
     }
   });
 
-  test("a General Member cannot manage even their own department", { todo: KNOWN.DEPT_ACCESS }, async () => {
+  test("a General Member cannot manage even their own department", async () => {
     expectDenied(await post("/api/departments/marketing/documents", { title: "x" }, { token: tokens.member }));
+    expectDenied(await post("/api/departments/marketing/instructions", { title: "x", content: "y" }, { token: tokens.member }));
     expectDenied(await get("/api/departments/marketing/overview", { token: tokens.member }));
+  });
+
+  test("members can read their own department's instructions and members", async () => {
+    const M = { token: tokens.member };
+    expectOk(await get("/api/departments/marketing/instructions", M));
+    const { data } = expectOk(await get("/api/departments/marketing/members", M));
+    assert.ok(data.some((u) => u.email === "member@test.180dcvitc.org"));
+    expectDenied(await get("/api/departments/marketing/instructions", { token: tokens.member2 }), "other department");
+    expectDenied(await get("/api/departments/marketing/members", { token: tokens.member2 }), "other department");
   });
 });

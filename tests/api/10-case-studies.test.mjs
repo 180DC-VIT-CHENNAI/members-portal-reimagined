@@ -3,7 +3,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { get, post, put, api, tokens, expectOk, expectStatus, upload, fixture, PNG_1PX } from "../lib/api.mjs";
-import { KNOWN } from "../lib/known-issues.mjs";
 
 const B = { token: tokens.board };
 const M = { token: tokens.member };
@@ -63,7 +62,7 @@ describe("importing documents", () => {
     assert.ok(json.charCount > 10);
   });
 
-  test("a DOCX becomes HTML", { todo: KNOWN.DOCX_IMPORT }, async () => {
+  test("a DOCX becomes HTML", async () => {
     const json = expectOk(await upload("/api/case-studies/upload-document", { document: { data: fixture("sample.docx"), name: "case.docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" } }, M));
     assert.ok(json.content.includes("donor base"));
     assert.ok(json.suggestedTitle.length > 0);

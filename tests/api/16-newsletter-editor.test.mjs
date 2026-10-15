@@ -6,7 +6,6 @@ import {
   get, post, del, tokens, expectOk, expectStatus, expectDenied,
   otpLogin, subscribe, outbox, outboxMark, waitForMail, drainUntilDone, upload, fixture, uniqueEmail,
 } from "../lib/api.mjs";
-import { KNOWN } from "../lib/known-issues.mjs";
 
 const B = { token: tokens.board };
 let editor; // a board-authorized outside editor
@@ -73,9 +72,9 @@ describe("drafts", () => {
     assert.ok(!expectOk(await get("/api/newsletter-editor/drafts", { token: editor.token })).data.some((d) => d.id === id));
   });
 
-  test("editors cannot overwrite someone else's draft", { todo: KNOWN.DRAFT_OWNERSHIP }, async () => {
+  test("editors cannot overwrite someone else's draft", async () => {
     const { id } = expectOk(await post("/api/newsletter-editor/drafts", { title: "Original" }, { token: editor.token }));
-    await post("/api/newsletter-editor/drafts", { id, title: "Hijacked" }, { token: memberEditor.token });
+    expectStatus(await post("/api/newsletter-editor/drafts", { id, title: "Hijacked" }, { token: memberEditor.token }), 403);
     const d = expectOk(await get("/api/newsletter-editor/drafts", { token: editor.token })).data.find((x) => x.id === id);
     assert.equal(d.title, "Original");
   });
