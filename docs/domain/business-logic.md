@@ -4,6 +4,12 @@ This document describes the system from the domain perspective. Each section cov
 
 ## Authentication and sessions
 
+On `reimagined`, token sign-in uses `POST /api/auth/session` in all environments. It exchanges the existing registry credential for a new device session with fixed seven-day expiry. A registry-only onboarding account may create its user row only while the source token remains active. Every device request loads current identity/role and verifies its session and source registry state; role changes take effect without reissuing the session. Source-token revoke/delete/rotate invalidates its device sessions. Individual session revocation is account-owner scoped. Member removal batches registry and identity deletion to prevent concurrent exchange from recreating the removed member.
+
+The web portal stores the session credential under the existing `authToken` key and uses the server expiry. Token and Google sign-in exchange into this session path; Google identity verification uses the proof-backed explicit-link Clerk route described below. Sign-out attempts server revocation then clears local credentials. Profile shows owner-scoped session management without displaying device credentials. Source token rotation exchanges the newly issued credential and updates parent UI state. Offline sign-out clears local access but cannot guarantee remote revocation until a server request succeeds.
+
+On `reimagined`, browser writes with an explicit `Origin` must match a legacy or configured `ALLOWED_WEB_ORIGINS` origin, including JSON requests. CORS and CSRF use the same exact-origin policy. Requests still need their existing token or editor-session authentication; this policy grants no resource permissions. Local loopback development retains its existing exception.
+
 ### Actors
 - Public visitor.
 - Member with a token.
@@ -24,23 +30,11 @@ This document describes the system from the domain perspective. Each section cov
 #### Clerk Google login (RULE-AUTH-02)
 
 1. User clicks Google sign-in; Clerk handles OAuth.
-2. Frontend gets a Clerk JWT via `getToken()`.
-3. Frontend posts `POST /api/auth/clerk-login` with the JWT.
-4. Backend verifies the JWT with `CLERK_SECRET_KEY`.
-5. Backend fetches the Clerk user via the Clerk Backend API and accepts only Clerk-verified email addresses. Client-supplied emails are never trusted.
-6. Backend looks up the user by `clerk_user_id` (the stored link must match a verified email on the Clerk account) or, if unlinked, by a Clerk-verified email (auto-link). A Clerk user ID already linked to another member is rejected.
-7. If `oauth_enabled = 0`, login fails.
-8. A token is created or reused in `admin_tokens`.
-9. Frontend uses that token for subsequent requests.
-
-#### Token login (RULE-AUTH-06)
-
-1. Member enters the token received by email on the login page.
-2. Frontend posts `POST /api/auth/token-login` with the token.
-3. Backend validates it against `admin_tokens` (must be unrevoked and unexpired); invalid tokens receive 401.
-4. If no `users` row exists yet, one is created from the token's email/name/role.
-5. The response includes `email`, `name`, `roleId`, `roleName`, `powerLevel`, and `departmentId`.
-6. The legacy `/api/dev-login` route is for development only and returns 403 when `ENVIRONMENT=production`.
+2. Frontend gets a Clerk session JWT via `getToken()` and posts it as `clerkToken` to `/api/auth/clerk-login`.
+3. Backend uses the Clerk SDK and `CLERK_SECRET_KEY` to verify signature and expiry. It requires a user subject, session ID, approved frontend `azp` and a non-pending session. Exact configured/legacy browser origins are accepted; loopback HTTP/HTTPS origins are accepted only outside production.
+4. Backend finds exactly one member by the verified subject in `users.clerk_user_id`; caller-supplied email never links or selects an account. Conflicting historical links fail closed.
+5. `oauth_enabled` and an active existing registry credential are required. OAuth never creates a registry credential to restore revoked, expired or missing member access.
+6. The frontend exchanges the returned compatibility credential through `/api/auth/session` and stores the independent expiring session.
 
 #### Token rotation (RULE-AUTH-03)
 
@@ -49,17 +43,18 @@ This document describes the system from the domain perspective. Each section cov
 
 #### Link/unlink Clerk (RULE-AUTH-04)
 
-- Authenticated members can link a Clerk account via `POST /api/auth/link-clerk` by presenting a valid Clerk JWT (`clerkToken`). The server links the JWT's verified `sub`; client-supplied Clerk user IDs are not accepted.
-- They can unlink via `POST /api/auth/unlink-clerk`.
+- Authenticated members link a Google account via `POST /api/auth/link-clerk` with `clerkToken`, obtained from `getToken()`. The server verifies that session and derives its subject; an arbitrary `clerkUserId` is rejected. Explicit linking proves possession of both the member credential and the provider account. Provider email equality is not required.
+- A single conditional D1 update prevents one provider identity being linked to two members, including concurrent requests. Link/unlink changes and their audit rows commit together.
+- They can unlink via `POST /api/auth/unlink-clerk`. This disables subsequent provider login; existing member device sessions are separately revoked through account session controls.
 
 ### Business rules
 
 - RULE-AUTH-01: A token must be unrevoked and unexpired to log in.
-- RULE-AUTH-02: Google login only works if the Clerk JWT is valid, the Clerk account has a verified email matching the member, and the member has `oauth_enabled = 1`.
+- RULE-AUTH-02: Google login only works if the Clerk session JWT is valid and active, its subject is explicitly linked to exactly one member, and that member has `oauth_enabled = 1` and active registry access.
 - RULE-AUTH-03: Tokens are deleted and regenerated on rotation, not stored hashed.
 - RULE-AUTH-04: The `forgot-token` endpoint always returns success to prevent email enumeration.
 - RULE-AUTH-05: Maintenance mode blocks all members with `power_level < 100`.
-- RULE-AUTH-06: Token login via `/api/auth/token-login` works in production; `dev-login` does not.
+- RULE-AUTH-06: Token login via `/api/auth/session` works in production; `dev-login` does not.
 
 ## Roles and permissions
 
@@ -197,6 +192,9 @@ This document describes the system from the domain perspective. Each section cov
 - RULE-PROJECT-06: Board can mark a project complete or reopen it.
 - RULE-PROJECT-07: Marking complete or reopening regenerates the static `completedProjects.json` in R2.
 - RULE-PROJECT-08: The `GET /api/projects/completed` endpoint reads from R2; falls back to D1.
+- RULE-PROJECT-09: On `reimagined`, internal project reads and active dashboard counts are scoped to board access, the user's assigned department, or an explicit `project_roles` assignment. Having no department is not a visibility grant. Task URLs enforce the same rule. Removing a role takes effect on the next request unless another valid grant remains.
+- RULE-PROJECT-10: Members may complete/reopen only their own assigned tasks in projects they can currently read. Board and project-department directors retain management access. Status changes compare the current status/assignee before writing, return 409 on conflict, and use a transactional audit insert. A repeated status request succeeds without changing the completion timestamp or adding history.
+- RULE-PROJECT-11: New task assignees must be registered and able to read the project. A task ID under the wrong project cannot be updated; missing tasks do not report success.
 
 ### Department projects
 
@@ -292,8 +290,8 @@ This document describes the system from the domain perspective. Each section cov
 
 ### Business rules
 
-- RULE-RATE-01: Most endpoints are rate-limited per IP and endpoint in the `rate_limits` table.
-- RULE-RATE-02: Login endpoints use a separate `checkLoginRateLimit` that resets on success.
+- RULE-RATE-01: Endpoints using `checkRateLimit` consume one attempt per IP/endpoint through an atomic D1 upsert. Fixed-window state survives isolate restarts and is shared across workers. A denied request retains the window, with a positive `retryAfter`; counts saturate at limit + 1. Database failures deny the operation rather than falling back to memory.
+- RULE-RATE-02: Login uses the same persistent limiter. Every attempt is counted once, including successful logins. Development login neither increments failed attempts twice nor resets its allowance on success.
 - RULE-QUOTA-01: All outbound email goes through `sendEmail()`: Spacemail SMTP (`mail.spacemail.com:465`) is primary and Resend is the automatic fallback when SMTP fails.
 - RULE-QUOTA-02: BCC batching (up to 50 recipients per message) is used only for bulk queue campaigns (newsletter, event, meet); every other send is one recipient per message. SMTP sends are capped at 500 messages/hour in `email_hour_count` and drained with adaptive pacing (up to 15 messages/minute) by the `* * * * *` cron.
 - RULE-QUOTA-03: The Resend fallback is capped at 100 recipients/day in `resend_daily_count`.
@@ -307,3 +305,29 @@ This document describes the system from the domain perspective. Each section cov
 
 - RULE-AUDIT-01: Significant actions write a row to `audit_log`.
 - RULE-AUDIT-02: Audit log entries are append-only.
+
+## Shared files and private namespace isolation
+
+The legacy Club Files library is shared with authenticated users at power >= 10 and managed by power >= 50. Its approved categories are General, Projects and Events; only flat keys in these namespaces are eligible. Listing and exact-ID download/delete never traverse Letter Studio or nested/private namespaces. Ambiguous IDs fail closed. Filters retain their existing display-metadata meaning and scan continuation pages. Upload category is validated before R2 writes; unsafe extension strings become `bin`. Downloads are private attachments with encoded filenames and no-store/nosniff headers.
+
+This boundary preserves the shared legacy library; it does not make display project names authoritative resource links. Contextual project/task/meeting/department attachments and guests still require metadata records, owning-resource authorization and separate private storage keys.
+
+## Today work queue
+
+The authenticated home exposes a personal queue of open assigned tasks in projects currently readable under the canonical project policy. Assignment does not independently grant read access; department moves and explicit-role removal recalculate visibility on the next request. Completed tasks/projects are omitted. Existing project deadlines are displayed as project dates rather than inventing individual task due dates. Completing a task from Today uses the existing assignee-authorized, transactionally audited task status API, followed by a fresh queue read.
+
+The next-seven-day meeting list includes club meetings plus current department/inter-department meetings; board operators may see all departments. Only future meetings appear, preserving the 24-hour stale-link restriction. Pending incoming transfers are owner-scoped, and account-request counts are board-only. The web card shows loading/errors, a server freshness timestamp, manual refresh and a visible-page refresh every minute. Old credential fetches are aborted or ignored on account changes. It links to Projects, Transfers and board Admin Console.
+
+Individual task dates/priority/blockers, department review queues, mentions, unread updates and Recent activity require subsequent models and UI. This initial queue does not claim those capabilities.
+
+The initial Android client consumes the same session/work-queue/task contracts. It requires a configured personal HTTPS origin, persists only the issued device session through SecureStore, validates saved access before restoring protected content, clears expired/revoked visible state and ignores late responses after teardown. Logout tries local deletion and remote revocation independently; incomplete results are shown. No private persistent offline cache or native approval action screen is implemented yet. Native storage/lifecycle acceptance remains pending.
+
+Android restoration treats SecureStore values as untrusted serialized input: only the expected device credential, valid future expiry and identity fields are accepted. Invalid values are removed before server restoration. HTTP 401 remains an authentication error even when its body is not JSON, so the client can clear visible access consistently. Malformed successful responses fail explicitly rather than being treated as work data.
+
+Android device-session controls use the same owned-session list and revoke endpoints as the web. Device labels are user supplied. Revoking the current Android session clears protected content and attempts to remove its saved credential; other-device revocation refreshes the list. Requests and confirmation callbacks are discarded when the screen/account lifetime changes. Native emulator acceptance remains pending.
+
+Project task scheduling: leads who can manage the project may set/clear task calendar due dates and choose low/normal/high/urgent priority. Members can still complete their own tasks without gaining scheduling rights. Both Today clients display task due dates separately from project deadlines. Schedule edits preserve omitted fields and record attributable before/after audit; identical retries preserve history. Task reassignment, blockers, boards, comments and history UI remain additional work.
+
+Project leads can reassign or unassign tasks together with scheduling edits in the web task-details editor. The old owner stops receiving the task in Today and loses owned-task completion permission; the new owner receives the same task with its due date/priority and can complete it. Assignment requires active account and project access, checked again by the write. Assigning a task does not itself grant project access. The editor captures previous values when opened; conflicts retain the draft and offer Reload task before a fresh edit. Delayed task requests are ignored after an account/project change. Native task-detail editing, blockers, boards and collaboration remain pending.
+
+Members with current project read permission can review a task's scoped history in the web task list, load older events and refresh. It covers recorded creation, individual status changes, bulk completion, scheduling and combined owner/date/priority edits. Missing historical events are described as unavailable rather than invented. Only relevant task fields and actor display names are returned; unrelated audit details and emails stay private. Access-denial refreshes clear displayed history, including non-JSON denials. Native history UI remains pending.

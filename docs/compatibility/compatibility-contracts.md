@@ -93,7 +93,7 @@ The public and members portal routes are defined by `react-router-dom`. The foll
 
 ## COMP-DEPLOY-01 Cloudflare Pages middleware
 
-`apps/frontend/functions/_middleware.ts` proxies `/api/*` to `admin-api.technical-vitc.workers.dev`. Any change to the backend origin must be mirrored here and tested on a preview deployment.
+`apps/frontend/functions/_middleware.ts` proxies `/api/*` to `API_ORIGIN` when configured, defaulting to `admin-api.technical-vitc.workers.dev`. The Worker can add explicit browser origins with `ALLOWED_WEB_ORIGINS`; existing defaults remain accepted. Verify routing and origin checks on a preview deployment before cutover.
 
 ## COMP-DEPLOY-02 Wrangler bindings
 
@@ -154,20 +154,27 @@ The frontend relies on `VITE_CLERK_PUBLISHABLE_KEY`. The backend relies on `CLER
 A Clerk login is valid only when:
 
 1. The Clerk JWT is valid.
-2. The Clerk Backend API returns a Clerk-verified email for the Clerk user, and that email matches `users.email` (client-supplied emails are ignored).
-3. `users.clerk_user_id` is empty (link via verified email) or equals the JWT's `sub` and matches a verified email; one Clerk user ID may be linked to at most one user.
-4. `users.oauth_enabled = 1`.
+2. Exactly one `users.clerk_user_id` matches the verified session subject; client email is never identity proof.
+3. `users.oauth_enabled = 1` and the member has active registry access.
+4. The session has an approved frontend origin and is not pending.
 
-Linking (`POST /api/auth/link-clerk`) requires a valid Clerk JWT (`clerkToken`) in the body; the server links the JWT's `sub` and rejects client-supplied Clerk user IDs. Do not change this logic without updating the frontend linking flow.
+The reimagined frontend linking flow supplies a Clerk JWT as `clerkToken`. Earlier clients supplying only `clerkUserId` must refresh before linking; existing explicit links continue to work. Deploy backend first, then frontend, and ask an already-open old client to refresh if linking returns 400. Removed email auto-linking is an intentional security correction; first-time Google users sign in with a member token and explicitly link in Profile. Audit historical links before importing live records into personal staging.
+# Reimagined project access change
 
-## COMP-AUTH-01 Token login contract
+Device sessions are additive: existing registry Bearer tokens remain accepted, and `/api/dev-login` retains its development-only contract. New web sign-in uses production-capable `/api/auth/session`, retaining existing storage keys but storing an expiring session instead of the source token. Backend must be deployed before the updated frontend; old frontend/backends cannot consume the new session credential format. Roll back the frontend first or require users to sign in again before reverting a backend without session support. Leave the additive table intact during rollback. The Google exchange uses verified explicit linking. A synthetic real-SDK route test covers identity and database enforcement; live personal Clerk OAuth and browser acceptance remain required.
 
-- `POST /api/auth/token-login` accepts `{ token }` and validates it against `admin_tokens` (unrevoked + unexpired). Success returns the same profile shape as clerk-login.
-- The frontend must call `/api/auth/token-login`, never `/api/dev-login` (the latter is disabled when `ENVIRONMENT=production`).
-- Invalid/expired tokens return 401; rate limit is 10/min per IP (429).
+Internal project lists/counts no longer expose every project to members without a department. Such users need an explicit project role; board access and assigned-department access remain. Cross-department explicitly assigned members gain project visibility. Direct task reads enforce this scope and return 404 for inaccessible/missing projects. Task responses add `can_update`; assignees may update their own task status. Public completed-project endpoints are unchanged. Existing clients must handle denied reads and missing tasks rather than rely on unrestricted ID access.
 
-## COMP-AUTH-02 Auth failure status codes
+## Reimagined persistent rate limits
 
-- 401 = authentication refused: invalid/expired Clerk JWT or admin token, unlinked/unknown member, `oauth_enabled = 0`, no verified email on the Clerk account.
-- 403 = the caller is authenticated but lacks permission (power-level gates).
-- 409 = Clerk user ID already linked to another member.
+Existing endpoint thresholds and 429 response conventions remain. Limits now persist in the existing `rate_limits` table across worker restarts and deployments. Successful development login consumes one attempt and does not clear previous attempts; failures are counted once. This intentionally closes restart/reset bypasses. Clearing the table during deployments would defeat enforcement and must be avoided. No schema migration or new binding is required.
+
+## Reimagined Club Files namespace correction
+
+General, Projects and Events UI flows retain their routes and power thresholds. Arbitrary categories, nested objects and Letter Studio documents are excluded from the shared library; existing data is not deleted or moved. Unknown category requests now return 400; direct private/partial/ambiguous IDs return 404. Download filenames use RFC 5987 encoding and responses disable caching. Inventory unexpected historical categories before personal data import; migrate approved ones deliberately rather than exposing the bucket root. Letter Studio's own routes remain unchanged.
+
+## Today queue rollout
+
+`GET /api/work-queue` is additive and uses existing schema. Deploy backend before frontend; old clients keep their dashboard payload. New frontend displays a visible error if the queue endpoint is unavailable, while existing dashboard sections remain accessible. No stored data or existing routes are renamed. Project deadlines retain their existing meaning; they are not task due dates.
+
+The existing task status PUT and schedule-only PATCH retain their contracts. The combined `/details` PATCH is additive and requires an expected-value snapshot. Creation rejects inactive assignees and rechecks eligibility at insert time. Existing task records, completion timestamps and scheduled dates are not rewritten by deployment.

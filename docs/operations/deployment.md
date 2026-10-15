@@ -2,6 +2,16 @@
 
 ## Environments
 
+### Personal deployment on reimagined
+
+Set the Pages runtime variable `API_ORIGIN` to the HTTPS origin of the Worker in Srijan's personal account (no path, query, fragment or credentials). The Pages proxy and its CSP use this value. If absent, the existing club Worker remains the compatibility default; an invalid configured value returns 503 without forwarding credentials. HTTP is permitted only for loopback development. Configure both preview and production Pages environments explicitly before deploying personal resources.
+
+Set the Worker runtime variable `ALLOWED_WEB_ORIGINS` to a comma-separated list of exact HTTPS web origins (no trailing slash or wildcard). Both CORS and CSRF checks accept these alongside existing origins; malformed lists fail closed for non-local browser requests. This adds no resource permissions and does not authenticate users. Verify a permitted POST and an unrelated origin's rejection before release.
+
+These variables do not provision resources. Personal deployment must use separate D1/R2/KV resource bindings rather than the club identifiers in the existing Wrangler config. The active roadmap is `docs/execution/unified-platform-plan.md`.
+
+Use `apps/admin-api/wrangler.personal.example.toml` as the resource checklist. Copy it to the ignored `wrangler.personal.toml`, replace every placeholder with personal-account values, and verify the selected account before provisioning or deployment. It excludes the club domain route and the unused Queue binding; email cron is opt-in after sender verification. Run `pnpm wrangler deploy --dry-run --config wrangler.personal.toml` before any personal release. This configuration is not yet a verified personal production deployment.
+
 - **Local development:** `wrangler dev` for the worker, `pnpm dev` for the Vite frontend.
 - **Production:** Cloudflare Pages for the frontend, Cloudflare Worker for `admin-api`.
 - **Preview branches:** Cloudflare Pages and Wrangler support preview deployments.
@@ -197,6 +207,8 @@ pnpm run deploy:all         # deploys backend then frontend
 
 ## Migration procedure
 
+For the reimagined device-session increment, deploy the backend before the frontend. Runtime bootstrap adds `member_sessions` and its index with `IF NOT EXISTS`, preserving registry/newsletter data. Verify token exchange and owner-scoped revocation in personal staging. No new secret or binding is required. Source-token validity remains a dependency of device sessions. For rollback, revert the frontend first or force re-login before reverting a backend without session support; retain the new table. Hashes and credentials must not be logged or included in support exports.
+
 Because `admin-api` manages its own schema, deploying a new version is usually enough. If a migration needs careful control:
 
 1. Deploy the new Worker version.
@@ -226,3 +238,31 @@ Do **not** run `packages/db/schema.sql` directly against D1.
 - Worker route pattern in `wrangler.toml`: `*180dcvitc.org/api/*`.
 
 The Pages middleware rewrites `/api/*` requests to the Worker, so the frontend does not call `180dcvitc.org/api/*` directly.
+
+### Google identity release gate
+
+Use the personal Clerk application's `VITE_CLERK_PUBLISHABLE_KEY` and corresponding server `CLERK_SECRET_KEY`. Configure the frontend HTTPS origin in `ALLOWED_WEB_ORIGINS`; session `azp` must match an approved origin, and production rejects loopback origins. No additional secret or table migration was added for proof-backed linking. Deploy backend before frontend. Old open clients must refresh before linking because the request now requires a Clerk session JWT, not an arbitrary user ID. First-time Google sign-in requires token login followed by explicit linking in Profile. Review imported historical links for uniqueness and ownership. Verify real Google redirect, link, login, unlink, disabled account and member session exchange on isolated personal staging before release. The local ephemeral-key test proves SDK signature/expiry checks and API policy, not the provider redirect configuration.
+
+### Persistent rate limits
+
+Reimagined uses the existing primary D1 `rate_limits` table with atomic upserts for all existing rate-limited routes. No new table or binding is required. Keep this table across deploys/restores; restarting a worker must not clear its allowances. Each checked request now performs a D1 write, so include public read traffic in capacity monitoring. IP/endpoint rows persist after their windows expire and are reused; agree a retention/cleanup policy before public rollout. Cleanup must only delete rows older than the longest configured endpoint window (currently one hour), never active windows. Email quota counters and newsletter storage remain separate from this limiter.
+
+### Shared-file namespace rollout
+
+Club Files uses its existing R2 binding and object format; no schema migration, new binding or destructive object move is required. Inventory nonstandard categories/nested keys before importing live records. Only flat General/Projects/Events keys are now reachable through Club Files. Letter Studio documents stay in `letters/` and use their own authenticated APIs. Reserve a distinct private namespace for new contextual attachments; never write them into these shared categories.
+
+### Today queue rollout
+
+Deploy the additive `/api/work-queue` endpoint before the updated frontend. No new schema or bindings are required. The home refreshes the queue once per visible minute and after task completion; account for its read traffic and persistent limiter writes in D1 monitoring. Validate member/director/board/advisory journeys and mobile-width rendering on personal staging.
+
+### Database selection before personal production
+
+[ADR-005](../architecture/decisions/005-personal-database-evaluation.md) retains the existing two-D1 architecture for development and records PlanetScale alternatives. Before provisioning production, confirm the actual account plan, empty-database cold bootstrap/query limits, measured row read/write volumes, storage, recovery and spending ceiling. The new persistent limiter adds D1 writes to rate-checked reads; Dashboard/Today polling must be included. Hosted PlanetScale comparisons and a region/HA quote remain pending. Do not treat the documented starting Postgres price as a complete production bill or migrate the placeholder schema.
+
+### Initial Android client
+
+See `apps/mobile/README.md` and ADR-006. Set the public `EXPO_PUBLIC_API_URL` to the personal backend's exact HTTPS origin; no club default is supplied. Install root dependencies and use `pnpm --filter mobile start` with a device/emulator. `pnpm --filter mobile exec expo export --platform android` creates a JavaScript bundle, not an APK. Signing, app identifier/icon review, device validation and distribution remain open; no EAS or store publication occurred. Expo SecureStore backup exclusion must be verified in the generated native build.
+
+Task scheduling rollout adds `project_tasks.due_date` and `priority` through runtime additive migrations. Existing records retain null due dates and normal priority. Exercise empty-schema bootstrap and an older schema with preserved task records in isolated local D1 before rollout. No standalone placeholder SQL should be used. Older clients ignore the extra response fields; the status PUT contract remains unchanged.
+
+Task history adds an idempotent index to the existing audit table and begins recording creation and per-task bulk completion events transactionally. No legacy audit backfill or existing task rewrite is performed. Check scoped history, multi-page same-second ordering and bulk retry preservation in personal staging. Cross-database cutover must translate the SQLite append-order cursor to a preserved explicit sequence.

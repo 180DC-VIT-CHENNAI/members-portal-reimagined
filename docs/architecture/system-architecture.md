@@ -2,6 +2,8 @@
 
 ## High-level architecture
 
+On `reimagined`, Pages supports an optional runtime `API_ORIGIN` for personal-account Worker routing and matching CSP connection origins. Absent configuration retains the existing Worker origin. Invalid values fail closed. API redirects are not followed by the proxy. The backend accepts explicit additional HTTPS browser origins via `ALLOWED_WEB_ORIGINS` for both CORS and CSRF. Infrastructure bindings still require personal deployment configuration.
+
 The platform is a Cloudflare-native monorepo with a single-page React frontend and a single Hono Worker backend.
 
 ```text
@@ -178,3 +180,7 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 - D1 does not support stored procedures or triggers. Schema migrations must be handled in application code.
 - Workers do not have a filesystem. All uploads use R2.
 - Bulk email is sent over SMTP from the Worker using `cloudflare:sockets` (`mail.spacemail.com:465`). Long sends block the Worker request; the hourly quota and Resend fallback bound the work.
+
+Database development choice and PlanetScale migration gates: [ADR-005](decisions/005-personal-database-evaluation.md). Two D1 databases remain in use; hosted capacity comparison and the personal production plan are not yet verified.
+
+The initial Android member client lives in `apps/mobile` and consumes the same custom-session/work-queue/task APIs over an explicitly configured personal HTTPS origin. Native runtime/storage is on Android; API/data infrastructure remains on Cloudflare. See ADR-006 and the mobile capability matrix for implementation and acceptance boundaries.

@@ -17,6 +17,17 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 ## Public routes
 
+### Reimagined member sessions
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| POST | `/api/auth/session` | public, valid registry token in body | Exchange `{ token, deviceLabel? }` for independent `{ token, sessionId, expiresAt, email, name, roleId, roleName, powerLevel, departmentId }`. Label defaults to `Web browser`, maximum 80 characters. Fixed seven-day expiry; up to 20 active sessions per current source token. Ten attempts/IP/minute. Works in production; invalid/revoked/expired source returns 401, malformed input 400, quota 429, maintenance 503. |
+| GET | `/api/auth/sessions` | member credential | List only this account's active sessions backed by the current registry token: `id`, `device_label`, `created_at`, `expires_at`, `current`. No credential hashes or source tokens are returned. |
+| DELETE | `/api/auth/sessions/:id` | owning account | Revoke one owned session; another account's ID returns 404, regardless of rank. Its next authenticated request fails. |
+| POST | `/api/auth/logout` | member credential | Revoke the current device session. Legacy-token callers receive success with `legacyToken: true` and must clear local credentials; the source token is preserved. |
+
+Session responses carry `Cache-Control: private, no-store`. Bearer auth accepts existing registry tokens and new opaque `180dc_session_…` credentials. Each device request checks session expiry/revocation, current user/role and active source token with a matching hash. Session creation and individual revocation are audited transactionally. No refresh token or sliding expiry exists yet.
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/content/case-studies` | public | Public case study listing. |
@@ -32,8 +43,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 | POST | `/api/signup-requests` | public | Submit a member account request. |
 | POST | `/api/consulting-request` | public | Submit a consulting request. |
 | POST | `/api/dev-login` | public | Log in with admin token (dev only; 403 when `ENVIRONMENT=production`). Creates user if missing. |
-| POST | `/api/auth/token-login` | public | Production-safe token login. Validates admin token against `admin_tokens`; creates user if missing. |
-| POST | `/api/auth/clerk-login` | public | Log in with a Clerk JWT (Google OAuth). Email is resolved from the Clerk Backend API; request-body email is only used if Clerk-verified. 401 when the JWT is invalid/expired or the account cannot be mapped; 409 when the Clerk user is already linked to another member. |
+| POST | `/api/auth/clerk-login` | public | Log in with a Clerk session JWT (Google OAuth). Requires an active, approved-origin Clerk session explicitly linked to exactly one OAuth-enabled member with active registry access; request-body email is ignored. Production token login uses `/api/auth/session`. |
 | POST | `/api/auth/forgot-token` | public | Email token to member (always returns success). |
 | GET | `/api/departments` | public | Department list (name, description). |
 | GET | `/api/projects/completed` | public | Completed projects (R2 cache, fallback to DB). |
@@ -158,7 +168,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/projects` | member | List global projects (filtered for directors). |
+| GET | `/api/projects` | scoped member | List global projects visible through board, assigned department or explicit project role; the dashboard active-project count uses the same policy. |
 | POST | `/api/projects` | board | Create a global project. |
 | DELETE | `/api/projects/:id` | board | Delete a project and related data. |
 | POST | `/api/projects/:id/complete` | board | Mark project complete and regenerate R2 cache. |
@@ -177,9 +187,9 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/projects/:id/tasks` | member | List tasks for a project. |
-| POST | `/api/projects/:id/tasks` | director | Create a project task. |
-| PUT | `/api/projects/:id/tasks/:taskId` | director | Mark a task pending or completed. |
+| GET | `/api/projects/:id/tasks` | scoped member | List tasks only for a readable project; 404 for missing/inaccessible projects. Adds per-task `can_update`. |
+| POST | `/api/projects/:id/tasks` | scoped director/board | Create a project task; any assignee must be registered and able to read the project. |
+| PUT | `/api/projects/:id/tasks/:taskId` | scoped manager or assignee | Mark pending/completed; unrelated users receive 403, missing/inaccessible project or task receives 404. Stale status/assignment conflicts receive 409. Status retries preserve timestamps; actual changes are audited. |
 | POST | `/api/projects/:id/tasks/complete-all` | director | Mark all pending tasks completed. |
 
 ## Team instances
@@ -313,3 +323,39 @@ Standard mail subjects/bodies are generated server-side per document type (`lett
 - `public` routes still pass through `isPublicRoute` and may be rate-limited.
 - The frontend always calls `/api/*` and relies on `apps/frontend/functions/_middleware.ts` to proxy to the `admin-api` Worker.
 - CORS is enabled for `https://newsletter.180dcvitc.org` (the separate newsletter site, ADR-004) plus the existing `180dcvitc.org` origins. CORS/CSRF allowlists live in `apps/admin-api/index.ts` (`ALLOWED_ORIGINS`).
+
+## Reimagined Google identity proof
+
+`POST /api/auth/clerk-login` accepts `{ clerkToken }` and retains its successful response shape for compatibility. Email input is ignored for identity selection. The verified Clerk session must identify an explicitly linked, OAuth-enabled member with active registry access. Invalid/expired/foreign-origin/pending sessions return 401; missing links, conflicting links and inactive member access return 403; missing server configuration returns 503. Responses containing credentials use `Cache-Control: private, no-store`.
+
+`POST /api/auth/link-clerk` requires member Bearer authentication and `{ clerkToken }`. A user ID string alone is insufficient and returns 400. The verified provider subject is linked to the authenticated member; another member's existing link returns 409. Successful link and unlink writes are transactionally audited. Existing `/api/auth/unlink-clerk` keeps its request/response shape and disables subsequent provider login.
+
+## Reimagined shared library boundary
+
+Club Files list, download and delete routes only traverse flat keys under `general/`, `projects/` and `events/`. `GET /api/club-files?category=...` and multipart upload reject other categories with 400. Missing, private, partial or ambiguous IDs return 404 on direct lookup. Member/advisory shared reads and director/board shared writes retain existing power thresholds. Object scans traverse R2 continuation pages. Download responses use attachment disposition, an encoded filename, `private, no-store` and `nosniff`.
+
+`letters/`, nested keys and other namespaces cannot be accessed through Club Files, including by board members. Letter Studio keeps its separately authenticated routes. Shared Projects is a legacy club-wide category; its display `projectName` is not a resource permission. Future contextual attachments must use a distinct private namespace and their owning resource's API policy.
+
+## Personal work queue (reimagined)
+
+`GET /api/work-queue` requires member Bearer authentication and is limited to 30 requests/IP/minute. Returns `{ success, generatedAt, tasks, hasMoreTasks, meetings, hasMoreMeetings, attention }` with `private, no-store`. Tasks contain `id`, `project_id`, `title`, `description`, `status`, `project_name`, `project_deadline`; they are open tasks assigned to the current user in non-completed projects the user may currently read. Up to 100 tasks are returned, ordered by project deadline and stable IDs. The deadline is a project date, not an individual task date.
+
+Meetings contain `id`, `type`, `title`, `scheduled_at`, `meet_link`; up to 20 relevant upcoming meetings in the next seven days are returned chronologically. Club meetings apply to all members; department/inter-department meetings follow current department membership or board access. `attention.incomingTransfers` counts pending transfers addressed to the current user. Only board responses include `attention.accountRequests`. Truncation flags identify when the larger project/meeting views are needed. Missing/revoked credentials retain middleware rejection.
+
+### Project task scheduling (unified increment)
+
+Task creation accepts optional `dueDate` (nullable `YYYY-MM-DD`) and `priority` (`low`, `normal`, `high`, `urgent`; default `normal`). Task reads and `/api/work-queue` expose `due_date` and `priority`. The work queue orders scheduled tasks by task due date, then priority, creation time and ID; project deadlines remain separate display fields.
+
+`PATCH /api/projects/:id/tasks/:taskId/schedule` edits supplied `dueDate` and/or `priority`, retaining omitted values. Requires board or director management of the assigned project department. Assigned members retain status-update permission but cannot edit schedules. Returns 400 for empty/invalid scheduling fields, 404 for inaccessible projects or wrong-project task IDs, 403 for readable projects without management rights, and 409 for a concurrent schedule change. Clearing a due date uses null. Successful changed writes and `task_schedule_changed` audit records commit in one D1 batch; unchanged retries do not add audit records.
+
+### Combined task owner and scheduling edits
+
+`PATCH /api/projects/:id/tasks/:taskId/details` accepts optional `assignedTo` (member ID or null), `dueDate` and `priority`, with at least one field supplied. Requires `expected: { assignedTo, dueDate, priority }` containing the values read before editing. Requires the same project-management permission as scheduling. Inaccessible projects/wrong-project task IDs return 404, readable non-manager requests 403, missing snapshot or invalid/inactive/out-of-project owner 400, and stale/concurrent edits 409. Null owner clears assignment. Unspecified fields are preserved.
+
+Owner, date and priority update atomically with a `task_details_changed` before/after audit row. The write compares all three prior values and rechecks new-owner account/project eligibility in SQL. An unchanged edit with a current snapshot returns success without another audit; retrying an old snapshot after a changed edit returns 409 and requires reload. The schedule-only route remains compatible. Task creation now also checks active project access at validation and insert time; a concurrent eligibility change returns 409. Status PUT remains unchanged.
+
+### Scoped task history
+
+`GET /api/projects/:id/tasks/:taskId/history?cursor=...` requires current project read access and verifies the task belongs to that project. Inaccessible/missing/mismatched resources return 404; invalid cursors return 400. Returns `{ success, data, nextCursor }` with up to 50 events, newest first. Each event exposes ID, action, creation time, current actor name (or Former member) and selected before/after owner/date/priority/status fields. Actor email and arbitrary audit details are excluded. Events must match both the task target and recorded project ID. Pagination uses an opaque cursor with timestamp and append sequence; same-second events retain insertion order. Successful responses are private/no-store.
+
+Creation records `task_created` with initial owner, date, priority and pending status in the same transaction as insertion. Bulk completion records one `task_status_changed` event for each pending task in the same transaction as the status update; already-completed tasks retain timestamps and receive no new event on a retry. Legacy events not recorded by earlier versions cannot be reconstructed from this endpoint.

@@ -4,9 +4,16 @@ Invariants are properties that must never become false while the system is runni
 
 ## Auth invariants
 
+### INV-AUTH-04: Explicit browser write origins are authorised
+
+- **Statement:** On `reimagined`, unsafe-method requests carrying a non-local `Origin` outside the legacy and `ALLOWED_WEB_ORIGINS` lists receive 403 before database initialisation or route mutation, including JSON content types.
+- **Where enforced:** Explicit origin guard before Hono CSRF middleware in `apps/admin-api/index.ts`.
+- **Verification:** `scripts/verify-local-origins.mjs` against a local Worker configured with the personal test origin. Token/editor/resource permissions remain independent requirements.
+
 ### INV-AUTH-01: Authenticated requests require a valid, unrevoked, unexpired token
 
 - **Statement:** Every request to a non-public `admin-api` endpoint must present a Bearer token that exists in `admin_tokens`, has `revoked_at IS NULL`, and has `expires_at` in the future or null.
+- **Reimagined extension:** Bearer credentials may instead resolve to an unrevoked, unexpired `member_sessions` row whose current user and source registry token remain active. Its `source_token_hash` must match the current source token. Raw device credentials are not stored. Individual revocation is account-owner scoped; rank alone grants no visibility into another account's sessions.
 - **Reason:** This is the only authorization boundary between the public internet and member data.
 - **Where enforced:** `apps/admin-api/index.ts`, auth middleware starting at `app.use("*", ...)`.
 - **How verified:** Inspect `admin_tokens` lookup; attempt a request without a token or with a revoked token and confirm 401.
@@ -24,10 +31,10 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-AUTH-03: Google login cannot bypass token auth
 
-- **Statement:** Clerk/Google login only provides a token if the Clerk JWT is valid, the Clerk account has a Clerk-verified email matching a `users` row (`clerk_user_id` links must also match a verified email), the Clerk user ID is linked to at most one user, and the user has `oauth_enabled = 1`. Client-supplied emails and Clerk user IDs are never trusted.
-- **Reason:** Google OAuth is an alternative login method, not a separate auth boundary. Trusting client input would allow one Clerk account to claim any member's identity.
-- **Where enforced:** `POST /api/auth/clerk-login`; unique partial index `idx_users_clerk_user_id` on `users(clerk_user_id)`.
-- **How verified:** Send a valid Clerk JWT with another member's email in the body; confirm no token is issued (401). Try logging in with an unlinked Clerk account; confirm 401.
+- **Statement:** Clerk/Google login only provides a credential if a verified, approved-origin active Clerk session is explicitly linked to exactly one OAuth-enabled member with active registry access. Caller email/user ID cannot prove provider identity, and OAuth cannot restore revoked or expired member access.
+- **Reason:** Google OAuth is an alternative login method, not a separate auth boundary.
+- **Where enforced:** `POST /api/auth/clerk-login`.
+- **How verified:** Try logging in with an unlinked Clerk account; confirm 403.
 - **Related business rules:** RULE-AUTH-02.
 - **Current status:** ENFORCED.
 
@@ -79,6 +86,14 @@ Invariants are properties that must never become false while the system is runni
 - **Current status:** ENFORCED.
 
 ## Data integrity invariants
+
+### INV-PROJECT-01: Lists, counts and task URLs share current project permissions
+
+On `reimagined`, board access, assigned department and explicit project role are the member read grants. No department grants no additional visibility. Unrelated/missing project task reads return 404. `verify:local-projects` exercises all four roles and immediate explicit-role revocation.
+
+### INV-TASK-01: Owned task updates are persisted and attributable
+
+A task can be changed only by a project manager or its assignee with current project read access. The task must belong to the URL's project. Status/assignee changes detected between read and write return 409. An actual change and audit insert share a [D1 batch transaction](https://developers.cloudflare.com/d1/worker-api/d1-database/); retries of the same state do not rewrite completion time or add history. Verify changes and audit rows in isolated local D1.
 
 ### INV-DATA-01: User email is unique
 
@@ -132,7 +147,7 @@ Invariants are properties that must never become false while the system is runni
 - **Statement:** Each endpoint with `checkRateLimit` must allow no more than its configured max requests within the configured window from the same IP.
 - **Reason:** Prevent abuse and protect D1/email quotas.
 - **Where enforced:** `checkRateLimit` helper and `rate_limits` table.
-- **How verified:** Exceed the limit from a single IP; confirm 429.
+- **How verified:** Exceed the limit from a single IP and confirm 429; restart the local Worker using the same D1 and confirm denial persists; send concurrent attempts and confirm only the configured allowance proceeds. Independent IP/endpoint keys retain separate allowances.
 - **Related business rules:** RULE-RATE-01.
 - **Current status:** ENFORCED.
 
@@ -260,3 +275,22 @@ Invariants are properties that must never become false while the system is runni
 - **How verified:** Try to update an instance in another department; confirm 403.
 - **Related business rules:** RULE-TEAM-04.
 - **Current status:** ENFORCED.
+
+### INV-FILE-01: Shared library cannot cross private storage namespaces
+
+- **Statement:** Club Files reads and writes are restricted to flat `general/`, `projects/` and `events/` objects. A guessed private document ID cannot grant download/delete access through this library, even to a board member.
+- **Where enforced:** `club-file-policy.ts` and canonical Club Files routes.
+- **How verified:** Local R2 fixtures under Letter Studio and nested paths remain absent from lists and denied by direct ID; shared uploads/downloads and role restrictions still work. Helper tests cover continuation pages and ambiguous/partial IDs.
+- **Remaining:** New contextual attachments must enforce their owning resource's current permissions on every request.
+
+### INV-WORK-01: Personal queue follows current access
+
+- **Statement:** Open assigned tasks only appear while the user may currently read the owning project. Pending role invitations only count for their recipient. Board account approvals never appear in lower-power responses.
+- **Where enforced:** `/api/work-queue`, using canonical project read scope and current user/department.
+- **How verified:** Local role fixtures exercise owned versus inaccessible assignments, explicit-role removal, department movement, completed tasks, board-only attention and meeting scope.
+
+Task due dates are valid calendar dates, independent of project deadlines. A member's owned-task status permission never grants schedule-edit permission. Schedule writes match both task and project, compare the previous schedule to prevent a concurrent overwrite, and commit an audit record only when a row changes.
+
+Task assignment cannot grant project read access. Creation and reassignment enforce active owner registry access and current project scope at the SQL write. Combined edits compare previous owner, due date and priority; only one competing edit of the same snapshot can commit, and only its audit is recorded. A reassignment changes owned-task permission immediately on the next request.
+
+Task history must recheck current project access and task-project membership for every page. Raw audit JSON and actor email are never sent through this endpoint. Creation and bulk completion events commit with their task writes; bulk retries cannot reset completed timestamps or add false status events. Same-second history retains append order.
