@@ -1,22 +1,56 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { apiUrl } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 
 export default function UnsubscribePage() {
   const [searchParams] = useSearchParams();
+  const { token } = useParams();
   const emailParam = searchParams.get("email") || "";
+  const [resolvedEmail, setResolvedEmail] = useState("");
+  const tokenRequested = useRef("");
   const { isDark, toggle: toggleTheme } = useTheme();
 
   const [inputEmail, setInputEmail] = useState(emailParam);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "already" | "not-found" | "error">("idle");
 
   useEffect(() => {
+    if (token) {
+      // Run once per token: StrictMode re-runs effects, and a second POST
+      // would report "already unsubscribed".
+      if (tokenRequested.current !== token) {
+        tokenRequested.current = token;
+        unsubscribeWithToken(token);
+      }
+      return;
+    }
     if (emailParam && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailParam)) {
       setInputEmail(emailParam);
       doUnsubscribe(emailParam);
     }
-  }, [emailParam]);
+  }, [token, emailParam]);
+
+  // Personal links from our emails carry a token; unsubscribing is a POST so
+  // link scanners that prefetch the page URL never trigger it.
+  const unsubscribeWithToken = async (value: string) => {
+    setStatus("loading");
+    try {
+      const res = await fetch(apiUrl(`/api/newsletter/unsubscribe/${encodeURIComponent(value)}`), { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.email) setResolvedEmail(data.email);
+        if (data.status === "already") setStatus("already");
+        else if (data.status === "not_found") setStatus("not-found");
+        else setStatus("success");
+      } else if (res.status === 400) {
+        setStatus("not-found");
+      } else {
+        setStatus("error");
+      }
+    } catch {
+      setStatus("error");
+    }
+  };
 
   const doUnsubscribe = async (email: string) => {
     setStatus("loading");
@@ -160,9 +194,9 @@ export default function UnsubscribePage() {
             </form>
           )}
 
-          {!showForm && emailParam && (
+          {!showForm && (resolvedEmail || emailParam) && (
             <p style={{ fontSize: 12, color: "var(--text-tertiary)", margin: "0 0 1.25rem" }}>
-              {emailParam}
+              {resolvedEmail || emailParam}
             </p>
           )}
 

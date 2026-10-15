@@ -20,7 +20,9 @@
     "test:clerk-identity": "node --test apps/admin-api/clerk-identity.test.mjs",
     "verify:local-clerk": "node scripts/verify-local-clerk.mjs",
     "test:rate-limits": "node --test apps/admin-api/rate-limit.test.mjs",
-    "test:club-files": "node --test apps/admin-api/club-file-policy.test.mjs"
+    "test:club-files": "node --test apps/admin-api/club-file-policy.test.mjs",
+    "test": "node tests/run.mjs",
+    "test:mail": "node tests/run.mjs --mail"
   },
   "devDependencies": {
     "turbo": "latest",

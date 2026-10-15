@@ -17,9 +17,9 @@ This single file is the entire production backend. It is a Hono Worker with:
 - R2 object storage for case-study images, source files, club files, and static completed-projects JSON.
 - KV for auth sessions (bound as `AUTH_SESSIONS` but not actively used in `main`; the token registry lives in D1).
 - Queue producer binding (`QUEUE`) configured but unused.
-- Unified email delivery: `sendEmail()` sends through Spacemail SMTP (primary, BCC batches of 50, `cloudflare:sockets`) with automatic per-recipient Resend fallback.
-- Hourly/daily email accounting in D1 (`email_hour_count`, `resend_daily_count`, `daily_email_count`).
-- Bulk email queue (`email_queue`) drained by the `* * * * *` cron at up to 8 messages/minute (≤50 BCC recipients each): newsletter, event, and meet notifications enqueue and return immediately; failed campaigns retry up to 5 times; completion writes `recipient_count` back to the newsletter row.
+- Unified email delivery: `sendEmail()` sends through Spacemail SMTP (the only provider, via `cloudflare:sockets`; every message has one recipient). Resend was removed.
+- Hourly/daily email accounting in D1 (`email_hour_count`, `daily_email_count`); the queue uses at most 90% of the hourly limit.
+- Bulk email queue (`email_queue`) drained by the `* * * * *` cron with adaptive pacing (up to 15 messages/minute, ≤500/hour); every campaign is one message per recipient, 1.5 s apart (newsletter and event mail personalized per subscriber): newsletter, event, and meet notifications enqueue and return immediately; failed campaigns retry up to 5 times; completion writes `recipient_count` back to the newsletter row. Per-recipient outcomes are tracked in `email_deliveries` (board can retry failures), and subscribers unsubscribe through tokenized `/unsubscribe/<token>` links with RFC 8058 one-click headers.
 - Newsletter data lives in a separate D1 database (`NEWSLETTER_DB`, `newsletter-db`); the old tables in `180dc-db` are frozen backups.
 - Rate limiting in D1.
 - HTML sanitization (`sanitizeBlogHtml`).
@@ -83,7 +83,7 @@ The frontend is deployed as a Cloudflare Pages project named `180dc-admin-fronte
 | Recruitment system | Mentioned in `docs/product/REPORT.md` | Removed from code. `runMigrations` drops recruitment tables. |
 | Real-time chat | Mentioned in `docs/product/REPORT.md` | Not implemented in `main`. |
 | AI chatbot (ConsultAI) | Mentioned in `docs/product/REPORT.md` | Not implemented in `main`. |
-| Amazon SES | `docs/operations/SES_SETUP.md`, `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | Decision made, not implemented. Resend is still used. Spacemail migration planned (`docs/operations/SPACEMAIL_SETUP.md`). |
+| Amazon SES | `docs/operations/SES_SETUP.md`, `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | Not implemented. Spacemail SMTP is the only provider (`docs/operations/SPACEMAIL_SETUP.md`); SES stays a possible future transport behind `sendEmail()`. |
 
 ## Important discrepancies between documentation and code
 
@@ -114,7 +114,7 @@ admin-api Worker
   → KV namespace AUTH_SESSIONS
   → Queue binding QUEUE (unused)
   → Cron trigger * * * * * drains email_queue
-  → Spacemail SMTP for email (Resend fallback)
+  → Spacemail SMTP for all email
 
 job-processor Worker
   → Queue consumer for jobs-queue (no producers)
@@ -136,7 +136,7 @@ The following bindings and secrets are used by `admin-api`:
 | `CASE_STUDIES` | R2 bucket | Case study images and newsletter source files. |
 | `AUTH_SESSIONS` | KV namespace | Bound but not actively used in `main`. |
 | `QUEUE` | Queue producer | Bound but not used in `main`; bulk email uses `email_queue` + cron. |
-| `RESEND_API_KEY` | Secret | Fallback email sender (used when Spacemail SMTP fails). |
+| `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Secret | The only email sender (mailbox `technical@180dcvitc.org`). |
 | `CLERK_SECRET_KEY` | Secret | Clerk JWT verification. |
 | `ENVIRONMENT` | Var | Set to `production` on the deployed worker. |
 | `NEWSLETTER_SITE_URL` | Var | Base URL of the newsletter site (ADR-004): `https://180dc-newsletters.technical-vitc.workers.dev`. Bulk email CTAs link to `{site}/newsletter/{slug}`. |
@@ -155,7 +155,7 @@ The following are used by the frontend:
 
 - All API routes are served by `admin-api`. The frontend relies on this.
 - Token auth uses the `admin_tokens` table. Tokens are created by board members and emailed.
-- Rate limits and email caps are enforced (`email_hour_count`, `resend_daily_count`).
+- Rate limits and email caps are enforced (`email_hour_count`).
 - Meet link visibility is hidden after the scheduled time.
 - `runMigrations` is idempotent and drops legacy recruitment tables.
 - `ensureTables` creates tables only if they do not exist.
@@ -174,8 +174,8 @@ Ordered by dependency. `[done]` items are live in production (verified 2026-10-0
 
 1. **Cloudflare DNS:** `[done]` root `180dcvitc.org` has MX `mx1/mx2.spacemail.com`
    (priority 0), SPF `v=spf1 include:spf.spacemail.com ~all`, and DKIM at
-   `spacemail._domainkey` (verified live 2026-10-06). DMARC stays `p=none`. Resend keeps
-   authenticating via its own `resend._domainkey` DKIM, so no root SPF include is needed.
+   `spacemail._domainkey` (verified live 2026-10-06). DMARC stays `p=none`. Resend has since
+   been removed, so the `resend._domainkey` TXT records can be deleted.
 2. **Spacemail Manager:** `[done]` domain verified (`fbf0abfa...` TXT present); DKIM TXT
    added. Mailbox `technical@180dcvitc.org` exists and SMTP AUTH works; all From addresses
    use this mailbox, so Spacemail's sender-ownership check passes without an alias. The old
@@ -192,13 +192,12 @@ Ordered by dependency. `[done]` items are live in production (verified 2026-10-0
    `SPACEMAIL_SMTP_PASS` set via `wrangler secret put`; SMTP AUTH and sender acceptance
    verified live, plus a production queue drain test.
 7. **SMTP migration:** `[done]` `sendEmail()` choke-point (SMTP via `cloudflare:sockets`,
-   BCC batches of 50, MIME + attachments, 500/hour accounting, Resend fallback) replaces all
-   16 Resend call sites. Bulk sends now enqueue to `email_queue` and drain via cron.
+   BCC batches of 50, MIME + attachments, 500/hour accounting) replaced all
+   16 Resend call sites. The Resend fallback was later removed entirely. Bulk sends now enqueue to `email_queue` and drain via cron.
 8. **Email templates:** `[done]` bulk CTAs link to `NEWSLETTER_SITE_URL/newsletter/{slug}`
    (now live); fallback remains `180dcvitc.org/#newsletter`. Welcome/re-subscribe templates
    redesigned.
-9. **Verify:** `[done]` test sends `From: technical@180dcvitc.org` went through SMTP (no
-   Resend fallback). Keep DMARC `p=none` for a week after switch, then consider
+9. **Verify:** `[done]` test sends `From: technical@180dcvitc.org` went through SMTP. Keep DMARC `p=none` for a week after switch, then consider
    `p=quarantine`.
 10. **Newsletter D1 split:** `[done]` newsletter tables migrated to `newsletter-db`
     (`NEWSLETTER_DB`); old copies in `180dc-db` remain as frozen backups.

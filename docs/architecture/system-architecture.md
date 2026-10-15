@@ -22,11 +22,10 @@ Cloudflare Worker (apps/admin-api)
   ├─ R2 object storage
   ├─ KV namespace (bound, unused)
   ├─ Queue binding (bound, unused)
-  ├─ Spacemail SMTP (primary email via cloudflare:sockets)
-  └─ Resend email API (fallback)
+  └─ Spacemail SMTP (all email, via cloudflare:sockets)
         |
         v
-External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
+External: Spacemail SMTP, Clerk, Google Fonts/CDN
 ```
 
 ## Components
@@ -46,11 +45,11 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 - **Runtime:** Cloudflare Worker using `hono`.
 - **Entry point:** `index.ts` (single 5000+ line file).
 - **Database:** D1 (`DB` binding) for members/projects/meets/email infra; separate D1 `NEWSLETTER_DB` (`newsletter-db`) for newsletter data.
-- **Cron:** `* * * * *` trigger drains the `email_queue` at up to 8 messages/minute (≤50 BCC recipients each, under the 500/hour Spacemail cap).
+- **Cron:** `* * * * *` trigger drains the `email_queue` with adaptive pacing (up to 15 messages/minute, under the 500/hour Spacemail cap); every campaign is one message per recipient (newsletter/event mail personalized per subscriber).
 - **Storage:** R2 buckets `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`.
 - **Cache/session:** KV `AUTH_SESSIONS` (bound but not used in `main`).
 - **Queue:** `QUEUE` producer binding (bound but not used in `main`).
-- **Email:** Unified `sendEmail()` choke-point — Spacemail SMTP (`mail.spacemail.com:465`, `SPACEMAIL_SMTP_USER`/`SPACEMAIL_SMTP_PASS`) primary, Resend (`RESEND_API_KEY`) automatic fallback. BCC batches of up to 50; quotas tracked in `email_hour_count` (500/hour) and `resend_daily_count` (100/day).
+- **Email:** Unified `sendEmail()` choke-point — Spacemail SMTP (`mail.spacemail.com:465`, `SPACEMAIL_SMTP_USER`/`SPACEMAIL_SMTP_PASS`) is the only provider (no fallback). One recipient per message; quota tracked in `email_hour_count` (500/hour, queue limited to 90%).
 - **Clerk:** `@clerk/backend` `verifyToken` used only for Google login linking.
 - **Schema and migrations:** `ensureTables` and `runMigrations` in `index.ts`.
 
@@ -141,7 +140,7 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 
 - Admin or newsletter editor calls `POST /api/newsletter/send` or `POST /api/newsletter-editor/send`.
 - The handler renders the shared email once and inserts an `email_queue` campaign (recipients JSON, R2 attachment references, `meta.newsletter_id`); it returns immediately with `queued`/`total`.
-- The `* * * * *` cron drains the queue: up to 8 messages/minute × 50 BCC recipients, Spacemail SMTP primary with Resend fallback.
+- The `* * * * *` cron drains the queue: one message per subscriber (1.5 s apart, per-recipient unsubscribe token and `List-Unsubscribe` headers, outcomes in `email_deliveries`), sent through Spacemail SMTP.
 - On completion the cron writes `sent_at`/`recipient_count` back to the newsletter row in `NEWSLETTER_DB` (via the campaign meta).
 - Event mail and meet notifications use the same queue (`kind: event` / `kind: meet`).
 
@@ -160,7 +159,7 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 | Department isolation | Directors can only see/manage their own department unless `power_level >= 100`. |
 | Newsletter editor access | Authorized emails or members with `power_level != 30`. |
 | Rate limiting | D1 `rate_limits` table per IP and endpoint. |
-| Email quota | D1 `email_hour_count` (500 SMTP messages/hour) and `resend_daily_count` (100 fallback recipients/day). |
+| Email quota | D1 `email_hour_count` (500 SMTP messages/hour; the queue uses at most 90%). |
 
 ## Concurrency and consistency
 
@@ -179,7 +178,7 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 - Cloudflare Workers free plan: 10ms CPU per request. The current heavy `index.ts` file and multiple D1 round trips may approach this under load.
 - D1 does not support stored procedures or triggers. Schema migrations must be handled in application code.
 - Workers do not have a filesystem. All uploads use R2.
-- Bulk email is sent over SMTP from the Worker using `cloudflare:sockets` (`mail.spacemail.com:465`). Long sends block the Worker request; the hourly quota and Resend fallback bound the work.
+- Bulk email is sent over SMTP from the Worker using `cloudflare:sockets` (`mail.spacemail.com:465`). Long sends block the Worker request; the hourly quota bounds the work.
 
 Database development choice and PlanetScale migration gates: [ADR-005](decisions/005-personal-database-evaluation.md). Two D1 databases remain in use; hosted capacity comparison and the personal production plan are not yet verified.
 

@@ -7,7 +7,7 @@ allowBuilds:
   sharp: true
   workerd: true
 overrides:
-  "@xmldom/xmldom": ">=0.8.15"
+  "@xmldom/xmldom": "^0.8.15"
   "undici": ">=6.28.0"
   "postcss": ">=8.5.23"
   "sharp": ">=0.35.4"

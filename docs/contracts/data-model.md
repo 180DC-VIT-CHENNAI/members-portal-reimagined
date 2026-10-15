@@ -380,12 +380,10 @@ This table is for the public leadership page, not the `users` table.
 | hour | TEXT | PRIMARY KEY | ISO hour `YYYY-MM-DDTHH` (UTC) |
 | count | INTEGER | DEFAULT 0 | Spacemail SMTP messages (50-recipient BCC batches) sent in that hour; capped at 500 |
 
-### `resend_daily_count`
+### `resend_daily_count` (legacy)
 
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| date | TEXT | PRIMARY KEY | ISO date |
-| count | INTEGER | DEFAULT 0 | Resend fallback emails delivered that day; capped at 100 |
+No longer created or written: Resend was removed and Spacemail SMTP is the only provider.
+The table may still exist in production and can be dropped manually.
 
 ### `pending_emails`
 
@@ -408,8 +406,11 @@ migrated automatically by the cron drain and can also be flushed via
 
 ### `email_queue`
 
-Bulk-email campaigns. One row per campaign (newsletter, event, or meet notification);
-the `* * * * *` cron drains it at up to 8 messages/minute, 50 BCC recipients per message.
+Bulk-email campaigns. One row per campaign (newsletter, event, meet notification, or Send
+Mail list); the `* * * * *` cron drains it with adaptive pacing (up to 15 messages/minute).
+Every kind is sent one message per recipient, 1.5 s apart, and tracked in
+`email_deliveries`. Newsletter/event `html` contains
+the `%%UNSUBSCRIBE_URL%%` marker, replaced per recipient with their tokenized link.
 
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
@@ -433,6 +434,22 @@ the `* * * * *` cron drains it at up to 8 messages/minute, 50 BCC recipients per
 | updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | Claim/stale detection |
 | finished_at | DATETIME | | Set when done/failed |
 
+
+### `email_deliveries`
+
+Per-recipient delivery record for single-recipient queue campaigns (everything except
+`meet`). The drain skips recipients already `sent`/`skipped`, so a reclaimed or retried
+campaign never mails the same address twice. Rows are purged with their campaign.
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| campaign_id | TEXT | PK (with recipient) | `email_queue.id` |
+| recipient | TEXT | PK (with campaign_id) | |
+| status | TEXT | NOT NULL | `sent` / `failed` / `skipped` (subscriber unsubscribed after enqueue) |
+| error | TEXT | | Last failure reason |
+| attempts | INTEGER | DEFAULT 0 | |
+| sent_at | DATETIME | | |
+| updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
 ### `consulting_requests`
 
 | Column | Type | Constraints | Notes |
@@ -482,6 +499,8 @@ the `* * * * *` cron drains it at up to 8 messages/minute, 50 BCC recipients per
 | active | INTEGER | DEFAULT 1 | |
 | subscribed_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
 | unsubscribed_at | DATETIME | | |
+| name | TEXT | | Optional, from the subscribe request (migration) |
+| unsubscribe_token | TEXT | UNIQUE index | 48-hex random token for `/unsubscribe/:token`; backfilled for existing rows (migration) |
 
 ### `newsletters`
 

@@ -21,14 +21,14 @@ type Bindings = {
   GALLERY_CDN: R2Bucket;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
-  RESEND_API_KEY?: string;
   CLERK_SECRET_KEY?: string;
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;
   SPACEMAIL_SMTP_USER?: string;
   SPACEMAIL_SMTP_PASS?: string;
   SPACEMAIL_HOURLY_LIMIT?: string;
-  EMAIL_PRIMARY?: string;
+  EMAIL_TEST_MODE?: string;
+  EMAIL_TEST_RECIPIENT?: string;
   NEWSLETTER_SITE_URL?: string;
   ALLOWED_WEB_ORIGINS?: string;
 };
@@ -77,6 +77,13 @@ function isPublicRoute(pathname: string, method: string): boolean {
   if (pathname.startsWith("/api/gallery-cdn/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
   if (pathname === "/api/newsletter" && method === "GET") return true;
+  // Dev-only test outbox; the handlers 404 unless EMAIL_TEST_MODE is active.
+  if (pathname === "/api/dev/outbox") return true;
+  if (
+    method === "POST" &&
+    /^\/api\/newsletter\/unsubscribe\/[a-f0-9]+$/.test(pathname)
+  )
+    return true;
   if (
     method === "GET" &&
     /^\/api\/newsletter\/[^/]+$/.test(pathname) &&
@@ -470,7 +477,6 @@ function smtpHourlyLimit(env: any): number {
     ? Math.floor(value)
     : SMTP_MAX_PER_HOUR;
 }
-const RESEND_MAX_PER_DAY = 100;
 const SMTP_TIMEOUT_MS = 20000;
 
 type EmailAttachment = {
@@ -493,7 +499,6 @@ type SendEmailResult = {
   sent: number;
   failed: number;
   skipped: number;
-  viaResend: number;
   error?: string;
 };
 
@@ -841,14 +846,18 @@ async function smtpSendMessage(
       ]);
       const accepted: string[] = [];
       const rejected: string[] = [];
+      let rejectReason: string | undefined;
       for (const recipient of message.to) {
         const reply = await send("RCPT TO:<" + recipient + ">");
         if (reply.code === 250 || reply.code === 251) accepted.push(recipient);
-        else rejected.push(recipient);
+        else {
+          rejected.push(recipient);
+          rejectReason = "SMTP RCPT failed (" + reply.code + "): " + reply.text;
+        }
       }
       if (accepted.length === 0) {
         await send("QUIT");
-        return { ok: true, accepted, rejected };
+        return { ok: true, accepted, rejected, error: rejectReason };
       }
       await expect("DATA", [354]);
       const mime = buildMimeMessage({
@@ -871,7 +880,7 @@ async function smtpSendMessage(
         );
       }
       await send("QUIT");
-      return { ok: true, accepted, rejected };
+      return { ok: true, accepted, rejected, error: rejectReason };
     })();
     return await Promise.race([session, timeout]);
   } catch (e: any) {
@@ -884,15 +893,17 @@ async function smtpSendMessage(
     try {
       reader?.release();
     } catch {}
+    // Don't await: closing a socket whose connect never completed can hang
+    // for minutes, which would defeat SMTP_TIMEOUT_MS.
     try {
-      await socket?.close();
+      socket?.close().catch(() => {});
     } catch {}
   }
 }
 
 async function updateEmailCounters(
   db: any,
-  counts: { smtpMessages?: number; resendSends?: number; dailySends?: number },
+  counts: { smtpMessages?: number; dailySends?: number },
 ) {
   const statements: any[] = [];
   const hour = new Date().toISOString().slice(0, 13);
@@ -904,15 +915,6 @@ async function updateEmailCounters(
           "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = count + ?",
         )
         .bind(hour, counts.smtpMessages, counts.smtpMessages),
-    );
-  }
-  if (counts.resendSends) {
-    statements.push(
-      db
-        .prepare(
-          "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
-        )
-        .bind(today, counts.resendSends, counts.resendSends),
     );
   }
   if (counts.dailySends) {
@@ -946,29 +948,10 @@ async function incrementHourlyEmailCount(db: any, amount = 1) {
     .run();
 }
 
-async function getResendDailyCount(db: any): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10);
-  const row: any = await db
-    .prepare("SELECT count FROM resend_daily_count WHERE date = ?")
-    .bind(today)
-    .first();
-  return row ? row.count : 0;
-}
-
-async function incrementResendDailyCount(db: any, amount = 1) {
-  const today = new Date().toISOString().slice(0, 10);
-  await db
-    .prepare(
-      "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
-    )
-    .bind(today, amount, amount)
-    .run();
-}
-
 function isEmailConfigured(c: any): boolean {
   return Boolean(
     (c.env.SPACEMAIL_SMTP_USER && c.env.SPACEMAIL_SMTP_PASS) ||
-      c.env.RESEND_API_KEY,
+      emailTestMode(c.env) === "capture",
   );
 }
 
@@ -987,57 +970,127 @@ function newsletterCtaUrl(
     : "https://180dcvitc.org/#newsletter";
 }
 
-async function sendViaResend(
-  apiKey: string,
-  message: {
-    from: string;
-    to: string;
-    subject: string;
-    html: string;
-    attachments?: EmailAttachment[];
-    extraHeaders?: Record<string, string>;
-  },
-): Promise<boolean> {
-  try {
-    const payload: any = {
-      from: message.from,
-      to: message.to,
-      subject: message.subject,
-      html: message.html,
-    };
-    if (
-      message.extraHeaders &&
-      Object.keys(message.extraHeaders).length > 0
-    ) {
-      payload.headers = message.extraHeaders;
-    }
-    if (message.attachments && message.attachments.length > 0) {
-      payload.attachments = message.attachments.map((attachment) => ({
-        filename: attachment.filename,
-        content: attachment.content,
-      }));
-    }
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error(
-        `[email] Resend FAILED (${res.status}) to=${message.to}: ${body}`,
-      );
-      return false;
-    }
-    console.log(`[email] Resend OK (${res.status}) to=${message.to}`);
-    return true;
-  } catch (e: any) {
-    console.error("[email] Resend error to=" + message.to + ": " + e.message);
-    return false;
+// SMTP errors that will clear on their own (4xx replies, timeouts, dropped
+// connections). Only 5xx replies are permanent.
+function isTransientSmtpError(error: string): boolean {
+  return !/\(5\d\d\)|\b5\d\d\b/.test(error);
+}
+
+// Spacemail rejects with "too many messages from sender in last 60 minutes"
+// when its own hourly counter is full — including mail sent from webmail,
+// which ours never sees. Mark this hour as used up so the queue waits for
+// the next hour instead of burning retries.
+async function saturateHourlyEmailCount(env: any) {
+  const hour = new Date().toISOString().slice(0, 13);
+  const limit = smtpHourlyLimit(env);
+  await env.DB.prepare(
+    "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = MAX(count, ?)",
+  )
+    .bind(hour, limit, limit)
+    .run();
+}
+
+// ---------------------------------------------------------
+// Dev-only email test mode (used by tests/). Never active in production.
+//   EMAIL_TEST_MODE=capture   record every message in dev_outbox, send nothing
+//   EMAIL_TEST_MODE=redirect  record it, and deliver the first message of each
+//                             subject to EMAIL_TEST_RECIPIENT instead of the
+//                             real recipient (later ones are only recorded, so
+//                             a club-wide send doesn't flood the test inbox)
+// In both modes, recipients @reject.invalid are refused at RCPT like a 550,
+// @tempfail.invalid like a 450, and @timeout.invalid make the whole session
+// time out, so tests can exercise failure handling.
+// ---------------------------------------------------------
+type EmailTestMode = "capture" | "redirect";
+
+function emailTestMode(env: any): EmailTestMode | null {
+  const mode = String(env?.EMAIL_TEST_MODE || "").trim().toLowerCase();
+  if (mode !== "capture" && mode !== "redirect") return null;
+  if (env?.ENVIRONMENT === "production") {
+    console.error("[email] EMAIL_TEST_MODE is ignored in production");
+    return null;
   }
+  return mode;
+}
+
+const DEV_OUTBOX_DDL =
+  "CREATE TABLE IF NOT EXISTS dev_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, recipient TEXT NOT NULL, from_address TEXT, subject TEXT, html TEXT, headers TEXT, attachments TEXT, delivered_to TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
+
+async function deliverInTestMode(
+  c: any,
+  mode: EmailTestMode,
+  options: SendEmailOptions,
+  batch: string[],
+): Promise<{ ok: boolean; accepted: string[]; rejected: string[]; error?: string }> {
+  const target =
+    mode === "redirect" ? validateEmail(c.env.EMAIL_TEST_RECIPIENT) : null;
+  if (mode === "redirect" && !target) {
+    return {
+      ok: false,
+      accepted: [],
+      rejected: [],
+      error: "EMAIL_TEST_MODE=redirect needs a valid EMAIL_TEST_RECIPIENT (550)",
+    };
+  }
+  if (batch.some((r) => /@timeout\.invalid$/i.test(r))) {
+    return { ok: false, accepted: [], rejected: [], error: "SMTP timeout" };
+  }
+  const refused = batch.filter((r) => /@(reject|tempfail)\.invalid$/i.test(r));
+  if (refused.length > 0) {
+    const temporary = refused.some((r) => /@tempfail\.invalid$/i.test(r));
+    const rest = batch.filter((r) => !refused.includes(r));
+    const inner = rest.length > 0
+      ? await deliverInTestMode(c, mode, options, rest)
+      : { ok: true, accepted: [] as string[], rejected: [] as string[] };
+    return {
+      ok: inner.ok,
+      accepted: inner.accepted,
+      rejected: [...inner.rejected, ...refused],
+      error: temporary
+        ? "SMTP RCPT failed (450): test temporary failure"
+        : "SMTP RCPT failed (550): test rejection",
+    };
+  }
+  await c.env.DB.exec(DEV_OUTBOX_DDL);
+  const attachmentNames = JSON.stringify(
+    (options.attachments || []).map((a) => a.filename),
+  );
+  const alreadyDelivered =
+    mode === "redirect" &&
+    (await c.env.DB.prepare(
+      "SELECT 1 FROM dev_outbox WHERE subject = ? AND delivered_to IS NOT NULL LIMIT 1",
+    )
+      .bind(options.subject)
+      .first());
+  const deliverTo = alreadyDelivered ? null : target;
+  for (const recipient of batch) {
+    await c.env.DB.prepare(
+      "INSERT INTO dev_outbox (recipient, from_address, subject, html, headers, attachments, delivered_to) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        recipient,
+        options.from,
+        options.subject,
+        options.html,
+        JSON.stringify(options.extraHeaders || {}),
+        attachmentNames,
+        deliverTo,
+      )
+      .run();
+  }
+  if (!deliverTo) return { ok: true, accepted: batch, rejected: [] };
+  const smtp = await smtpSendMessage(
+    c.env.SPACEMAIL_SMTP_USER,
+    c.env.SPACEMAIL_SMTP_PASS,
+    {
+      ...options,
+      to: [target!],
+      subject: "[TEST to " + batch.join(", ") + "] " + options.subject,
+    },
+  );
+  return smtp.ok && smtp.accepted.length > 0
+    ? { ok: true, accepted: batch, rejected: [] }
+    : { ok: smtp.ok, accepted: [], rejected: smtp.ok ? batch : [], error: smtp.error };
 }
 
 async function sendEmail(
@@ -1047,67 +1100,30 @@ async function sendEmail(
   const recipients = (Array.isArray(options.to) ? options.to : [options.to])
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0);
-  const result: SendEmailResult = {
-    sent: 0,
-    failed: 0,
-    skipped: 0,
-    viaResend: 0,
-  };
+  const result: SendEmailResult = { sent: 0, failed: 0, skipped: 0 };
   if (recipients.length === 0) return result;
 
   const smtpUser = c.env.SPACEMAIL_SMTP_USER;
   const smtpPass = c.env.SPACEMAIL_SMTP_PASS;
-  const resendKey = c.env.RESEND_API_KEY;
-  let smtpUsable = Boolean(smtpUser && smtpPass);
-  let resendDailyUsed = resendKey ? await getResendDailyCount(c.env.DB) : 0;
-  let resendSent = 0;
-  let smtpMessagesSent = 0;
-  let stopped = false;
-  const preferResend =
-    String(c.env.EMAIL_PRIMARY || "").trim().toLowerCase() === "resend";
-  const chunkSize = options.batchRecipients ? SMTP_BATCH_SIZE : 1;
-  let hourlyCount = await getHourlyEmailCount(c.env.DB);
+  const testMode = emailTestMode(c.env);
+  if (testMode !== "capture" && (!smtpUser || !smtpPass)) {
+    result.failed = recipients.length;
+    result.error = "Email not configured (SPACEMAIL_SMTP_USER/PASS missing)";
+    return result;
+  }
 
-  const sendBatchViaResend = async (batchRecipients: string[]) => {
-    for (const recipient of batchRecipients) {
-      if (!resendKey) {
-        result.failed++;
-        continue;
-      }
-      if (resendDailyUsed + resendSent >= RESEND_MAX_PER_DAY) {
-        stopped = true;
-        break;
-      }
-      const ok = await sendViaResend(resendKey, {
-        from: options.from,
-        to: recipient,
-        subject: options.subject,
-        html: options.html,
-        attachments: options.attachments,
-        extraHeaders: options.extraHeaders,
-      });
-      if (ok) {
-        resendSent++;
-        result.sent++;
-        result.viaResend++;
-      } else {
-        result.failed++;
-      }
-    }
-  };
+  const chunkSize = options.batchRecipients ? SMTP_BATCH_SIZE : 1;
+  const limit = smtpHourlyLimit(c.env);
+  const hourlyCount = await getHourlyEmailCount(c.env.DB);
+  let smtpMessagesSent = 0;
 
   for (let index = 0; index < recipients.length; index += chunkSize) {
+    // Anything not attempted is reported as skipped; the queue retries it.
+    if (hourlyCount + smtpMessagesSent >= limit) break;
     const batch = recipients.slice(index, index + chunkSize);
-
-    if (preferResend && resendKey) {
-      await sendBatchViaResend(batch);
-      if (stopped) break;
-      continue;
-    }
-
-    if (smtpUsable) {
-      if (hourlyCount + smtpMessagesSent < smtpHourlyLimit(c.env)) {
-        const smtp = await smtpSendMessage(smtpUser, smtpPass, {
+    const smtp = testMode
+      ? await deliverInTestMode(c, testMode, options, batch)
+      : await smtpSendMessage(smtpUser, smtpPass, {
           from: options.from,
           to: batch,
           subject: options.subject,
@@ -1115,40 +1131,43 @@ async function sendEmail(
           attachments: options.attachments,
           extraHeaders: options.extraHeaders,
         });
-        if (smtp.ok) {
-          smtpMessagesSent++;
-          result.sent += smtp.accepted.length;
-          if (smtp.rejected.length > 0) {
-            console.warn(
-              "[email] Spacemail rejected " +
-                smtp.rejected.length +
-                " recipient(s), falling back to Resend",
-            );
-            await sendBatchViaResend(smtp.rejected);
-            if (stopped) break;
-          }
-          continue;
-        }
-        smtpUsable = false;
-        result.error = smtp.error;
+    if (smtp.ok) {
+      if (smtp.accepted.length > 0) smtpMessagesSent++;
+      result.sent += smtp.accepted.length;
+      if (smtp.rejected.length > 0) {
+        result.error = smtp.error || "Recipient rejected by Spacemail";
         console.warn(
-          "[email] Spacemail SMTP failed, falling back to Resend: " +
-            (smtp.error || "unknown error"),
+          "[email] Spacemail rejected " +
+            smtp.rejected.length +
+            " recipient(s): " +
+            result.error,
         );
-      } else {
-        stopped = true;
+        if (/too many messages/i.test(result.error)) {
+          await saturateHourlyEmailCount(c.env);
+          break;
+        }
+        // Any other RCPT rejection (4xx greylisting / full mailbox, or 5xx)
+        // is about that address only: fail it so the queue moves on, and
+        // retry-failed can try it again later.
+        result.failed += smtp.rejected.length;
       }
+      continue;
     }
-
-    if (stopped) break;
-
-    await sendBatchViaResend(batch);
-    if (stopped) break;
+    result.error = smtp.error || "unknown SMTP error";
+    console.error("[email] Spacemail SMTP failed: " + result.error);
+    if (/too many messages/i.test(result.error)) {
+      await saturateHourlyEmailCount(c.env);
+      break;
+    }
+    if (isTransientSmtpError(result.error)) break;
+    // Permanent failure (bad credentials, sender not owned, content
+    // rejected): the rest of this call would fail the same way.
+    result.failed += recipients.length - index;
+    break;
   }
 
   await updateEmailCounters(c.env.DB, {
     smtpMessages: smtpMessagesSent,
-    resendSends: resendSent,
     dailySends: result.sent,
   });
   result.skipped = Math.max(
@@ -1161,6 +1180,38 @@ async function sendEmail(
 const QUEUE_MESSAGES_PER_RUN = 15;
 const QUEUE_MAX_ATTEMPTS = 5;
 const QUEUE_STALE_MINUTES = 10;
+// Pause between single-recipient sends so the mailbox never bursts.
+const QUEUE_SEND_DELAY_MS = 1500;
+
+// Subscriber-facing templates render this marker instead of an unsubscribe
+// URL; the queue swaps in each recipient's tokenized link at send time.
+const UNSUBSCRIBE_URL_PLACEHOLDER = "%%UNSUBSCRIBE_URL%%";
+const UNSUBSCRIBE_PAGE_URL = "https://180dcvitc.org/unsubscribe";
+
+function newUnsubscribeToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function unsubscribePageUrl(token?: string | null): string {
+  return token ? UNSUBSCRIBE_PAGE_URL + "/" + token : UNSUBSCRIBE_PAGE_URL;
+}
+
+function unsubscribeHeaders(token?: string | null): Record<string, string> {
+  if (!token) return { "List-Unsubscribe": "<" + UNSUBSCRIBE_PAGE_URL + ">" };
+  return {
+    "List-Unsubscribe":
+      "<https://180dcvitc.org/api/newsletter/unsubscribe/" + token + ">",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+}
+
+function personalizeUnsubscribe(html: string, token?: string | null): string {
+  return html.split(UNSUBSCRIBE_URL_PLACEHOLDER).join(unsubscribePageUrl(token));
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type QueueAttachmentRef = {
   filename: string;
@@ -1333,6 +1384,56 @@ async function finalizeQueuedCampaign(
   }
 }
 
+const EMAIL_DELIVERIES_DDL =
+  "CREATE TABLE IF NOT EXISTS email_deliveries (campaign_id TEXT NOT NULL, recipient TEXT NOT NULL, status TEXT NOT NULL, error TEXT, attempts INTEGER DEFAULT 0, sent_at DATETIME, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (campaign_id, recipient));";
+
+async function loadSettledRecipients(
+  db: any,
+  campaignId: string,
+): Promise<Set<string>> {
+  const rows: any = await db
+    .prepare(
+      "SELECT recipient FROM email_deliveries WHERE campaign_id = ? AND status IN ('sent','skipped')",
+    )
+    .bind(campaignId)
+    .all();
+  return new Set((rows.results || []).map((r: any) => r.recipient));
+}
+
+async function loadSubscriberTokens(
+  env: any,
+): Promise<Map<string, { token: string | null; active: boolean }>> {
+  await ensureNewsletterReady({ env });
+  const rows: any = await newsletterDb({ env })
+    .prepare(
+      "SELECT email, active, unsubscribe_token FROM newsletter_subscribers",
+    )
+    .all();
+  const map = new Map<string, { token: string | null; active: boolean }>();
+  for (const row of rows.results || []) {
+    map.set(String(row.email).toLowerCase(), {
+      token: row.unsubscribe_token || null,
+      active: row.active === 1,
+    });
+  }
+  return map;
+}
+
+async function recordDelivery(
+  db: any,
+  campaignId: string,
+  recipient: string,
+  status: "sent" | "failed" | "skipped",
+  error: string | null,
+) {
+  await db
+    .prepare(
+      "INSERT INTO email_deliveries (campaign_id, recipient, status, error, attempts, sent_at, updated_at) VALUES (?, ?, ?, ?, 1, CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP END, CURRENT_TIMESTAMP) ON CONFLICT(campaign_id, recipient) DO UPDATE SET status = excluded.status, error = excluded.error, attempts = email_deliveries.attempts + 1, sent_at = COALESCE(excluded.sent_at, email_deliveries.sent_at), updated_at = CURRENT_TIMESTAMP",
+    )
+    .bind(campaignId, recipient, status, error, status)
+    .run();
+}
+
 async function drainEmailQueue(
   env: any,
   ensureSchema = true,
@@ -1344,9 +1445,14 @@ async function drainEmailQueue(
   skippedByQuota?: boolean;
 }> {
   if (ensureSchema) await ensureDbReady(env.DB, env);
+  // The cron path skips ensureDbReady, so create the table it depends on here.
+  await env.DB.exec(EMAIL_DELIVERIES_DDL);
   await migrateLegacyPendingEmails(env);
   await env.DB.prepare(
     "DELETE FROM email_queue WHERE status IN ('done','failed') AND finished_at < datetime('now', '-30 days')",
+  ).run();
+  await env.DB.prepare(
+    "DELETE FROM email_deliveries WHERE campaign_id NOT IN (SELECT id FROM email_queue)",
   ).run();
   await env.DB.prepare(
     "UPDATE email_queue SET status='failed', last_error='max attempts reached', updated_at=CURRENT_TIMESTAMP, finished_at=CURRENT_TIMESTAMP WHERE status IN ('pending','processing') AND attempts >= ?",
@@ -1355,7 +1461,11 @@ async function drainEmailQueue(
     .run();
 
   const hourly = await getHourlyEmailCount(env.DB);
-  const remaining = Math.max(0, smtpHourlyLimit(env) - hourly);
+  // Leave 10% of the hour for direct sends (OTPs, login tokens, welcome
+  // mails): with Spacemail as the only provider, a busy queue must not lock
+  // people out of signing in.
+  const queueLimit = smtpHourlyLimit(env) - Math.floor(smtpHourlyLimit(env) / 10);
+  const remaining = Math.max(0, queueLimit - hourly);
   if (remaining <= 0) return { sent: 0, failed: 0, skippedByQuota: true };
   const minutesLeft = Math.max(1, 60 - new Date().getUTCMinutes());
   let budget = Math.min(
@@ -1403,53 +1513,89 @@ async function drainEmailQueue(
   let lastError = campaign.last_error || null;
   let stoppedByQuota = false;
 
-  const batchMode =
-    campaign.kind === "newsletter" ||
-    campaign.kind === "event";
-  const campaignBatchSize = batchMode ? SMTP_BATCH_SIZE : 1;
+  // Every campaign is sent one message per recipient and tracked in
+  // email_deliveries, so a reclaimed or retried campaign never sends twice to
+  // the same address.
+  const toSubscribers =
+    campaign.kind === "newsletter" || campaign.kind === "event";
+  const isTest = (() => {
+    try {
+      return Boolean(campaign.meta && JSON.parse(campaign.meta).test);
+    } catch {
+      return false;
+    }
+  })();
+  const settled = await loadSettledRecipients(env.DB, campaign.id);
+  const subscribers = toSubscribers
+    ? await loadSubscriberTokens(env)
+    : new Map<string, { token: string | null; active: boolean }>();
+  let sentThisRun = 0;
 
   while (budget > 0 && cursor < recipients.length) {
-    const batch = recipients.slice(cursor, cursor + campaignBatchSize);
+    const recipient = recipients[cursor];
+    if (settled.has(recipient)) {
+      cursor++;
+      continue;
+    }
+    let html = campaign.html;
+    let extraHeaders: Record<string, string> | undefined;
+    if (toSubscribers) {
+      const sub = subscribers.get(recipient.toLowerCase());
+      if (sub && !sub.active && !isTest) {
+        await recordDelivery(env.DB, campaign.id, recipient, "skipped", "unsubscribed");
+        cursor++;
+        continue;
+      }
+      html = personalizeUnsubscribe(html, sub?.token);
+      extraHeaders = unsubscribeHeaders(sub?.token);
+    }
+    // Capture mode (tests) sends nothing, so there is nothing to pace.
+    if (sentThisRun > 0 && emailTestMode(env) !== "capture")
+      await sleep(QUEUE_SEND_DELAY_MS);
     const result = await sendEmail(
       { env },
       {
         from: campaign.from_address,
-        to: batch,
+        to: recipient,
         subject: campaign.subject,
-        html: campaign.html,
+        html,
         attachments,
-        batchRecipients: batchMode,
-        extraHeaders:
-          campaign.kind === "newsletter" || campaign.kind === "event"
-            ? {
-                "List-Unsubscribe": "<https://180dcvitc.org/unsubscribe>",
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-              }
-            : undefined,
+        extraHeaders,
       },
     );
-    sent += result.sent;
-    if (result.error && /subrequest/i.test(result.error)) {
-      lastError = result.error;
-      cursor += result.sent;
-      stoppedByQuota = true;
-      break;
-    }
-    failed += result.failed;
-    if (result.error) lastError = result.error;
-    const processed = result.sent + result.failed;
-    cursor += processed;
+    sentThisRun++;
     budget--;
-    if (result.skipped > 0) {
+    if (result.sent > 0) {
+      sent++;
+      await recordDelivery(env.DB, campaign.id, recipient, "sent", null);
+      cursor++;
+      continue;
+    }
+    if (result.error) lastError = result.error;
+    if (result.skipped > 0 || (result.error && /subrequest/i.test(result.error))) {
       stoppedByQuota = true;
       break;
     }
-    if (processed === 0) break;
+    if (result.failed > 0) {
+      failed++;
+      await recordDelivery(
+        env.DB,
+        campaign.id,
+        recipient,
+        "failed",
+        result.error || "send failed",
+      );
+      cursor++;
+      continue;
+    }
+    break;
   }
 
   const done = cursor >= recipients.length;
   await env.DB.prepare(
-    "UPDATE email_queue SET cursor=?, sent=?, failed=?, status=?, last_error=?, updated_at=CURRENT_TIMESTAMP, finished_at=? WHERE id=?",
+    // attempts counts consecutive claims without progress: a long campaign
+    // spans many cron runs and must not hit QUEUE_MAX_ATTEMPTS while moving.
+    "UPDATE email_queue SET cursor=?, sent=?, failed=?, status=?, last_error=?, attempts = CASE WHEN ? THEN 0 ELSE attempts END, updated_at=CURRENT_TIMESTAMP, finished_at=? WHERE id=?",
   )
     .bind(
       cursor,
@@ -1457,6 +1603,7 @@ async function drainEmailQueue(
       failed,
       done ? "done" : "pending",
       lastError,
+      cursor > (campaign.cursor || 0) ? 1 : 0,
       done ? new Date().toISOString().replace("T", " ").slice(0, 19) : null,
       campaign.id,
     )
@@ -1831,6 +1978,26 @@ async function ensureNewsletterTables(db: any) {
   } catch {
     console.warn("Migration: newsletters.slug may already exist");
   }
+  try {
+    await db.exec("ALTER TABLE newsletter_subscribers ADD COLUMN name TEXT");
+  } catch {
+    console.warn("Migration: newsletter_subscribers.name may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE newsletter_subscribers ADD COLUMN unsubscribe_token TEXT",
+    );
+  } catch {
+    console.warn(
+      "Migration: newsletter_subscribers.unsubscribe_token may already exist",
+    );
+  }
+  await db.exec(
+    "UPDATE newsletter_subscribers SET unsubscribe_token = lower(hex(randomblob(24))) WHERE unsubscribe_token IS NULL",
+  );
+  await db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletter_subscribers_unsub_token ON newsletter_subscribers(unsubscribe_token)",
+  );
 }
 
 async function nextNewsletterSlug(db: any): Promise<string> {
@@ -1882,9 +2049,9 @@ async function ensureTables(db: any) {
     CREATE INDEX IF NOT EXISTS idx_audit_task_history ON audit_log(target_type, target_id, created_at);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS email_hour_count (hour TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, kind TEXT NOT NULL, from_address TEXT NOT NULL, subject TEXT NOT NULL, html TEXT NOT NULL, attachments TEXT, recipients TEXT NOT NULL, cursor INTEGER DEFAULT 0, total INTEGER NOT NULL, sent INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', last_error TEXT, meta TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, finished_at DATETIME);
+    ${EMAIL_DELIVERIES_DDL}
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -2645,21 +2812,26 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-app.use(
-  "*",
-  csrf({
-    origin: (origin, c) => {
-      if (
-        c.req.method === "GET" ||
-        c.req.method === "HEAD" ||
-        c.req.method === "OPTIONS"
-      )
-        return true;
-      if (!origin) return false;
-      if (isDevOrigin(origin) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) return true;
-      return false;
-    },
-  }),
+const csrfGuard = csrf({
+  origin: (origin, c) => {
+    if (
+      c.req.method === "GET" ||
+      c.req.method === "HEAD" ||
+      c.req.method === "OPTIONS"
+    )
+      return true;
+    if (!origin) return false;
+    if (isDevOrigin(origin) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) return true;
+    return false;
+  },
+});
+
+// One-click unsubscribe POSTs (RFC 8058) come from mail providers with no
+// Origin header; the unguessable token in the path is the credential.
+app.use("*", (c, next) =>
+  c.req.method === "POST" && c.req.path.startsWith("/api/newsletter/unsubscribe/")
+    ? next()
+    : csrfGuard(c, next),
 );
 
 // Auth middleware
@@ -2878,7 +3050,7 @@ function newsletterEmailHtml(
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
     ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
-    : "https://180dcvitc.org/unsubscribe";
+    : UNSUBSCRIBE_URL_PLACEHOLDER;
   const showLink = siteUrl.startsWith("http");
   const issueLabel = showLink
     ? siteUrl.slice(siteUrl.lastIndexOf("/") + 1).toUpperCase()
@@ -2957,7 +3129,7 @@ function eventMailEmailHtml(
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
     ? `https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(subscriberEmail)}`
-    : "https://180dcvitc.org/unsubscribe";
+    : UNSUBSCRIBE_URL_PLACEHOLDER;
   const fullImageUrl = imageUrl ? `https://180dcvitc.org${imageUrl}` : "";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -3172,7 +3344,7 @@ function issueToEmailHtml(
   const dateText = formatEmailIssueDate(issue.date);
   const unsubUrl = subscriberEmail
     ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
-    : "https://180dcvitc.org/unsubscribe";
+    : UNSUBSCRIBE_URL_PLACEHOLDER;
   const blk = (b: EmailIssueBlock): string => {
     switch (b.type) {
       case "lead":
@@ -3352,7 +3524,7 @@ async function buildNewsletterEmailHtml(
 }
 
 function welcomeEmailHtml(
-  email: string,
+  unsubUrl: string,
   variant: "new" | "back",
   siteUrl: string,
 ): string {
@@ -3366,8 +3538,6 @@ function welcomeEmailHtml(
   const body = isNew
     ? '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">Thanks for subscribing to the 180DC newsletter. Our latest updates, case-study insights, and event announcements will land straight in your inbox.</p>'
     : '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">You\'ve been re-subscribed to the 180DC newsletter. Expect our latest updates and insights in your inbox again.</p>';
-  const unsubUrl =
-    "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(email);
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
@@ -3462,13 +3632,14 @@ ${body}
 </body></html>`;
 }
 
-async function sendWelcomeEmail(c: any, email: string) {
+async function sendWelcomeEmail(c: any, email: string, token: string) {
   const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
   const result = await sendEmail(c, {
     from: "180DC Newsletter <technical@180dcvitc.org>",
     to: email,
     subject: "Welcome to the 180DC Newsletter!",
-    html: welcomeEmailHtml(email, "new", siteUrl),
+    html: welcomeEmailHtml(unsubscribePageUrl(token), "new", siteUrl),
+    extraHeaders: unsubscribeHeaders(token),
   });
   if (result.sent > 0) {
     console.log("[newsletter] Welcome email sent to=" + email);
@@ -3477,13 +3648,14 @@ async function sendWelcomeEmail(c: any, email: string) {
   }
 }
 
-async function sendWelcomeBackEmail(c: any, email: string) {
+async function sendWelcomeBackEmail(c: any, email: string, token: string) {
   const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
   const result = await sendEmail(c, {
     from: "180DC Newsletter <technical@180dcvitc.org>",
     to: email,
     subject: "Welcome back to the 180DC Newsletter!",
-    html: welcomeEmailHtml(email, "back", siteUrl),
+    html: welcomeEmailHtml(unsubscribePageUrl(token), "back", siteUrl),
+    extraHeaders: unsubscribeHeaders(token),
   });
   if (result.sent > 0) {
     console.log("[newsletter] Welcome-back email sent to=" + email);
@@ -3509,9 +3681,10 @@ app.post("/api/newsletter/subscribe", async (c) => {
     const body = await c.req.json();
     const email = validateEmail(body?.email);
     if (!email) return c.json({ error: "Valid email address required" }, 400);
+    const name = sanitizeStr(body?.name, 120);
 
     const existing = await newsletterDb(c).prepare(
-      "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
+      "SELECT id, active, unsubscribe_token FROM newsletter_subscribers WHERE email = ?",
     )
       .bind(email)
       .first();
@@ -3521,25 +3694,27 @@ app.post("/api/newsletter/subscribe", async (c) => {
           success: true,
           message: "You are already subscribed!",
         });
+      const token = existing.unsubscribe_token || newUnsubscribeToken();
       await newsletterDb(c).prepare(
-        "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?",
+        "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL, unsubscribe_token = ?, name = COALESCE(?, name) WHERE id = ?",
       )
-        .bind(existing.id)
+        .bind(token, name, existing.id)
         .run();
-      await sendWelcomeBackEmail(c, email);
+      await sendWelcomeBackEmail(c, email, token);
       return c.json({
         success: true,
         message: "Welcome back! You have been re-subscribed.",
       });
     }
 
+    const token = newUnsubscribeToken();
     await newsletterDb(c).prepare(
-      "INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)",
+      "INSERT INTO newsletter_subscribers (id, email, name, active, unsubscribe_token) VALUES (?, ?, ?, 1, ?)",
     )
-      .bind(crypto.randomUUID(), email)
+      .bind(crypto.randomUUID(), email, name, token)
       .run();
 
-    await sendWelcomeEmail(c, email);
+    await sendWelcomeEmail(c, email, token);
 
     return c.json({
       success: true,
@@ -3594,6 +3769,51 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
 });
 
 // Public: List published newsletters (landing page)
+// Public: Token unsubscribe. Called by the /unsubscribe/:token page and by
+// mail clients honouring the List-Unsubscribe-Post one-click header (RFC 8058),
+// so it is POST-only (link scanners that prefetch GETs cannot trigger it) and
+// exempt from the CSRF origin check. The token itself is the credential.
+app.post("/api/newsletter/unsubscribe/:token", async (c) => {
+  try {
+    const token = c.req.param("token");
+    if (!/^[a-f0-9]{48}$/.test(token))
+      return c.json({ error: "Invalid unsubscribe link." }, 400);
+    const sub: any = await newsletterDb(c).prepare(
+      "SELECT id, email, active FROM newsletter_subscribers WHERE unsubscribe_token = ?",
+    )
+      .bind(token)
+      .first();
+    if (!sub) {
+      return c.json({
+        success: true,
+        status: "not_found",
+        message: "This unsubscribe link is not valid.",
+      });
+    }
+    if (sub.active === 0) {
+      return c.json({
+        success: true,
+        status: "already",
+        email: sub.email,
+        message: "You have already unsubscribed from the 180DC newsletter.",
+      });
+    }
+    await newsletterDb(c).prepare(
+      "UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?",
+    )
+      .bind(sub.id)
+      .run();
+    return c.json({
+      success: true,
+      status: "unsubscribed",
+      email: sub.email,
+      message: "You have been unsubscribed from the 180DC newsletter.",
+    });
+  } catch (e: any) {
+    return c.json({ error: "Something went wrong." }, 500);
+  }
+});
+
 app.get("/api/newsletter", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
@@ -3612,6 +3832,35 @@ const rows = await newsletterDb(c).prepare(
   }
 });
 
+// Admin: List all newsletters
+app.get("/api/newsletter/admin", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+    const rows = await newsletterDb(c).prepare(
+      "SELECT * FROM newsletters ORDER BY created_at DESC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// Admin: List subscribers
+app.get("/api/newsletter/admin/subscribers", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+    const rows = await newsletterDb(c).prepare(
+      "SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// Registered after the /admin routes above so it doesn't swallow them.
 // Public: Get a single newsletter with sanitized content (newsletter site fetches this)
 app.get("/api/newsletter/:id", async (c) => {
   try {
@@ -3658,34 +3907,6 @@ app.get("/api/newsletter/subscribers/count", async (c) => {
     return c.json({ success: true, count: row?.count || 0 });
   } catch (e: any) {
     return c.json({ count: 0 });
-  }
-});
-
-// Admin: List all newsletters
-app.get("/api/newsletter/admin", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    requireBoard(c);
-    const rows = await newsletterDb(c).prepare(
-      "SELECT * FROM newsletters ORDER BY created_at DESC",
-    ).all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// Admin: List subscribers
-app.get("/api/newsletter/admin/subscribers", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    requireBoard(c);
-    const rows = await newsletterDb(c).prepare(
-      "SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC",
-    ).all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -4123,11 +4344,20 @@ const id = body.id || crypto.randomUUID();
         )
       : "";
 
-    const existing = await newsletterDb(c).prepare(
-      "SELECT id FROM newsletters WHERE id = ?",
+    const existing: any = await newsletterDb(c).prepare(
+      "SELECT id, created_by FROM newsletters WHERE id = ?",
     )
       .bind(id)
       .first();
+    // Editors may edit their own drafts and the shared editorial-sync ones,
+    // matching what GET /drafts shows them.
+    if (
+      existing &&
+      existing.created_by !== email &&
+      existing.created_by !== "editorial-sync"
+    ) {
+      return c.json({ error: "You can only edit your own drafts" }, 403);
+    }
     if (existing) {
       await newsletterDb(c).prepare(
         "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, content = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
@@ -6674,12 +6904,21 @@ async function canAccessDept(c: any, deptId: string) {
   throw new Error("Forbidden: you do not have access to this department");
 }
 
+// Read-only access for the department's own people: the members portal shows
+// every member their department's instructions and member list.
+async function canViewDept(c: any, deptId: string) {
+  const user: any = c.get("user");
+  if (user.power_level >= 100) return true;
+  if (user.department_id && user.department_id === deptId) return true;
+  throw new Error("Forbidden: you do not have access to this department");
+}
+
 // GET /api/departments/:id/overview @ all department data in one call
 app.get("/api/departments/:id/overview", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
 
     const meets = await c.env.DB.prepare(
       "SELECT * FROM department_meets WHERE department_id = ? ORDER BY scheduled_at ASC",
@@ -6723,7 +6962,7 @@ app.post("/api/departments/:id/meets", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -6784,7 +7023,7 @@ app.delete("/api/departments/:id/meets/:meetId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const meetId = c.req.param("meetId");
     await c.env.DB.prepare(
       "DELETE FROM department_meets WHERE id = ? AND department_id = ?",
@@ -6802,7 +7041,7 @@ app.post("/api/departments/:id/documents", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -6829,7 +7068,7 @@ app.delete("/api/departments/:id/documents/:docId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const docId = c.req.param("docId");
     await c.env.DB.prepare(
       "DELETE FROM department_documents WHERE id = ? AND department_id = ?",
@@ -6847,7 +7086,7 @@ app.post("/api/departments/:id/instructions", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -6873,7 +7112,7 @@ app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const instructionId = c.req.param("instructionId");
     await c.env.DB.prepare(
       "DELETE FROM department_instructions WHERE id = ? AND department_id = ?",
@@ -6891,7 +7130,7 @@ app.post("/api/departments/:id/projects", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -6916,7 +7155,7 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canAccessDept(c, deptId);
     const projectId = c.req.param("projectId");
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -6959,7 +7198,7 @@ app.get("/api/departments/:id/members", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canViewDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id = ? ORDER BY u.name ASC",
     )
@@ -6967,7 +7206,7 @@ app.get("/api/departments/:id/members", async (c) => {
       .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return errorResponse(c, e.message, 500);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -6975,7 +7214,7 @@ app.get("/api/departments/:id/instructions", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
-    canAccessDept(c, deptId);
+    await canViewDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT * FROM department_instructions WHERE department_id = ? ORDER BY created_at DESC",
     )
@@ -6983,7 +7222,7 @@ app.get("/api/departments/:id/instructions", async (c) => {
       .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return errorResponse(c, e.message, 500);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -11533,6 +11772,9 @@ app.post("/api/admin/maintenance", async (c) => {
     )
       .bind(enabled, message, user.email)
       .run();
+    // Apply immediately in this isolate instead of after the 60 s cache.
+    maintenanceCache = { enabled, message };
+    maintenanceCacheTime = Date.now();
 
     await addAuditLog(
       c,
@@ -11592,6 +11834,114 @@ app.get("/api/admin/email-queue", async (c) => {
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
+});
+
+app.get("/api/admin/email-queue/:id/deliveries", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+  try {
+    const id = c.req.param("id");
+    const campaign: any = await c.env.DB.prepare(
+      "SELECT id, kind, subject, total, sent, failed, cursor, status, last_error, created_at, finished_at FROM email_queue WHERE id = ?",
+    )
+      .bind(id)
+      .first();
+    if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+    const rows: any = await c.env.DB.prepare(
+      "SELECT recipient, status, error, attempts, sent_at, updated_at FROM email_deliveries WHERE campaign_id = ? ORDER BY updated_at DESC",
+    )
+      .bind(id)
+      .all();
+    return c.json({ success: true, campaign, deliveries: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Re-runs a finished campaign: email_deliveries makes the drain skip every
+// recipient already sent (or skipped as unsubscribed), so only failures go
+// out again.
+app.post("/api/admin/email-queue/:id/retry-failed", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+  try {
+    const id = c.req.param("id");
+    const campaign: any = await c.env.DB.prepare(
+      "SELECT id, status, sent FROM email_queue WHERE id = ?",
+    )
+      .bind(id)
+      .first();
+    if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+    if (campaign.status !== "done" && campaign.status !== "failed")
+      return c.json({ error: "Campaign is still sending" }, 409);
+    const tracked: any = await c.env.DB.prepare(
+      "SELECT COUNT(*) as n, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed FROM email_deliveries WHERE campaign_id = ?",
+    )
+      .bind(id)
+      .first();
+    if ((tracked?.n || 0) < (campaign.sent || 0))
+      return c.json(
+        {
+          error:
+            "Campaign predates delivery tracking; retrying would resend to everyone",
+        },
+        400,
+      );
+    if (campaign.status === "done" && !(tracked?.failed > 0))
+      return c.json({ error: "No failed deliveries to retry" }, 400);
+    await c.env.DB.prepare(
+      "UPDATE email_queue SET status = 'pending', cursor = 0, failed = 0, attempts = 0, last_error = NULL, finished_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    return c.json({ success: true, retrying: tracked?.failed || 0 });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Dev-only: messages recorded by EMAIL_TEST_MODE, for tests/. 404 otherwise,
+// and always 404 in production (emailTestMode ignores it there).
+app.get("/api/dev/outbox", async (c) => {
+  if (!emailTestMode(c.env)) return c.json({ error: "Not found" }, 404);
+  await c.env.DB.exec(DEV_OUTBOX_DDL);
+  const since = Number(c.req.query("since") || 0) || 0;
+  const to = c.req.query("to");
+  const rows: any = to
+    ? await c.env.DB.prepare(
+        "SELECT * FROM dev_outbox WHERE id > ? AND lower(recipient) = lower(?) ORDER BY id ASC",
+      )
+        .bind(since, to)
+        .all()
+    : await c.env.DB.prepare(
+        "SELECT * FROM dev_outbox WHERE id > ? ORDER BY id ASC",
+      )
+        .bind(since)
+        .all();
+  const messages = (rows.results || []).map((r: any) => ({
+    ...r,
+    headers: JSON.parse(r.headers || "{}"),
+    attachments: JSON.parse(r.attachments || "[]"),
+  }));
+  const last: any = await c.env.DB.prepare(
+    "SELECT COALESCE(MAX(id), 0) AS id FROM dev_outbox",
+  ).first();
+  return c.json({ success: true, lastId: last?.id || 0, messages });
+});
+
+app.delete("/api/dev/outbox", async (c) => {
+  if (!emailTestMode(c.env)) return c.json({ error: "Not found" }, 404);
+  await c.env.DB.exec(DEV_OUTBOX_DDL);
+  await c.env.DB.prepare("DELETE FROM dev_outbox").run();
+  return c.json({ success: true });
 });
 
 export default {

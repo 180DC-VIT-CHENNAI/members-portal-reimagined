@@ -335,7 +335,6 @@ Three types of meetings, each with scheduling and email notification features.
 - Emails are sent automatically when a meet is created (if notifications are enabled)
 - Spacemail SMTP sends in BCC batches of up to 50 recipients; limit of 500 messages per hour
 - If the limit is hit, extra emails are queued and can be sent later by board via "Process Queue"
-- Resend is used automatically as a fallback if SMTP fails
 - Emails are sent from `technical@180dcvitc.org` with a branded HTML template
 
 ---
@@ -426,7 +425,6 @@ Files are stored securely in cloud storage (Cloudflare R2).
 
 ### Email Limits
 - Spacemail SMTP: maximum 500 messages per hour, up to 50 BCC recipients per message
-- Resend fallback: maximum 100 recipients per day
 - If the SMTP limit is reached, remaining recipients are reported as queued; meet emails are stored for later delivery
 - Board can manually process the meet queue
 - Bulk emails share one body across a BCC batch, so unsubscribe links point to the public `/unsubscribe` page

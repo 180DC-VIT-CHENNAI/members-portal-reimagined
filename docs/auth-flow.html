@@ -127,7 +127,7 @@ sequenceDiagram
     participant F as Frontend SPA
     participant A as Admin API (Worker)
     participant D as D1 (180dc-db)
-    participant M as Spacemail/Resend
+    participant M as Spacemail SMTP
 
     U->>F: Fill /request-account form
     F->>A: POST /api/signup-requests (public route)
@@ -327,7 +327,7 @@ sequenceDiagram
   <tr><td><span class="pill pill-warn">403</span></td><td>Authenticated but not allowed</td><td>Power below threshold; dev-login in production</td></tr>
   <tr><td><span class="pill pill-warn">409</span></td><td>Identity conflict</td><td>Clerk account already linked to another member</td></tr>
   <tr><td><span class="pill pill-ok">503</span></td><td>Maintenance mode</td><td><code>power_level &lt; 100</code> while maintenance is on</td></tr>
-  <tr><td><span class="pill pill-warn">429</span></td><td>Rate limited</td><td>Login (20/min), signup (5/hr), rotate (3/hr), forgot (3/hr), email caps (8/min, 500/hr SMTP, 100/day Resend)</td></tr>
+  <tr><td><span class="pill pill-warn">429</span></td><td>Rate limited</td><td>Login (20/min), signup (5/hr), rotate (3/hr), forgot (3/hr), email caps (8/min, 500/hr SMTP)</td></tr>
 </table>
 </div>
 

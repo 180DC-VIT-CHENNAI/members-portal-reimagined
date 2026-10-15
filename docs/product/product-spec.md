@@ -33,7 +33,7 @@ The public site at `180dcvitc.org` shows:
 
 ### CAP-PUBLIC-02 Newsletter subscription
 
-Public visitors can subscribe, unsubscribe, and view the public subscriber count. Subscribers are stored in `newsletter_subscribers`.
+Public visitors can subscribe, unsubscribe, and view the public subscriber count. Subscribers are stored in `newsletter_subscribers`. Every email links to a personal `/unsubscribe/<token>` page that unsubscribes on open; mail clients can also unsubscribe in one click via the `List-Unsubscribe` header.
 
 ### CAP-PUBLIC-03 Consulting request
 
@@ -146,7 +146,7 @@ Directors and board can create "instances" (events, case competitions, applicati
 | Team instances | Implemented. | Added in latest `main`. |
 | Public API split | Not implemented. | `apps/public-api/index.ts` is a placeholder. |
 | Queue-based job processor | Not implemented. | `apps/job-processor/index.ts` is a placeholder. |
-| Amazon SES bulk email | Not implemented. Superseded by the Spacemail SMTP migration (`docs/operations/SPACEMAIL_SETUP.md`); Resend remains an automatic fallback. |
+| Amazon SES bulk email | Not implemented. Superseded by the Spacemail SMTP migration (`docs/operations/SPACEMAIL_SETUP.md`); Spacemail is the only provider. |
 | Recruitment system | Removed. | Tables are dropped by `runMigrations`. |
 | Real-time chat | Partially present in `docs/product/REPORT.md` but no code found in `main`. | Treat as not implemented. |
 | AI chatbot (ConsultAI) | Partially present in `docs/product/REPORT.md` but no code found in `main`. | Treat as not implemented. |

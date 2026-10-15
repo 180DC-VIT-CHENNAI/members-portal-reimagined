@@ -2,7 +2,24 @@
 
 ## Current state
 
-The `reimagined` branch has automated proxy and origin-policy tests. Backend endpoint and full journey verification remains manual or through Wrangler local dev. This document records what exists, what is missing, and the minimum tests that should be added before risky changes.
+`tests/` holds an end-to-end suite for the admin-api: 215 tests covering every route
+(see `tests/README.md` for the feature map and the known bugs it found). Run it after every
+backend change:
+
+```bash
+pnpm test                                  # emails captured, none sent
+TEST_EMAIL=you@example.com pnpm test:mail  # also deliver one of each email to you
+```
+
+Each run starts `wrangler dev` on a fresh local D1/R2, creates one account per role
+(board, director, member, advisory) and exercises the API over HTTP. Emails go through
+the dev-only `EMAIL_TEST_MODE` (ignored in production), so tests can assert on recipients,
+bodies, unsubscribe links and OTP codes without emailing anyone real.
+
+There is no frontend (browser) test suite yet, and no unit tests. The rest of this
+document is the original plan; the integration items below are now covered by `tests/`.
+
+The reimagined policy modules (`apps/admin-api/*.test.mjs`, `apps/frontend/functions/_middleware.test.mjs`, `apps/mobile/src/*.test.mjs`) also have `node --test` unit tests, and `apps/frontend/tests/` has Playwright browser tests for the Today and task-schedule views.
 
 ## What must be verified manually today
 
@@ -40,7 +57,8 @@ Run against a local `wrangler dev` instance or a Miniflare D1 mock. Candidates:
 - `TEST-PROJECT-01` — board can create a project; member cannot.
 - `TEST-PROJECT-02` — completed project regenerates `static/completedProjects.json`.
 - `TEST-TEAM-01` — adding a member beyond `member_limit` returns 400.
-- `TEST-NEWS-01` — newsletter send batches recipients into BCC groups of 50, respects the hourly SMTP cap, and updates `recipient_count`.
+- `TEST-NEWS-01` — newsletter send delivers one message per active subscriber with that subscriber's `/unsubscribe/<token>` link, skips subscribers who unsubscribed after queueing, records `email_deliveries`, respects the hourly SMTP cap, and updates `recipient_count`.
+- `TEST-NEWS-02` — `POST /api/newsletter/unsubscribe/:token` with a form body and no `Origin` (as mail providers send it) unsubscribes; `retry-failed` re-sends only `failed` deliveries.
 - `TEST-MEET-01` — meet link hidden after 24 hours.
 
 ### End-to-end tests
@@ -76,7 +94,7 @@ A test helper should set:
 
 - `DB`: in-memory D1 with schema from `ensureTables` and `runMigrations`.
 - `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`: in-memory R2-like mock.
-- `RESEND_API_KEY`: a fake key; capture calls instead of sending.
+- `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS`: leave unset to exercise the "not configured" path, or use the real mailbox when testing delivery.
 - `CLERK_SECRET_KEY`: a fake key; mock `verifyToken`.
 
 ### Seeded test data

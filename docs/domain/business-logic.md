@@ -142,6 +142,7 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 - RULE-DEPT-01: Directors can only access and manage their own department.
 - RULE-DEPT-02: Board members can access and manage all departments.
 - RULE-DEPT-03: Department meets, documents, instructions, and projects are scoped to the department.
+- RULE-DEPT-04: Department routes enforce access with an awaited check. Reading a department's instructions and member list (`GET /api/departments/:id/instructions`, `/members`) is open to board and to anyone in that department (`canViewDept()`); everything else (overview, documents, meets, projects, all writes) needs board or that department's director (`canAccessDept()`).
 
 ### Department panel capabilities
 
@@ -228,10 +229,10 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 ### Public subscription
 
 - RULE-NEWS-01: Public visitors can subscribe via `POST /api/newsletter/subscribe`.
-- RULE-NEWS-02: Subscribers can unsubscribe via `GET /api/newsletter/unsubscribe?email=...`.
+- RULE-NEWS-02: Every subscriber has a random `unsubscribe_token`. Newsletter, event, and welcome emails link to `https://180dcvitc.org/unsubscribe/<token>` and carry `List-Unsubscribe: <https://180dcvitc.org/api/newsletter/unsubscribe/<token>>` with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Unsubscribing is a POST (`/api/newsletter/unsubscribe/:token`) so link-prefetching scanners cannot trigger it. The legacy `GET /api/newsletter/unsubscribe?email=...` stays for links in older emails.
 - RULE-NEWS-03: The system stores `active`, `subscribed_at`, and `unsubscribed_at` in `newsletter_subscribers` in `NEWSLETTER_DB`. Subscribing sends a welcome email (re-subscribing sends a welcome-back email) synchronously; delivery failures are logged.
 - RULE-NEWS-03a: `GET /api/newsletter/:id` is public, rate-limited, and serves newsletter `content` only after sanitization (`sanitizeBlogHtml`) — never raw stored HTML. The separate newsletter site (ADR-004) fetches this endpoint.
-- RULE-NEWS-03b: The bulk-email CTA uses `NEWSLETTER_SITE_URL` when set (CTA → `{site}/newsletter/{id}`) and otherwise falls back to `https://180dcvitc.org/#newsletter`. The production var is intentionally empty until the separate newsletter site (ADR-004) is deployed. Bulk unsubscribe footers link to `https://180dcvitc.org/unsubscribe` because BCC batches share one body.
+- RULE-NEWS-03b: The bulk-email CTA uses `NEWSLETTER_SITE_URL` when set (CTA → `{site}/newsletter/{id}`) and otherwise falls back to `https://180dcvitc.org/#newsletter`. The production var is intentionally empty until the separate newsletter site (ADR-004) is deployed. Bulk templates render the `%%UNSUBSCRIBE_URL%%` marker, which the queue drain replaces per recipient.
 
 ### Newsletter editor (OTP)
 
@@ -239,7 +240,8 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 - RULE-NEWS-05: A 6-digit OTP is emailed and expires in 5 minutes.
 - RULE-NEWS-06: A successful OTP verification creates a 24-hour session in `newsletter_sessions`.
 - RULE-NEWS-07: Editors can create drafts, upload source files, and send newsletters or event emails.
-- RULE-NEWS-08: Bulk sends insert one `email_queue` campaign and return `queued`/`total` immediately; the cron batches recipients into BCC groups of 50 and respects the 500-messages/hour Spacemail cap, updating `recipient_count` on completion.
+- RULE-NEWS-07a: An editor can update only their own drafts and the shared `editorial-sync` drafts (the ones `GET /drafts` shows them); updating anyone else's returns 403.
+- RULE-NEWS-08: Bulk sends insert one `email_queue` campaign and return `queued`/`total` immediately; the cron sends one personalized message per subscriber (1.5 s apart, within the 500-messages/hour Spacemail cap), skips subscribers who unsubscribed after the campaign was queued (except test sends), records each outcome in `email_deliveries`, and updates `recipient_count` on completion. Board members can retry only the failed recipients via `POST /api/admin/email-queue/:id/retry-failed`.
 - RULE-NEWS-09: Source files are stored in `CASE_STUDIES` R2.
 
 ### Board newsletter management
@@ -253,7 +255,7 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 
 - RULE-CONSULT-01: Public visitors can submit a consulting request.
 - RULE-CONSULT-02: Board can list, accept, reject, and delete requests.
-- RULE-CONSULT-03: Accept/reject sends a custom email through the unified email path (Spacemail SMTP with Resend fallback).
+- RULE-CONSULT-03: Accept/reject sends a custom email through the unified email path (Spacemail SMTP).
 - RULE-CONSULT-04: A request can only be accepted or rejected once.
 
 ## Announcements
@@ -268,7 +270,7 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 
 ### Business rules
 
-- RULE-MAINT-01: Board can enable/disable maintenance mode.
+- RULE-MAINT-01: Board can enable/disable maintenance mode. The change applies immediately in the isolate that handled it; other isolates pick it up within the 60 s cache.
 - RULE-MAINT-02: When enabled, all members with `power_level < 100` receive a 503 response from authenticated routes.
 - RULE-MAINT-03: The public maintenance status endpoint is readable without auth.
 
@@ -292,9 +294,9 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 
 - RULE-RATE-01: Endpoints using `checkRateLimit` consume one attempt per IP/endpoint through an atomic D1 upsert. Fixed-window state survives isolate restarts and is shared across workers. A denied request retains the window, with a positive `retryAfter`; counts saturate at limit + 1. Database failures deny the operation rather than falling back to memory.
 - RULE-RATE-02: Login uses the same persistent limiter. Every attempt is counted once, including successful logins. Development login neither increments failed attempts twice nor resets its allowance on success.
-- RULE-QUOTA-01: All outbound email goes through `sendEmail()`: Spacemail SMTP (`mail.spacemail.com:465`) is primary and Resend is the automatic fallback when SMTP fails.
-- RULE-QUOTA-02: BCC batching (up to 50 recipients per message) is used only for bulk queue campaigns (newsletter, event, meet); every other send is one recipient per message. SMTP sends are capped at 500 messages/hour in `email_hour_count` and drained with adaptive pacing (up to 15 messages/minute) by the `* * * * *` cron.
-- RULE-QUOTA-03: The Resend fallback is capped at 100 recipients/day in `resend_daily_count`.
+- RULE-QUOTA-01: All outbound email goes through `sendEmail()` and Spacemail SMTP (`mail.spacemail.com:465`) — the only provider. Temporary session failures stay queued, rejected recipients and permanent (5xx) failures are marked failed, and a "too many messages" rejection pauses the queue until the next hour.
+- RULE-QUOTA-02: No send uses BCC batching; every queued campaign (newsletter, event, meet, Send Mail) and every direct send is one recipient per message. SMTP sends are capped at 500 messages/hour in `email_hour_count` and drained with adaptive pacing (up to 15 messages/minute) by the `* * * * *` cron.
+- RULE-QUOTA-03: The queue uses at most 90% of the hourly SMTP limit; the rest is reserved for direct sends (OTPs, login tokens, welcome mails).
 - RULE-QUOTA-04: Bulk sends (newsletter, event, meet, and Send Mail lists over 10 recipients) insert an `email_queue` campaign and return `queued`/`total`; the cron carries the campaign to completion, pacing adaptively up to the 500/hour cap, and retries up to 5 times. Send Mail lists of 10 or fewer are sent synchronously (one message per recipient).
 - RULE-QUOTA-05: Sends with no email provider configured fail without calling any provider; OTP and letter sends return 500.
 - RULE-QUOTA-06: Newsletter data lives in the separate `NEWSLETTER_DB`; the cron writes campaign completion (`sent_at`, `recipient_count`) back to `newsletters` there.

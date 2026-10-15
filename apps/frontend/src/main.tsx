@@ -124,6 +124,16 @@ createRoot(document.getElementById("root")!).render(
             }
           />
           <Route
+            path="/unsubscribe/:token"
+            element={
+              <ErrorBoundary fallback={PageError}>
+                <Suspense fallback={PageLoader}>
+                  <UnsubscribePage />
+                </Suspense>
+              </ErrorBoundary>
+            }
+          />
+          <Route
             path="/members"
             element={
               <ErrorBoundary fallback={PageError}>

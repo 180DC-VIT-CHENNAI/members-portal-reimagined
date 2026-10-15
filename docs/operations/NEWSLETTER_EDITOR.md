@@ -23,7 +23,7 @@ Newsletter panel (power >= 100):          OTP login → editor:
    - Is email in `newsletter_authorized_emails` table? → allowed
    - Is email a registered member with power_level != 30? → allowed
    - Otherwise → 403
-3. 6-digit OTP sent through `sendEmail()` (Spacemail SMTP, Resend fallback; expires 5 min)
+3. 6-digit OTP sent through `sendEmail()` (Spacemail SMTP; expires 5 min)
 4. User enters OTP → verified → 24h session token created
 5. Session stored in `localStorage` as `nl_editor_session`
 
@@ -67,7 +67,8 @@ All under `apps/admin-api/index.ts`.
 - `GET /api/newsletter` — list published newsletters (landing page)
 - `GET /api/newsletter/:id` — single newsletter with sanitized `content` (used by the separate newsletter site, ADR-004)
 - `POST /api/newsletter/subscribe` — subscribe to newsletter
-- `GET /api/newsletter/unsubscribe?email=...` — unsubscribe (returns styled HTML page)
+- `POST /api/newsletter/unsubscribe/:token` — unsubscribe by the subscriber's token (used by `/unsubscribe/<token>` and one-click `List-Unsubscribe-Post`)
+- `GET /api/newsletter/unsubscribe?email=...` — legacy unsubscribe for links in older emails
 - `GET /api/newsletter/subscribers/count` — public count
 
 ## Frontend Files
@@ -111,24 +112,22 @@ All under `apps/admin-api/index.ts`.
 
 | Variable | Location | Purpose |
 |----------|----------|---------|
-| `RESEND_API_KEY` | Cloudflare Workers secret + `.dev.vars` | Fallback email sender, used automatically when Spacemail SMTP fails |
 | `VITE_CLERK_PUBLISHABLE_KEY` | `apps/frontend/.env` | Clerk auth for subscriber page |
 | `NEWSLETTER_SITE_URL` | `wrangler.toml` `[vars]` + `.dev.vars` | Base URL of the newsletter site (ADR-004): `https://180dc-newsletters.technical-vitc.workers.dev`. Bulk CTAs render `{url}/newsletter/{slug}`. |
-| `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Workers secrets + `.dev.vars` | Primary SMTP sender: authenticated mailbox `technical@180dcvitc.org` + password. All From addresses use this mailbox, so Spacemail's sender-ownership check passes. |
+| `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Workers secrets + `.dev.vars` | The only email sender: authenticated mailbox `technical@180dcvitc.org` + password. All From addresses use this mailbox, so Spacemail's sender-ownership check passes. |
 | `NEWSLETTER_DB` | D1 binding (`wrangler.toml`) | Separate `newsletter-db` database holding all newsletter tables. |
 
 ## Email Delivery
 
 All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 
-- **Primary:** Spacemail SMTP at `mail.spacemail.com:465` (implicit TLS) via `cloudflare:sockets`, AUTH with the mailbox address + password.
-- **Batching:** bulk queue campaigns (newsletter, event, meet) chunk recipients into BCC groups of up to 50 per message; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message (`batchRecipients: false`).
-- **Quota:** 500 SMTP messages/hour tracked in `email_hour_count`; Resend fallback capped at 100 recipients/day in `resend_daily_count`.
+- **Provider:** Spacemail SMTP is the only provider (no fallback) — at `mail.spacemail.com:465` (implicit TLS) via `cloudflare:sockets`, AUTH with the mailbox address + password.
+- **Batching:** no queued campaign uses BCC. Newsletter and event campaigns send one personalized message per subscriber, 1.5 s apart, recording each result in `email_deliveries`; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message (`batchRecipients: false`).
+- **Quota:** 500 SMTP messages/hour tracked in `email_hour_count`; the queue uses at most 90% of each hour so OTPs, login tokens and welcome mails always have room.
 - **Bulk queue:** newsletter, event, meet, and Send Mail lists over 10 recipients insert one `email_queue` campaign and return immediately with `queued`/`total`. The `* * * * *` cron drains it with adaptive pacing (up to 15 messages/minute, capped at 500/hour), retries failed campaigns up to 5 times, and writes `sent_at`/`recipient_count` back to the newsletter row.
-- **Provider switch:** `EMAIL_PRIMARY` (secret) forces Resend-first when set to `resend`; default is Spacemail-first. Used as an incident lever (e.g., Spacemail DKIM outage).
-- **Fallback:** if SMTP fails (auth, connectivity, timeout, or sender rejection), the same content is sent per-recipient through Resend (`RESEND_API_KEY`) so BCC privacy is preserved.
+- **Failures:** temporary session errors (timeouts, dropped connections, 4xx before RCPT) leave the recipient queued for the next cron run; a rejected recipient (4xx/5xx at RCPT) or a permanent session error (5xx: bad credentials, sender not owned, content rejected) marks it `failed` in `email_deliveries`, retryable with `POST /api/admin/email-queue/:id/retry-failed`. A Spacemail "too many messages" rejection marks the hour as used up, so the queue pauses until the next hour.
 - **From addresses:** all `technical@180dcvitc.org` — `180DC Newsletter <...>`, `180DC Events <...>`, `180DC Admin <...>`, `180DC Consulting <...>`, `180DC Letter Studio <...>`.
-- **PDF attachments:** referenced from R2 by the queue and built into a multipart MIME message at send time; Resend fallback uses the Resend `attachments` payload.
+- **PDF attachments:** referenced from R2 by the queue and built into a multipart MIME message at send time.
 - **Visibility:** `GET /api/admin/email-queue` (board token) returns hourly usage and recent campaigns.
 
 ## Email Templates
@@ -140,10 +139,10 @@ All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 > as the full site layout (`issueToEmailHtml`); a seeded editorial-sync Issue 01 is shown
 > in the editor drafts list via `scripts/sync-newsletter-content.mjs`.
 
-All outgoing emails include an unsubscribe footer. Bulk sends share one body across BCC batches, so the footer links to the public page without a per-recipient parameter:
+All subscriber emails include a personal unsubscribe link and one-click `List-Unsubscribe` headers. Templates render `%%UNSUBSCRIBE_URL%%`, which the queue replaces per recipient:
 ```
 To stop receiving emails from 180DC, click here to unsubscribe.
-→ https://180dcvitc.org/unsubscribe
+→ https://180dcvitc.org/unsubscribe/<unsubscribe_token>
 ```
 Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_email}`.
 
