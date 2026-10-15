@@ -5,6 +5,8 @@
 > DNS records (MX, SPF, `spacemail._domainkey` DKIM) are in place and verified, and the
 > production secrets use the `technical@180dcvitc.org` mailbox. Test sends went through
 > SMTP with no Resend fallback, and a production queue drain test completed.
+> **Resend has been removed:** Spacemail SMTP is now the only email provider, with no
+> fallback (see "Failure handling without a fallback" below).
 > `NEWSLETTER_SITE_URL` is intentionally empty until the separate newsletter site
 > (ADR-004) is deployed. Ordered checklist:
 > `docs/execution/current-state.md` → "Next steps — newsletter system".
@@ -37,17 +39,14 @@ how to fix it so `From: technical@180dcvitc.org` sends authenticate correctly.
 | `180dcvitc.org` | TXT (SPF) | `v=spf1 include:spf.spacemail.com ~all` | Present |
 | `spacemail._domainkey.180dcvitc.org` | TXT (DKIM) | `v=DKIM1;k=rsa;p=...` (account-specific) | Present and resolving |
 | `_autodiscover._tcp.180dcvitc.org` | SRV | `0 0 443 autoconfig.spacemail.com` | Present (mail clients only) |
-| `resend._domainkey.180dcvitc.org` | TXT (DKIM) | two `p=...` keys (rotation pair) | Present — keeps Resend fallback authenticating |
+| `resend._domainkey.180dcvitc.org` | TXT (DKIM) | two `p=...` keys (rotation pair) | No longer used (Resend removed) — safe to delete |
 | `_dmarc.180dcvitc.org` | TXT | `v=DMARC1; p=none;` | Present |
 | `mail.180dcvitc.org` | MX/TXT | previous subdomain records | Removed |
 
 Notes:
-- The SPF record authorizes Spacemail only. Resend does not need a root SPF include: it has
-  no SPF record of its own and its fallback sends are authenticated by DKIM
-  (`resend._domainkey`), which aligns with `From: @180dcvitc.org`.
-- The `send.180dcvitc.org` return-path subdomain records are absent, so if SPF alignment
-  for the Resend fallback is ever required, add Resend's custom return-path MX + SPF there
-  (not at the root).
+- The SPF record authorizes Spacemail only, which is correct: Spacemail is the only sender.
+- With Resend removed, the `resend._domainkey` TXT records serve no purpose; deleting them
+  removes an unused signing identity for the domain.
 
 ## Root cause: why `mail.180dcvitc.org` "doesn't work" as a From domain
 
@@ -83,8 +82,6 @@ of its own — so this change is safe and does not disrupt any existing mail flo
 |------|------|-------|
 | `TXT` | `@` | `v=spf1 include:spf.spacemail.com ~all` |
 
-> If Resend is kept as a fallback sender, combine both includes instead:
-> `v=spf1 include:spf.spacemail.com include:resend.com ~all`
 
 ### 3. Add DKIM at the root
 
@@ -112,12 +109,13 @@ Inactive records → Spacemail DNS records**: copy the TXT that starts with
 
 > **Outbound rate-limit hazard (hit 2026-10-06, resolved):** a Spacemail **trial
 > (including the Pro 30-day free trial) allows only ~20 messages/hour**; sending more
-> returns `554 5.7.1 ... Reject: too many messages from sender in last 60 minutes`, after
-> which `sendEmail()` falls back to Resend. The account was upgraded to paid (500/hour)
+> returns `554 5.7.1 ... Reject: too many messages from sender in last 60 minutes`. With
+> Resend removed, `sendEmail()` now marks the current hour as used up
+> (`email_hour_count`), so the queue pauses until the next hour and nothing is lost. The account was upgraded to paid (500/hour)
 > and the temporary `SPACEMAIL_HOURLY_LIMIT=20` secret was removed. If a future mailbox is
 > on trial, set `SPACEMAIL_HOURLY_LIMIT=20` (or `15` to be safe) so pacing matches the
-> plan. Single-recipient sends consume this quota one message per recipient — prefer BCC
-> batching for large lists while on a trial.
+> plan. Every send is one message per recipient, so on a trial a list of more than ~18
+> people takes more than an hour.
 
 > **Outbound spam-filter format hazard (hit once, 2026-10-05):** Spacemail's Jellyfish
 > filter (error `JFE040000`, codes documented by Namecheap KB 10664) rejects messages that
@@ -169,6 +167,21 @@ one-click `List-Unsubscribe` headers. Per-recipient mail avoids the
 hour. Beyond that, move only the transport behind `sendEmail()` (e.g. to Amazon SES);
 the queue, templates, and unsubscribe flow stay as they are. Meet notifications are
 also one SMTP message per recipient, so no queued campaign uses BCC batches.
+
+## Failure handling without a fallback
+
+Spacemail SMTP is the only provider, so `sendEmail()` sorts every failure:
+
+| Failure | Example | What happens |
+|---------|---------|--------------|
+| Temporary, whole session (timeout, dropped connection, 4xx greeting / AUTH / MAIL FROM) | `421 try again later`, `SMTP timeout` | Recipient stays queued; the next cron run retries. After 5 runs in a row with no progress the campaign is marked `failed` and can be retried with `retry-failed`. |
+| Rejected recipient (4xx or 5xx at `RCPT TO`) | `450 mailbox busy`, `550 no such user` | That recipient is marked `failed` with the reply; the queue moves on to the next one. `retry-failed` tries it again later. |
+| Spacemail hourly limit | `554 ... too many messages from sender in last 60 minutes` | The current hour in `email_hour_count` is set to the limit, so the queue waits for the next hour. |
+| Permanent, whole session (5xx) | `535` bad password, `553` sender not owned, `550` content rejected | Recipient marked `failed` in `email_deliveries` with the SMTP reply as the error. |
+| Not configured | `SPACEMAIL_SMTP_USER`/`PASS` missing | Every send fails with "Email not configured". |
+
+The queue uses at most 90% of each hour's limit, so OTPs, login tokens and welcome mails
+(sent directly, not queued) still go out during a large send.
 
 ## Backend migration plan: Resend → Spacemail SMTP
 
@@ -223,7 +236,8 @@ All sending currently goes through `fetch("https://api.resend.com/emails", ...)`
 
 ### Step 3 — Secrets
 
-`RESEND_API_KEY` is **kept** as the automatic fallback sender. Add the Spacemail pair:
+The Spacemail pair is the only email secret (`RESEND_API_KEY` and `EMAIL_PRIMARY` were
+removed and can be deleted with `npx wrangler secret delete`):
 
 | Secret | Value |
 |--------|-------|
@@ -235,9 +249,9 @@ All sending currently goes through `fetch("https://api.resend.com/emails", ...)`
 > From is not owned by the authenticated mailbox. All templates send
 > `From: ... <technical@180dcvitc.org>`, the authenticated mailbox itself, so no alias is
 > required (verified live: MAIL FROM + RCPT accepted). If a friendlier sender address is
-> wanted later, add it as an alias on this mailbox — otherwise `sendEmail()` rejects the
-> recipients and automatically falls back to Resend, logging
-> `Spacemail rejected N recipient(s), falling back to Resend`.
+> wanted later, add it as an alias on this mailbox — otherwise Spacemail rejects the send
+> and the recipients are marked `failed` (5xx), logged as
+> `[email] Spacemail SMTP failed: ...`.
 
 Set via `npx wrangler secret put` and mirrored in `.dev.vars`.
 

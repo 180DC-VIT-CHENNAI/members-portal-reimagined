@@ -77,7 +77,7 @@ A test helper should set:
 
 - `DB`: in-memory D1 with schema from `ensureTables` and `runMigrations`.
 - `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`: in-memory R2-like mock.
-- `RESEND_API_KEY`: a fake key; capture calls instead of sending.
+- `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS`: leave unset to exercise the "not configured" path, or use the real mailbox when testing delivery.
 - `CLERK_SECRET_KEY`: a fake key; mock `verifyToken`.
 
 ### Seeded test data

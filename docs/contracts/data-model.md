@@ -363,12 +363,10 @@ This table is for the public leadership page, not the `users` table.
 | hour | TEXT | PRIMARY KEY | ISO hour `YYYY-MM-DDTHH` (UTC) |
 | count | INTEGER | DEFAULT 0 | Spacemail SMTP messages (50-recipient BCC batches) sent in that hour; capped at 500 |
 
-### `resend_daily_count`
+### `resend_daily_count` (legacy)
 
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| date | TEXT | PRIMARY KEY | ISO date |
-| count | INTEGER | DEFAULT 0 | Resend fallback emails delivered that day; capped at 100 |
+No longer created or written: Resend was removed and Spacemail SMTP is the only provider.
+The table may still exist in production and can be dropped manually.
 
 ### `pending_emails`
 

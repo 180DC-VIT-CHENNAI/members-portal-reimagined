@@ -191,9 +191,10 @@ Each Worker may require its own environment configuration.
 For local development, create a `.dev.vars` file inside `apps/admin-api`:
 
 ```env
-RESEND_API_KEY=re_...
 CLERK_SECRET_KEY=sk_test_...
 ENVIRONMENT=development
+SPACEMAIL_SMTP_USER=technical@180dcvitc.org
+SPACEMAIL_SMTP_PASS=
 ```
 
 For the frontend, create `apps/frontend/.env.local`:
@@ -206,8 +207,9 @@ VITE_API_BASE_URL=http://127.0.0.1:8787
 For production, store secrets securely using Wrangler:
 
 ```bash
-wrangler secret put RESEND_API_KEY
 wrangler secret put CLERK_SECRET_KEY
+wrangler secret put SPACEMAIL_SMTP_USER
+wrangler secret put SPACEMAIL_SMTP_PASS
 ```
 
 See `docs/operations/deployment.md` for full environment setup.

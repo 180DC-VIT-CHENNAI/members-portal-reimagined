@@ -106,7 +106,8 @@ The following binding names are referenced in code. Changing them requires updat
 - `CASE_STUDIES`
 - `AUTH_SESSIONS`
 - `QUEUE`
-- `RESEND_API_KEY`
+- `SPACEMAIL_SMTP_USER`
+- `SPACEMAIL_SMTP_PASS`
 - `CLERK_SECRET_KEY`
 - `ENVIRONMENT`
 
@@ -123,7 +124,7 @@ Special attention:
 
 ## COMP-EMAIL-01 Sender addresses and templates
 
-Emails are sent from these addresses and use the 180DC VIT Chennai branded template. Changing the from address, provider, or template shape may affect deliverability. Spacemail SMTP is primary; Resend is the fallback.
+Emails are sent from these addresses and use the 180DC VIT Chennai branded template. Changing the from address, provider, or template shape may affect deliverability. Spacemail SMTP is the only provider.
 
 - `180DC Admin <technical@180dcvitc.org>`
 - `180DC Consulting <technical@180dcvitc.org>`
@@ -134,7 +135,6 @@ Emails are sent from these addresses and use the 180DC VIT Chennai branded templ
 ## COMP-EMAIL-02 Send quotas and batching
 
 - SMTP sends are capped at 500 messages/hour (`email_hour_count`). Every queued campaign is one message per recipient; no campaign uses BCC batches.
-- The Resend fallback is capped at 100 recipients/day (`resend_daily_count`).
 - Subscriber emails carry a per-recipient `/unsubscribe/<token>` link and RFC 8058 one-click `List-Unsubscribe` headers.
 - Changing these caps or the batching model requires coordination with the email provider and a docs update.
 

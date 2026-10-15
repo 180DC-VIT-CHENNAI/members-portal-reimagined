@@ -255,7 +255,7 @@ This document describes the system from the domain perspective. Each section cov
 
 - RULE-CONSULT-01: Public visitors can submit a consulting request.
 - RULE-CONSULT-02: Board can list, accept, reject, and delete requests.
-- RULE-CONSULT-03: Accept/reject sends a custom email through the unified email path (Spacemail SMTP with Resend fallback).
+- RULE-CONSULT-03: Accept/reject sends a custom email through the unified email path (Spacemail SMTP).
 - RULE-CONSULT-04: A request can only be accepted or rejected once.
 
 ## Announcements
@@ -294,9 +294,9 @@ This document describes the system from the domain perspective. Each section cov
 
 - RULE-RATE-01: Most endpoints are rate-limited per IP and endpoint in the `rate_limits` table.
 - RULE-RATE-02: Login endpoints use a separate `checkLoginRateLimit` that resets on success.
-- RULE-QUOTA-01: All outbound email goes through `sendEmail()`: Spacemail SMTP (`mail.spacemail.com:465`) is primary and Resend is the automatic fallback when SMTP fails.
+- RULE-QUOTA-01: All outbound email goes through `sendEmail()` and Spacemail SMTP (`mail.spacemail.com:465`) — the only provider. Temporary session failures stay queued, rejected recipients and permanent (5xx) failures are marked failed, and a "too many messages" rejection pauses the queue until the next hour.
 - RULE-QUOTA-02: No send uses BCC batching; every queued campaign (newsletter, event, meet, Send Mail) and every direct send is one recipient per message. SMTP sends are capped at 500 messages/hour in `email_hour_count` and drained with adaptive pacing (up to 15 messages/minute) by the `* * * * *` cron.
-- RULE-QUOTA-03: The Resend fallback is capped at 100 recipients/day in `resend_daily_count`.
+- RULE-QUOTA-03: The queue uses at most 90% of the hourly SMTP limit; the rest is reserved for direct sends (OTPs, login tokens, welcome mails).
 - RULE-QUOTA-04: Bulk sends (newsletter, event, meet, and Send Mail lists over 10 recipients) insert an `email_queue` campaign and return `queued`/`total`; the cron carries the campaign to completion, pacing adaptively up to the 500/hour cap, and retries up to 5 times. Send Mail lists of 10 or fewer are sent synchronously (one message per recipient).
 - RULE-QUOTA-05: Sends with no email provider configured fail without calling any provider; OTP and letter sends return 500.
 - RULE-QUOTA-06: Newsletter data lives in the separate `NEWSLETTER_DB`; the cron writes campaign completion (`sent_at`, `recipient_count`) back to `newsletters` there.

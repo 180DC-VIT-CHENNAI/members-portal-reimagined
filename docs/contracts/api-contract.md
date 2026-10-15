@@ -13,7 +13,7 @@ This document describes the public and authenticated surface of `admin-api.techn
   - `newsletter` — requires a valid newsletter editor session token (OTP based).
 - **Response shape:** `{ success: true, ... }` on success; `{ error: "..." }` on failure.
 - **Rate limiting:** Most endpoints have per-IP rate limits. See `checkRateLimit` in `apps/admin-api/index.ts`.
-- **Email delivery:** All email goes through the `sendEmail()` choke-point: Spacemail SMTP (`mail.spacemail.com:465`, implicit TLS) is primary, with Resend as an automatic fallback. Bulk queue campaigns (newsletter, event, meet) batch recipients into BCC groups of up to 50 per message; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message. SMTP is capped at 500 messages/hour (`email_hour_count`) and the Resend fallback at 100 recipients/day (`resend_daily_count`). Bulk sends insert an `email_queue` campaign and return `queued`/`total`; the `* * * * *` cron delivers it at up to 8 messages/minute. Newsletter tables live in `NEWSLETTER_DB`.
+- **Email delivery:** All email goes through the `sendEmail()` choke-point: Spacemail SMTP (`mail.spacemail.com:465`, implicit TLS) is the only email provider; there is no fallback. Session-level temporary failures (timeouts, dropped connections, 4xx before RCPT) leave recipients queued for the next cron run; a rejected recipient (any RCPT error) or a permanent session failure (5xx) marks that recipient failed. A Spacemail "too many messages" rejection marks the current hour as used up so the queue waits for the next hour. Every send is one recipient per message. SMTP is capped at 500 messages/hour (`email_hour_count`), of which the queue uses at most 90% so OTP and login-token mail always has room. Bulk sends insert an `email_queue` campaign and return `queued`/`total`; the `* * * * *` cron delivers it at up to 15 messages/minute. Newsletter tables live in `NEWSLETTER_DB`.
 
 ## Public routes
 
@@ -141,7 +141,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/meets/:type/:id/send-notification` | director | Meet email for an existing meet (Spacemail SMTP, Resend fallback). |
+| POST | `/api/meets/:type/:id/send-notification` | director | Meet email for an existing meet (Spacemail SMTP). |
 | POST | `/api/meets/process-queue` | board | Send pending meet emails up to the hourly SMTP cap. |
 
 ## Department panel content
@@ -299,7 +299,7 @@ The Letter Studio at `/letters` is the official letterhead generator (appointmen
 | POST | `/api/letter-studio/logout` | letter session | Delete letter session. |
 | GET | `/api/letter-studio/me` | letter session | Get session email. |
 | POST | `/api/letter-studio/upload` | letter session | Upload generated letter PDF to R2 `letters/` folder. |
-| POST | `/api/letter-studio/send` | letter session | Send the letter PDF with a standard per-type mail through `sendEmail()` (Spacemail SMTP, Resend fallback). Respects rate limits and SMTP hourly cap. Logs to `letters_sent`. |
+| POST | `/api/letter-studio/send` | letter session | Send the letter PDF with a standard per-type mail through `sendEmail()` (Spacemail SMTP). Respects rate limits and SMTP hourly cap. Logs to `letters_sent`. |
 | GET | `/api/letter-studio/members` | letter session | Member directory (name, email, role, department) for the recipient picker. Excludes advisory members. |
 | GET | `/api/letter-studio/files/*` | letter session (via `?t=` token) | Download a stored letter PDF. |
 | GET | `/api/letter-studio/admin/authorized-emails` | board | List authorized emails. |

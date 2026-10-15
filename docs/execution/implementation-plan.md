@@ -12,7 +12,7 @@ The platform should have:
    - `job-processor` becomes a real queue consumer for email batching, bulk operations, and background tasks.
 2. A proper database package with versioned, non-destructive migrations.
 3. A unit and integration test suite.
-4. Spacemail SMTP for all email (BCC batches of 50) with Resend as an automatic fallback.
+4. Spacemail SMTP for all email (one recipient per message); Resend removed.
 5. A documented public API surface and stable environment contracts.
 6. Reduced single-file size of `apps/admin-api/index.ts` by splitting into routers/modules.
 
@@ -54,11 +54,11 @@ Before any large restructuring, all existing code and data must be preserved:
 - Implement `job-processor` to consume meet and bulk email jobs.
 - Add retry logic and dead-letter handling.
 
-### Phase 4 — Email delivery (Spacemail SMTP + Resend fallback)
+### Phase 4 — Email delivery (Spacemail SMTP only)
 
 - Implemented in `apps/admin-api/index.ts`: `sendEmail()` choke-point, SMTP over
-  `cloudflare:sockets`, BCC batching, `email_hour_count`/`resend_daily_count` accounting,
-  and automatic Resend fallback (see `docs/operations/SPACEMAIL_SETUP.md`).
+  `cloudflare:sockets`, one recipient per message, `email_hour_count` accounting; the
+  Resend fallback has been removed (see `docs/operations/SPACEMAIL_SETUP.md`).
 - Remaining operational step: DNS, DKIM, and `SPACEMAIL_SMTP_USER`/`SPACEMAIL_SMTP_PASS`.
 
 ### Phase 5 — Continuous improvement
@@ -75,7 +75,7 @@ Before any large restructuring, all existing code and data must be preserved:
 | 1 | `packages/db/schema.sql` replaced; `admin-api` split into modules; all existing routes still pass. |
 | 2 | `public-api` serves public routes; `admin-api` still proxies them during the transition; no frontend breakage. |
 | 3 | Queue producer sends messages; `job-processor` consumes and sends emails; `pending_emails` table can be deprecated. |
-| 4 | Email sends go through Spacemail SMTP with BCC batches and the Resend fallback; quotas enforced in D1. |
+| 4 | Email sends go through Spacemail SMTP only; quotas enforced in D1. |
 | 5 | 80% of API endpoints covered by automated tests; frontend uses new public API. |
 
 ## Risk register
@@ -85,7 +85,7 @@ Before any large restructuring, all existing code and data must be preserved:
 | Splitting `admin-api/index.ts` introduces regressions | Do it module by module; keep the same Hono app and route strings; add contract tests before and after. |
 | Moving public routes to `public-api` breaks the landing page | Keep `admin-api` public endpoints as deprecated aliases for one release; test all landing-page fetches. |
 | Schema changes break deployed D1 | Every migration is idempotent and `ALTER TABLE ... ADD COLUMN` in a `try/catch`; never drop columns/tables used by current code. |
-| Email quota or provider changes cause missed notifications | Keep the `sendEmail()` choke-point and Resend fallback; enforce provider caps in D1 (`email_hour_count`, `resend_daily_count`); queue meet emails in `pending_emails`. |
+| Email quota or provider changes cause missed notifications | Keep the `sendEmail()` choke-point; enforce the provider cap in D1 (`email_hour_count`) with 10% reserved for sign-in mail; queue meet emails in `pending_emails`. |
 | Losing `admin_tokens` state | Tokens are D1 rows; keep the table and auth middleware intact across all phases. |
 
 ## Current branch strategy

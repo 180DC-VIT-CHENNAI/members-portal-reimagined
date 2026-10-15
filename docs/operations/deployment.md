@@ -31,11 +31,9 @@
 Create `apps/admin-api/.dev.vars` for local development:
 
 ```ini
-# Resend fallback — keep set while Spacemail is being rolled out
-RESEND_API_KEY=re_...
 CLERK_SECRET_KEY=sk_test_...
 ENVIRONMENT=development
-# Spacemail SMTP primary sender (authenticated mailbox; team@ is an alias on it)
+# Spacemail SMTP — the only email provider (authenticated mailbox; team@ is an alias on it)
 SPACEMAIL_SMTP_USER=technical@180dcvitc.org
 SPACEMAIL_SMTP_PASS=
 # Leave empty until the separate newsletter site (ADR-004) is deployed
@@ -134,11 +132,9 @@ NEWSLETTER_SITE_URL = ""
 # back to development: `pnpm dev` runs `wrangler dev --var ENVIRONMENT:development`.
 
 # Secrets must be set via `wrangler secret put`
-# RESEND_API_KEY          (fallback sender — keep while Spacemail is rolled out)
 # CLERK_SECRET_KEY
 # SPACEMAIL_SMTP_USER     (technical@180dcvitc.org — also used as the From address)
 # SPACEMAIL_SMTP_PASS     (mailbox password)
-# EMAIL_PRIMARY           (optional: "resend" forces Resend first; default/absent = Spacemail SMTP first)
 # SPACEMAIL_HOURLY_LIMIT  (optional: mailbox plan's messages/hour cap; default 500. Set 20 on trial plans)
 ```
 

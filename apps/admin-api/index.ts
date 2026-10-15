@@ -14,14 +14,12 @@ type Bindings = {
   GALLERY_CDN: R2Bucket;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
-  RESEND_API_KEY?: string;
   CLERK_SECRET_KEY?: string;
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;
   SPACEMAIL_SMTP_USER?: string;
   SPACEMAIL_SMTP_PASS?: string;
   SPACEMAIL_HOURLY_LIMIT?: string;
-  EMAIL_PRIMARY?: string;
   NEWSLETTER_SITE_URL?: string;
 };
 
@@ -543,7 +541,6 @@ function smtpHourlyLimit(env: any): number {
     ? Math.floor(value)
     : SMTP_MAX_PER_HOUR;
 }
-const RESEND_MAX_PER_DAY = 100;
 const SMTP_TIMEOUT_MS = 20000;
 
 type EmailAttachment = {
@@ -566,7 +563,6 @@ type SendEmailResult = {
   sent: number;
   failed: number;
   skipped: number;
-  viaResend: number;
   error?: string;
 };
 
@@ -914,14 +910,18 @@ async function smtpSendMessage(
       ]);
       const accepted: string[] = [];
       const rejected: string[] = [];
+      let rejectReason: string | undefined;
       for (const recipient of message.to) {
         const reply = await send("RCPT TO:<" + recipient + ">");
         if (reply.code === 250 || reply.code === 251) accepted.push(recipient);
-        else rejected.push(recipient);
+        else {
+          rejected.push(recipient);
+          rejectReason = "SMTP RCPT failed (" + reply.code + "): " + reply.text;
+        }
       }
       if (accepted.length === 0) {
         await send("QUIT");
-        return { ok: true, accepted, rejected };
+        return { ok: true, accepted, rejected, error: rejectReason };
       }
       await expect("DATA", [354]);
       const mime = buildMimeMessage({
@@ -944,7 +944,7 @@ async function smtpSendMessage(
         );
       }
       await send("QUIT");
-      return { ok: true, accepted, rejected };
+      return { ok: true, accepted, rejected, error: rejectReason };
     })();
     return await Promise.race([session, timeout]);
   } catch (e: any) {
@@ -957,15 +957,17 @@ async function smtpSendMessage(
     try {
       reader?.release();
     } catch {}
+    // Don't await: closing a socket whose connect never completed can hang
+    // for minutes, which would defeat SMTP_TIMEOUT_MS.
     try {
-      await socket?.close();
+      socket?.close().catch(() => {});
     } catch {}
   }
 }
 
 async function updateEmailCounters(
   db: any,
-  counts: { smtpMessages?: number; resendSends?: number; dailySends?: number },
+  counts: { smtpMessages?: number; dailySends?: number },
 ) {
   const statements: any[] = [];
   const hour = new Date().toISOString().slice(0, 13);
@@ -977,15 +979,6 @@ async function updateEmailCounters(
           "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = count + ?",
         )
         .bind(hour, counts.smtpMessages, counts.smtpMessages),
-    );
-  }
-  if (counts.resendSends) {
-    statements.push(
-      db
-        .prepare(
-          "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
-        )
-        .bind(today, counts.resendSends, counts.resendSends),
     );
   }
   if (counts.dailySends) {
@@ -1019,30 +1012,8 @@ async function incrementHourlyEmailCount(db: any, amount = 1) {
     .run();
 }
 
-async function getResendDailyCount(db: any): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10);
-  const row: any = await db
-    .prepare("SELECT count FROM resend_daily_count WHERE date = ?")
-    .bind(today)
-    .first();
-  return row ? row.count : 0;
-}
-
-async function incrementResendDailyCount(db: any, amount = 1) {
-  const today = new Date().toISOString().slice(0, 10);
-  await db
-    .prepare(
-      "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
-    )
-    .bind(today, amount, amount)
-    .run();
-}
-
 function isEmailConfigured(c: any): boolean {
-  return Boolean(
-    (c.env.SPACEMAIL_SMTP_USER && c.env.SPACEMAIL_SMTP_PASS) ||
-      c.env.RESEND_API_KEY,
-  );
+  return Boolean(c.env.SPACEMAIL_SMTP_USER && c.env.SPACEMAIL_SMTP_PASS);
 }
 
 function newsletterSiteBase(c: any): string {
@@ -1060,57 +1031,24 @@ function newsletterCtaUrl(
     : "https://180dcvitc.org/#newsletter";
 }
 
-async function sendViaResend(
-  apiKey: string,
-  message: {
-    from: string;
-    to: string;
-    subject: string;
-    html: string;
-    attachments?: EmailAttachment[];
-    extraHeaders?: Record<string, string>;
-  },
-): Promise<boolean> {
-  try {
-    const payload: any = {
-      from: message.from,
-      to: message.to,
-      subject: message.subject,
-      html: message.html,
-    };
-    if (
-      message.extraHeaders &&
-      Object.keys(message.extraHeaders).length > 0
-    ) {
-      payload.headers = message.extraHeaders;
-    }
-    if (message.attachments && message.attachments.length > 0) {
-      payload.attachments = message.attachments.map((attachment) => ({
-        filename: attachment.filename,
-        content: attachment.content,
-      }));
-    }
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error(
-        `[email] Resend FAILED (${res.status}) to=${message.to}: ${body}`,
-      );
-      return false;
-    }
-    console.log(`[email] Resend OK (${res.status}) to=${message.to}`);
-    return true;
-  } catch (e: any) {
-    console.error("[email] Resend error to=" + message.to + ": " + e.message);
-    return false;
-  }
+// SMTP errors that will clear on their own (4xx replies, timeouts, dropped
+// connections). Only 5xx replies are permanent.
+function isTransientSmtpError(error: string): boolean {
+  return !/\(5\d\d\)|\b5\d\d\b/.test(error);
+}
+
+// Spacemail rejects with "too many messages from sender in last 60 minutes"
+// when its own hourly counter is full — including mail sent from webmail,
+// which ours never sees. Mark this hour as used up so the queue waits for
+// the next hour instead of burning retries.
+async function saturateHourlyEmailCount(env: any) {
+  const hour = new Date().toISOString().slice(0, 13);
+  const limit = smtpHourlyLimit(env);
+  await env.DB.prepare(
+    "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = MAX(count, ?)",
+  )
+    .bind(hour, limit, limit)
+    .run();
 }
 
 async function sendEmail(
@@ -1120,108 +1058,71 @@ async function sendEmail(
   const recipients = (Array.isArray(options.to) ? options.to : [options.to])
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0);
-  const result: SendEmailResult = {
-    sent: 0,
-    failed: 0,
-    skipped: 0,
-    viaResend: 0,
-  };
+  const result: SendEmailResult = { sent: 0, failed: 0, skipped: 0 };
   if (recipients.length === 0) return result;
 
   const smtpUser = c.env.SPACEMAIL_SMTP_USER;
   const smtpPass = c.env.SPACEMAIL_SMTP_PASS;
-  const resendKey = c.env.RESEND_API_KEY;
-  let smtpUsable = Boolean(smtpUser && smtpPass);
-  let resendDailyUsed = resendKey ? await getResendDailyCount(c.env.DB) : 0;
-  let resendSent = 0;
-  let smtpMessagesSent = 0;
-  let stopped = false;
-  const preferResend =
-    String(c.env.EMAIL_PRIMARY || "").trim().toLowerCase() === "resend";
-  const chunkSize = options.batchRecipients ? SMTP_BATCH_SIZE : 1;
-  let hourlyCount = await getHourlyEmailCount(c.env.DB);
+  if (!smtpUser || !smtpPass) {
+    result.failed = recipients.length;
+    result.error = "Email not configured (SPACEMAIL_SMTP_USER/PASS missing)";
+    return result;
+  }
 
-  const sendBatchViaResend = async (batchRecipients: string[]) => {
-    for (const recipient of batchRecipients) {
-      if (!resendKey) {
-        result.failed++;
-        continue;
-      }
-      if (resendDailyUsed + resendSent >= RESEND_MAX_PER_DAY) {
-        stopped = true;
-        break;
-      }
-      const ok = await sendViaResend(resendKey, {
-        from: options.from,
-        to: recipient,
-        subject: options.subject,
-        html: options.html,
-        attachments: options.attachments,
-        extraHeaders: options.extraHeaders,
-      });
-      if (ok) {
-        resendSent++;
-        result.sent++;
-        result.viaResend++;
-      } else {
-        result.failed++;
-      }
-    }
-  };
+  const chunkSize = options.batchRecipients ? SMTP_BATCH_SIZE : 1;
+  const limit = smtpHourlyLimit(c.env);
+  const hourlyCount = await getHourlyEmailCount(c.env.DB);
+  let smtpMessagesSent = 0;
 
   for (let index = 0; index < recipients.length; index += chunkSize) {
+    // Anything not attempted is reported as skipped; the queue retries it.
+    if (hourlyCount + smtpMessagesSent >= limit) break;
     const batch = recipients.slice(index, index + chunkSize);
-
-    if (preferResend && resendKey) {
-      await sendBatchViaResend(batch);
-      if (stopped) break;
+    const smtp = await smtpSendMessage(smtpUser, smtpPass, {
+      from: options.from,
+      to: batch,
+      subject: options.subject,
+      html: options.html,
+      attachments: options.attachments,
+      extraHeaders: options.extraHeaders,
+    });
+    if (smtp.ok) {
+      if (smtp.accepted.length > 0) smtpMessagesSent++;
+      result.sent += smtp.accepted.length;
+      if (smtp.rejected.length > 0) {
+        result.error = smtp.error || "Recipient rejected by Spacemail";
+        console.warn(
+          "[email] Spacemail rejected " +
+            smtp.rejected.length +
+            " recipient(s): " +
+            result.error,
+        );
+        if (/too many messages/i.test(result.error)) {
+          await saturateHourlyEmailCount(c.env);
+          break;
+        }
+        // Any other RCPT rejection (4xx greylisting / full mailbox, or 5xx)
+        // is about that address only: fail it so the queue moves on, and
+        // retry-failed can try it again later.
+        result.failed += smtp.rejected.length;
+      }
       continue;
     }
-
-    if (smtpUsable) {
-      if (hourlyCount + smtpMessagesSent < smtpHourlyLimit(c.env)) {
-        const smtp = await smtpSendMessage(smtpUser, smtpPass, {
-          from: options.from,
-          to: batch,
-          subject: options.subject,
-          html: options.html,
-          attachments: options.attachments,
-          extraHeaders: options.extraHeaders,
-        });
-        if (smtp.ok) {
-          smtpMessagesSent++;
-          result.sent += smtp.accepted.length;
-          if (smtp.rejected.length > 0) {
-            console.warn(
-              "[email] Spacemail rejected " +
-                smtp.rejected.length +
-                " recipient(s), falling back to Resend",
-            );
-            await sendBatchViaResend(smtp.rejected);
-            if (stopped) break;
-          }
-          continue;
-        }
-        smtpUsable = false;
-        result.error = smtp.error;
-        console.warn(
-          "[email] Spacemail SMTP failed, falling back to Resend: " +
-            (smtp.error || "unknown error"),
-        );
-      } else {
-        stopped = true;
-      }
+    result.error = smtp.error || "unknown SMTP error";
+    console.error("[email] Spacemail SMTP failed: " + result.error);
+    if (/too many messages/i.test(result.error)) {
+      await saturateHourlyEmailCount(c.env);
+      break;
     }
-
-    if (stopped) break;
-
-    await sendBatchViaResend(batch);
-    if (stopped) break;
+    if (isTransientSmtpError(result.error)) break;
+    // Permanent failure (bad credentials, sender not owned, content
+    // rejected): the rest of this call would fail the same way.
+    result.failed += recipients.length - index;
+    break;
   }
 
   await updateEmailCounters(c.env.DB, {
     smtpMessages: smtpMessagesSent,
-    resendSends: resendSent,
     dailySends: result.sent,
   });
   result.skipped = Math.max(
@@ -1515,7 +1416,11 @@ async function drainEmailQueue(
     .run();
 
   const hourly = await getHourlyEmailCount(env.DB);
-  const remaining = Math.max(0, smtpHourlyLimit(env) - hourly);
+  // Leave 10% of the hour for direct sends (OTPs, login tokens, welcome
+  // mails): with Spacemail as the only provider, a busy queue must not lock
+  // people out of signing in.
+  const queueLimit = smtpHourlyLimit(env) - Math.floor(smtpHourlyLimit(env) / 10);
+  const remaining = Math.max(0, queueLimit - hourly);
   if (remaining <= 0) return { sent: 0, failed: 0, skippedByQuota: true };
   const minutesLeft = Math.max(1, 60 - new Date().getUTCMinutes());
   let budget = Math.min(
@@ -2094,7 +1999,6 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS email_hour_count (hour TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, kind TEXT NOT NULL, from_address TEXT NOT NULL, subject TEXT NOT NULL, html TEXT NOT NULL, attachments TEXT, recipients TEXT NOT NULL, cursor INTEGER DEFAULT 0, total INTEGER NOT NULL, sent INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', last_error TEXT, meta TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, finished_at DATETIME);
     ${EMAIL_DELIVERIES_DDL}
