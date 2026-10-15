@@ -54,6 +54,21 @@ Index of all new docs: `docs/INDEX.md`.
 9. **The `QUEUE` binding in `admin-api` is configured but not actually used.** Bulk email (newsletters, events, meet notifications) is enqueued in the `email_queue` table and drained by the `* * * * *` cron trigger at up to 8 messages/minute (≤50 BCC recipients each). `pending_emails` is legacy and still drainable via `POST /api/meets/process-queue`. The `job-processor` consumer is a placeholder.
 10. **Frontend API calls are proxied through the Cloudflare Pages `_middleware.ts` to `admin-api.technical-vitc.workers.dev`.** Do not assume the worker is reached at `180dcvitc.org/api/*` from the Pages site, even though the worker route pattern says that.
 
+## Git workflow: pull requests and releases
+
+Remotes:
+
+- `origin` = `https://github.com/180DC-VIT-CHENNAI/members-portal-reimagined` (development repository)
+- `upstream` = `https://github.com/180DC-VIT-CHENNAI/180dc-admin-website` (production repository)
+
+Rules:
+
+1. **Every change goes through a pull request.** Never push directly to `main` (or any default/protected branch) on either remote. Work on a feature branch and open a PR.
+2. **PRs target `origin` `main`.** All feature, fix, and docs PRs are opened against `main` on `origin` (`members-portal-reimagined`). Do not open feature PRs against `upstream`. The only exception: junior consultants editing `180DC_Unified_Platform_Problem_Statement.md` open their PRs against the `reimagined` branch, which is reserved for that document and receives no code work.
+3. **Release on `origin` before promoting.** Once the work on `origin` is complete and tested, cut a versioned release on `origin` (a semver git tag such as `v1.4.0` plus a GitHub release with notes).
+4. **Only versioned releases go to `upstream`.** After the release is published on `origin`, open a single PR from that release to `upstream` (`180dc-admin-website`). The PR title must include the version (e.g. `Release v1.4.0`) and the body must link the `origin` release and summarize its changes.
+5. **Never open a PR to `upstream` with untested or unreleased work.** If something is not yet in a tagged `origin` release, it does not go upstream.
+
 ## Repository boundaries
 
 - `apps/admin-api/index.ts` is the canonical backend. Any new API route, schema change, or business rule belongs there unless you are explicitly building a new service.
