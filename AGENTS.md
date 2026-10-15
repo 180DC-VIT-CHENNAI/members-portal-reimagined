@@ -60,6 +60,7 @@ Remotes:
 
 - `origin` = `https://github.com/180DC-VIT-CHENNAI/members-portal-reimagined` (development repository)
 - `upstream` = `https://github.com/180DC-VIT-CHENNAI/180dc-admin-website` (production repository)
+- Branch `upstream-main` on `origin` is a read-only mirror of `upstream` `main`, force-synced hourly by `.github/workflows/sync-upstream-main.yml`. Use it to compare or cherry-pick; never commit to it.
 
 Rules:
 

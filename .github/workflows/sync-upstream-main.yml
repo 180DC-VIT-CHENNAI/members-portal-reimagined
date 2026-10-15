@@ -1,0 +1,32 @@
+name: Sync upstream-main mirror
+
+# `upstream-main` is a read-only mirror of 180DC-VIT-CHENNAI/180dc-admin-website
+# main. It is force-updated so it always equals upstream exactly; never commit
+# to it or open PRs from it.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    if: github.repository == '180DC-VIT-CHENNAI/members-portal-reimagined'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Mirror upstream main to upstream-main
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git init -q mirror && cd mirror
+          git fetch --no-tags https://github.com/180DC-VIT-CHENNAI/180dc-admin-website.git main
+          git push --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" FETCH_HEAD:refs/heads/upstream-main
