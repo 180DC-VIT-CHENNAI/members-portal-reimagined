@@ -4,13 +4,20 @@
 
 ### Personal deployment on reimagined
 
-Set the Pages runtime variable `API_ORIGIN` to the HTTPS origin of the Worker in Srijan's personal account (no path, query, fragment or credentials). The Pages proxy and its CSP use this value. If absent, the existing club Worker remains the compatibility default; an invalid configured value returns 503 without forwarding credentials. HTTP is permitted only for loopback development. Configure both preview and production Pages environments explicitly before deploying personal resources.
+The reimagined deployment is **one Cloudflare Worker** (`members-portal-reimagined`) on Srijan's personal account, configured by the repo-root `wrangler.jsonc` and served at `https://180dc.vitcc.org` (Worker custom domain on the `vitcc.org` zone; `workers.dev` and preview URLs are disabled).
+
+- The frontend build (`apps/frontend/dist`) is uploaded as Workers static assets. Asset requests, including SPA navigations (`not_found_handling = single-page-application` plus the `assets_navigation_prefers_asset_serving` flag), are served without invoking the Worker and are free/unbilled.
+- Only `/api/*` runs the Worker (`run_worker_first = ["/api/*"]`). Non-navigation requests for missing files also reach the Worker and return its 404.
+- Static-asset security headers (CSP, HSTS, frame/referrer policies) live in `apps/frontend/public/_headers`; `/api/*` responses get theirs from the Worker middleware. The API is same-origin, so no proxy is involved and the frontend calls relative `/api/...` URLs.
+- Bindings: D1 `members-portal-reimagined-db` (`DB`) and `members-portal-reimagined-newsletter` (`NEWSLETTER_DB`); R2 `members-portal-reimagined-{club-files,blog-images,case-studies,gallery}`. No KV and no Queue. The email cron is disabled until mail secrets are set (uncomment `triggers` in `wrangler.jsonc`).
+- CI: Workers Builds on `members-portal-reimagined` builds from the repo root on pushes to `main` with `pnpm run build` then `npx wrangler deploy` (Wrangler v4 is required for `run_worker_first` route arrays).
+- Secrets (`CLERK_SECRET_KEY`, mail credentials, AI keys) are set on the Worker, never in `wrangler.jsonc`. The frontend needs the build-time variable `VITE_CLERK_PUBLISHABLE_KEY` set in the Workers Builds build environment.
+
+The Pages proxy variable `API_ORIGIN` (legacy `API_PROXY_BASE`) only applies to the club Pages deployment.
 
 Set the Worker runtime variable `ALLOWED_WEB_ORIGINS` to a comma-separated list of exact HTTPS web origins (no trailing slash or wildcard). Both CORS and CSRF checks accept these alongside existing origins; malformed lists fail closed for non-local browser requests. This adds no resource permissions and does not authenticate users. Verify a permitted POST and an unrelated origin's rejection before release.
 
-These variables do not provision resources. Personal deployment must use separate D1/R2/KV resource bindings rather than the club identifiers in the existing Wrangler config. The active roadmap is `docs/execution/unified-platform-plan.md`.
-
-Use `apps/admin-api/wrangler.personal.example.toml` as the resource checklist. Copy it to the ignored `wrangler.personal.toml`, replace every placeholder with personal-account values, and verify the selected account before provisioning or deployment. It excludes the club domain route and the unused Queue binding; email cron is opt-in after sender verification. Run `pnpm wrangler deploy --dry-run --config wrangler.personal.toml` before any personal release. This configuration is not yet a verified personal production deployment.
+The personal deployment never uses the club identifiers in `apps/admin-api/wrangler.toml`. Run `pnpm run build && pnpm exec wrangler deploy --dry-run` at the repo root before any personal release. The active roadmap is `docs/execution/unified-platform-plan.md`.
 
 - **Local development:** `wrangler dev` for the worker, `pnpm dev` for the Vite frontend.
 - **Production:** Cloudflare Pages for the frontend, Cloudflare Worker for `admin-api`.

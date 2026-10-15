@@ -4,6 +4,8 @@
 
 On `reimagined`, Pages supports an optional runtime `API_ORIGIN` for personal-account Worker routing and matching CSP connection origins. Absent configuration retains the existing Worker origin. Invalid values fail closed. API redirects are not followed by the proxy. The backend accepts explicit additional HTTPS browser origins via `ALLOWED_WEB_ORIGINS` for both CORS and CSRF. Infrastructure bindings still require personal deployment configuration.
 
+The reimagined personal deployment does not use Pages: one Worker (`members-portal-reimagined`, repo-root `wrangler.jsonc`, `https://180dc.vitcc.org`) serves `apps/frontend/dist` as static assets (free, never invokes the Worker, headers from `_headers`) and runs `apps/admin-api` only for `/api/*`. It has its own D1 databases and R2 buckets, and no KV or Queue binding. The diagram below describes the club deployment.
+
 The platform is a Cloudflare-native monorepo with a single-page React frontend and a single Hono Worker backend.
 
 ```text

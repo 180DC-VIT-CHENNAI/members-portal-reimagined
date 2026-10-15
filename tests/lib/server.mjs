@@ -33,7 +33,7 @@ export async function startServer({ mode, recipient, log = false, production = f
   };
   if (recipient) vars.EMAIL_TEST_RECIPIENT = recipient;
   const args = [
-    "wrangler", "dev", "--local", "--test-scheduled",
+    "wrangler", "dev", "-c", "wrangler.toml", "--local", "--test-scheduled",
     "--port", String(port), "--persist-to", stateDir,
   ];
   for (const [k, v] of Object.entries(vars)) args.push("--var", `${k}:${v}`);
@@ -94,7 +94,7 @@ function stopProcess(child) {
 export async function d1(stateDir, database, sql) {
   const { stdout } = await promisify(execFile)(
     "pnpm",
-    ["wrangler", "d1", "execute", database, "--local", "--persist-to", stateDir, "--json", "--command", sql],
+    ["wrangler", "d1", "execute", database, "-c", "wrangler.toml", "--local", "--persist-to", stateDir, "--json", "--command", sql],
     { cwd: ADMIN_API_DIR, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
   );
   return JSON.parse(stdout.slice(stdout.indexOf("["))).flatMap((r) => r.results || []);

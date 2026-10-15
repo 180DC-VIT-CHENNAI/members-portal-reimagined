@@ -14,7 +14,7 @@
     "generate:completed-projects": "node scripts/generate-completed-projects.mjs",
     "build": "pnpm --filter frontend run build",
     "build:frontend": "pnpm --filter frontend run build",
-    "deploy:backend": "pnpm --filter admin-api exec wrangler deploy",
+    "deploy:backend": "pnpm --filter admin-api exec wrangler deploy -c wrangler.toml",
     "deploy:frontend": "pnpm --filter frontend run build && pnpm --filter frontend exec wrangler pages deploy dist --project-name 180dc-admin-frontend",
     "deploy:all": "pnpm run deploy:backend && pnpm run deploy:frontend",
     "test:clerk-identity": "node --test apps/admin-api/clerk-identity.test.mjs",
@@ -26,6 +26,6 @@
   },
   "devDependencies": {
     "turbo": "latest",
-    "wrangler": "^3.114.17"
+    "wrangler": "^4.0.0"
   }
 }
