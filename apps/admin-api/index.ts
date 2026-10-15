@@ -4,6 +4,7 @@ import { taskSchedule } from './task-scheduling';
 import { Hono } from "hono";
 import { isSharedFileCategory, sharedFileObjects, sharedFileKeyById, downloadFileHeaders } from "./club-file-policy";
 import { consumeRateLimit } from "./rate-limit";
+import { withStorageFailover } from "./storage-failover";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import { verifyToken } from "@clerk/backend";
@@ -30,6 +31,12 @@ type Bindings = {
   EMAIL_TEST_RECIPIENT?: string;
   NEWSLETTER_SITE_URL?: string;
   ALLOWED_WEB_ORIGINS?: string;
+  B2_S3_ENDPOINT?: string;
+  B2_BUCKET?: string;
+  B2_KEY_ID?: string;
+  B2_APPLICATION_KEY?: string;
+  B2_READ_KEY_ID?: string;
+  B2_READ_APPLICATION_KEY?: string;
 };
 
 type Variables = {
@@ -11949,9 +11956,10 @@ app.delete("/api/dev/outbox", async (c) => {
 
 export default {
   async fetch(request: Request, env: any, ctx: any) {
-    return app.fetch(request, env, ctx);
+    return app.fetch(request, withStorageFailover(env, (p) => ctx.waitUntil(p)), ctx);
   },
-  async scheduled(_event: any, env: any, ctx: any) {
+  async scheduled(_event: any, rawEnv: any, ctx: any) {
+    const env = withStorageFailover(rawEnv, (p) => ctx.waitUntil(p));
     try {
       const schemaOk: any = await env.DB.prepare(
         "SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name='email_queue'",

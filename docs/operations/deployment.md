@@ -11,6 +11,7 @@ The reimagined deployment is **one Cloudflare Worker** (`members-portal-reimagin
 - Static-asset security headers (CSP, HSTS, frame/referrer policies) live in `apps/frontend/public/_headers`; `/api/*` responses get theirs from the Worker middleware. The API is same-origin, so no proxy is involved and the frontend calls relative `/api/...` URLs.
 - Bindings: D1 `members-portal-reimagined-db` (`DB`) and `members-portal-reimagined-newsletter` (`NEWSLETTER_DB`); R2 `members-portal-reimagined-{club-files,blog-images,case-studies,gallery}`. No KV and no Queue. The email cron is disabled until mail secrets are set (uncomment `triggers` in `wrangler.jsonc`).
 - CI: Workers Builds on `members-portal-reimagined` builds from the repo root on pushes to `main` with `pnpm run build` then `npx wrangler deploy` (Wrangler v4 is required for `run_worker_first` route arrays).
+- Backblaze B2 (`180dc-vitc`) is the R2 failover and daily backup target: vars `B2_S3_ENDPOINT`, `B2_BUCKET` in `wrangler.jsonc`, secrets `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_READ_KEY_ID`, `B2_READ_APPLICATION_KEY` on the Worker, and the `Backup to Backblaze B2` GitHub workflow. See [BACKUP_B2.md](BACKUP_B2.md).
 - Secrets (`CLERK_SECRET_KEY`, mail credentials, AI keys) are set on the Worker, never in `wrangler.jsonc`. The frontend needs the build-time variable `VITE_CLERK_PUBLISHABLE_KEY` set in the Workers Builds build environment.
 
 The Pages proxy variable `API_ORIGIN` (legacy `API_PROXY_BASE`) only applies to the club Pages deployment.

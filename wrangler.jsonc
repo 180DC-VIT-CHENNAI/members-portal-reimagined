@@ -36,7 +36,9 @@
   "vars": {
     "ENVIRONMENT": "production",
     "ALLOWED_WEB_ORIGINS": "https://180dc.vitcc.org",
-    "NEWSLETTER_SITE_URL": ""
+    "NEWSLETTER_SITE_URL": "",
+    "B2_S3_ENDPOINT": "https://s3.eu-central-003.backblazeb2.com",
+    "B2_BUCKET": "180dc-vitc"
   },
   // Worker Previews (Workers Builds runs `npx wrangler preview` for every
   // non-main branch). Previews never touch production data. Preview URLs are
@@ -58,5 +60,6 @@
     }
   }
   // Secrets (set in the dashboard or `wrangler secret put`): CLERK_SECRET_KEY,
-  // SPACEMAIL_SMTP_USER, SPACEMAIL_SMTP_PASS, RESEND_API_KEY, GEMINI_API_KEY, GROQ_API_KEY.
+  // SPACEMAIL_SMTP_USER, SPACEMAIL_SMTP_PASS, RESEND_API_KEY, GEMINI_API_KEY, GROQ_API_KEY,
+  // B2_KEY_ID, B2_APPLICATION_KEY, B2_READ_KEY_ID, B2_READ_APPLICATION_KEY (docs/operations/BACKUP_B2.md).
 }
