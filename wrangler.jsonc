@@ -37,6 +37,25 @@
     "ENVIRONMENT": "production",
     "ALLOWED_WEB_ORIGINS": "https://180dc.vitcc.org",
     "NEWSLETTER_SITE_URL": ""
+  },
+  // Worker Previews (Workers Builds runs `npx wrangler preview` for every
+  // non-main branch). Previews never touch production data. Preview URLs are
+  // public, so ENVIRONMENT stays "production" to keep dev-only routes off.
+  "previews": {
+    "d1_databases": [
+      { "binding": "DB", "database_name": "members-portal-reimagined-preview-db", "database_id": "d6d1ec0a-fd57-4194-afba-652e02f13292" },
+      { "binding": "NEWSLETTER_DB", "database_name": "members-portal-reimagined-preview-newsletter", "database_id": "4300430a-2675-4422-8796-e6b7485513b4" }
+    ],
+    "r2_buckets": [
+      { "binding": "CLUB_FILES", "bucket_name": "members-portal-reimagined-preview-club-files" },
+      { "binding": "BLOG_IMAGES", "bucket_name": "members-portal-reimagined-preview-blog-images" },
+      { "binding": "CASE_STUDIES", "bucket_name": "members-portal-reimagined-preview-case-studies" },
+      { "binding": "GALLERY_CDN", "bucket_name": "members-portal-reimagined-preview-gallery" }
+    ],
+    "vars": {
+      "ENVIRONMENT": "production",
+      "NEWSLETTER_SITE_URL": ""
+    }
   }
   // Secrets (set in the dashboard or `wrangler secret put`): CLERK_SECRET_KEY,
   // SPACEMAIL_SMTP_USER, SPACEMAIL_SMTP_PASS, RESEND_API_KEY, GEMINI_API_KEY, GROQ_API_KEY.

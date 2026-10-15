@@ -2786,11 +2786,15 @@ const isDevOrigin = (o: string) => {
   }
 };
 
+// The single-Worker deploy serves the frontend from the same origin as the API,
+// including per-branch Preview URLs whose hostnames are not known in advance.
+const isSameOrigin = (origin: string, c: any) => origin === new URL(c.req.url).origin;
+
 app.use(
   "*",
   cors({
     origin: (origin, c) => {
-      if (!origin || isDevOrigin(origin) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS))
+      if (!origin || isDevOrigin(origin) || isSameOrigin(origin, c) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS))
         return origin;
       return null;
     },
@@ -2804,7 +2808,7 @@ app.use(
 app.use("*", async (c, next) => {
   if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     const origin = c.req.header("Origin");
-    if (origin && !isDevOrigin(origin) && !isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) {
+    if (origin && !isDevOrigin(origin) && !isSameOrigin(origin, c) && !isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) {
       return c.json({ error: "Forbidden origin" }, 403);
     }
   }
@@ -2820,7 +2824,7 @@ const csrfGuard = csrf({
     )
       return true;
     if (!origin) return false;
-    if (isDevOrigin(origin) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) return true;
+    if (isDevOrigin(origin) || isSameOrigin(origin, c) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) return true;
     return false;
   },
 });
