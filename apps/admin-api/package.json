@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@clerk/backend": "^3.5.0",
+    "aws4fetch": "^1.0.20",
     "hono": "^4.13.7",
     "mammoth": "^1.12.1",
     "unpdf": "^1.8.1"
