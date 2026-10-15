@@ -262,6 +262,10 @@ export default function ProjectsSection({ authToken, departments, allUsers, powe
                       projectStatus={p.status}
                       canManageTasks={canManageTasks}
                       isBoard={isBoard}
+                      assignees={Array.from(new Map([
+                        ...availableMembers.filter((u: any) => u.power_level >= 100 || (p.departments || []).some((d: any) => d.id === u.department_id)),
+                        ...(p.roles || []).map((r: any) => ({ id: r.user_id, name: r.user_name })),
+                      ].map((u: any) => [u.id, { id: u.id, name: u.name }])).values())}
                     />
                   </div>
                 </div>

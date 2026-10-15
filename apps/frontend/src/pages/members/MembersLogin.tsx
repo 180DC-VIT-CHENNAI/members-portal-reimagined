@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useClerk } from "@clerk/react";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
+import { createMemberSession } from "../../lib/member-session";
 
 interface MembersLoginProps {
   onLogin: (
@@ -11,6 +12,7 @@ interface MembersLoginProps {
     powerLevel?: number,
     departmentId?: string,
     roleId?: string,
+    expiresAt?: string,
   ) => void;
   oauthLoading?: boolean;
   oauthError?: string | null;
@@ -21,6 +23,7 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
   const clerk = useClerk();
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
@@ -44,23 +47,16 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
   };
 
   const handleTokenLogin = async () => {
-    const t = token;
+    const t = token.trim();
     if (!t) return alert("Enter token");
     setLoading(true);
+    setLoginError("");
     try {
-      const res = await fetch(apiUrl("/api/auth/token-login"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: t }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        onLogin(token, data.email, data.powerLevel, data.departmentId, data.roleId);
-      } else {
-        alert("Login failed: " + (data.error || "unknown"));
-      }
+      const data = await createMemberSession(t);
+      setToken("");
+      onLogin(data.token, data.email, data.powerLevel, data.departmentId, data.roleId, data.expiresAt);
     } catch (e) {
-      alert("Login error: " + (e instanceof Error ? e.message : String(e)));
+      setLoginError(e instanceof Error ? e.message : "Unable to sign in");
     } finally {
       setLoading(false);
     }
@@ -142,6 +138,7 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            {loginError && <p role="alert" style={{ color: "var(--status-error)" }}>{loginError}</p>}
             <div>
               <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "6px" }}>Admin Token</label>
               <input
@@ -150,6 +147,8 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Enter your private token"
+                type="password"
+                autoComplete="off"
               />
             </div>
 

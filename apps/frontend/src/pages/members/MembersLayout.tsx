@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth, useClerk } from "@clerk/react";
 import MembersLogin from "./MembersLogin";
+import TodaySection from "./TodaySection";
 import DepartmentPanel from "./DepartmentPanel";
 import ProfileSection from "./ProfileSection";
 import ClubFilesPanel from "./ClubFilesPanel";
@@ -21,6 +22,7 @@ import TransfersSection from "./TransfersSection";
 import AdminConsole from "./AdminConsole";
 import AdminDataLoader from "./AdminDataLoader";
 import { apiUrl } from "../../lib/api";
+import { createMemberSession } from "../../lib/member-session";
 import { useTheme } from "../../context/ThemeContext";
 import { QUOTES } from "../../data/quotes";
 import { stripHtmlTags } from "../../lib/sanitize";
@@ -270,11 +272,7 @@ export default function MembersLayout() {
   useEffect(() => {
     const expiresAt = localStorage.getItem("authExpiresAt");
     if (expiresAt && Date.now() > Number(expiresAt)) {
-      localStorage.removeItem("authExpiresAt");
-      sessionStorage.clear();
-      sessionStorage.setItem("loggedOut", "true");
-      setAuthToken(null);
-      clerk.signOut().catch(() => {});
+      clearMemberSession();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -315,32 +313,77 @@ export default function MembersLayout() {
     serverPowerLevel?: number,
     serverDepartmentId?: string,
     serverRoleId?: string,
+    expiresAt?: string,
   ) => {
+    setDashboardReady(false);
     sessionStorage.removeItem("loggedOut");
-    localStorage.setItem("authExpiresAt", String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    localStorage.setItem("authExpiresAt", String(expiresAt ? Date.parse(expiresAt) : Date.now() + 7 * 24 * 60 * 60 * 1000));
     sessionStorage.setItem("authToken", token);
     sessionStorage.setItem("authEmail", userEmail);
     sessionStorage.setItem("authPowerLevel", String(serverPowerLevel ?? 10));
     if (serverDepartmentId) sessionStorage.setItem("authDepartmentId", serverDepartmentId);
+    else sessionStorage.removeItem("authDepartmentId");
     if (serverRoleId) sessionStorage.setItem("authRoleId", serverRoleId);
     setAuthToken(token);
     setEmail(userEmail);
     setPowerLevel(serverPowerLevel ?? 10);
-    if (serverDepartmentId) setDepartmentId(serverDepartmentId);
+    setDepartmentId(serverDepartmentId || null);
     if (serverRoleId) setRoleId(serverRoleId);
   };
 
+  function clearMemberSession() {
+    sessionStorage.clear();
+    sessionStorage.setItem("loggedOut", "true");
+    localStorage.removeItem("authExpiresAt");
+    setAuthToken(null);
+    setEmail(null);
+    setPowerLevel(0);
+    setRoleId(null);
+    setDepartmentId(null);
+    setActiveDeptId(null);
+    setRecentToken(null);
+    setShowRecentToken(false);
+    setTokenEmail("");
+    setTokenName("");
+    setBoardEmail("");
+    setBoardName("");
+    setMemberEmail("");
+    setMemberName("");
+    setAnnTitle("");
+    setAnnContent("");
+    setPendingRequests([]);
+    setAdminTokens([]);
+    setRoleTransfers([]);
+    setAllUsers([]);
+    setAllRoles([]);
+    setAnnouncements([]);
+    setRecentMeets([]);
+    setDashboardReady(false);
+    setActivePanel("dashboard");
+    clerk.signOut().catch(() => {});
+  }
+
   useEffect(() => {
+    const controller = new AbortController();
     async function loadDashboard() {
       if (!authToken) return;
       try {
         const res = await fetch(apiUrl("/api/dashboard"), {
           headers: { Authorization: `Bearer ${authToken}` },
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) return;
+        if (res.status === 401) {
+          clearMemberSession();
+          return;
+        }
         const data = await res.json();
+        if (controller.signal.aborted) return;
         if (data.success) {
           setEmail(data.user?.email || email);
-          if (data.user?.departmentId) setDepartmentId(data.user.departmentId);
+          setDepartmentId(data.user?.departmentId || null);
+          if (data.user?.departmentId) sessionStorage.setItem("authDepartmentId", data.user.departmentId);
+          else sessionStorage.removeItem("authDepartmentId");
           if (data.user?.powerLevel != null) {
             setPowerLevel(data.user.powerLevel);
             sessionStorage.setItem("authPowerLevel", String(data.user.powerLevel));
@@ -362,23 +405,29 @@ export default function MembersLayout() {
           setDashboardReady(true);
         }
       } catch {
-        setDashboardReady(true);
+        if (!controller.signal.aborted) setDashboardReady(true);
       }
     }
     loadDashboard();
+    const refreshOnVisible = () => { if (document.visibilityState === "visible") loadDashboard(); };
+    const timer = setInterval(refreshOnVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshOnVisible);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshOnVisible);
+    };
   }, [authToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clerk callback handler — runs after OAuth redirect
   const linkingFlag = useRef(false);
   useEffect(() => {
-    console.log("[clerk-cb] effect fired", { clerkLoaded, clerkUserId: clerkUserId ?? null, authToken: authToken ? "yes" : "no" });
-    if (!clerkLoaded) { console.log("[clerk-cb] clerk not loaded yet, waiting…"); return; }
-    if (!clerkUserId) { console.log("[clerk-cb] no clerkUserId — Clerk session absent"); return; }
+    if (!clerkLoaded) return;
+    if (!clerkUserId) return;
 
     const pending = sessionStorage.getItem("clnk");
 
     async function handleClerkCallback() {
-      console.log("[clerk-cb] handleClerkCallback start", { loggedOut: sessionStorage.getItem("loggedOut"), authToken: authToken ? "yes" : "no", pending });
 
       if (sessionStorage.getItem("loggedOut") && !authToken) {
         sessionStorage.removeItem("loggedOut");
@@ -387,74 +436,32 @@ export default function MembersLayout() {
       // Login flow: Clerk session exists but no token session
       if (!authToken) {
         setOauthLoading(true);
-        console.log("[clerk-cb] login flow — no authToken, fetching Clerk JWT");
         try {
           // Retry getToken() a few times — Clerk may not have the JWT ready after OAuth redirect
           let clerkJwt: string | null = null;
           for (let attempt = 0; attempt < 5; attempt++) {
             clerkJwt = await getToken();
-            console.log("[clerk-cb] getToken attempt", attempt + 1, "→", clerkJwt ? "got JWT (" + clerkJwt.length + " chars)" : "null");
             if (clerkJwt) break;
             await new Promise(r => setTimeout(r, 500));
           }
           if (!clerkJwt) {
-            console.log("[clerk-cb] getToken returned null after 5 attempts");
             setOauthLoading(false);
             setOauthStatusMsg("Google sign-in is taking longer than expected. Try again.");
             return;
           }
-          // clerk.user may not be loaded immediately after OAuth redirect — retry
-          let clerkUserEmail: string | null = null;
-          for (let i = 0; i < 5; i++) {
-            clerkUserEmail = clerk.user?.primaryEmailAddress?.emailAddress || null;
-            console.log("[clerk-cb] clerk.user email attempt", i + 1, "→", clerkUserEmail);
-            if (clerkUserEmail) break;
-            await new Promise(r => setTimeout(r, 500));
-          }
-          console.log("[clerk-cb] calling /api/auth/clerk-login", { email: clerkUserEmail, clerkUserId });
-
-          // The session JWT is only valid ~60s and the worker can be slow —
-          // guard with a hard timeout and retry once with a fresh JWT.
-          const runLogin = async (jwt: string, signal: AbortSignal) => {
-            const r = await fetch(apiUrl("/api/auth/clerk-login"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              signal,
-              body: JSON.stringify({ clerkToken: jwt, email: clerkUserEmail }),
-            });
-            return [r, await r.json().catch(() => ({}))] as const;
-          };
-
-          let res: Response | null = null;
-          let data: any = null;
-          for (let attempt = 0; attempt < 2 && !data?.success; attempt++) {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 20000);
-            try {
-              let jwt: string | null = clerkJwt;
-              if (attempt === 1) {
-                console.log("[clerk-cb] retrying with a fresh Clerk JWT");
-                jwt = await getToken();
-              }
-              if (!jwt) break;
-              [res, data] = await runLogin(jwt, controller.signal);
-              if (res.status === 429) break;
-            } catch {
-              data = null; // network error or timeout — loop retries with fresh JWT
-            } finally {
-              clearTimeout(timeoutId);
-            }
-          }
-          console.log("[clerk-cb] clerk-login response status:", res?.status, "data:", JSON.stringify(data));
+          const res = await fetch(apiUrl("/api/auth/clerk-login"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clerkToken: clerkJwt }),
+          });
+          const data = await res.json();
           setOauthLoading(false);
-          if (data?.success) {
-            console.log("[clerk-cb] login success — calling handleLogin", { token: data.token?.slice(0, 8) + "…", email: data.email, power: data.powerLevel });
-            handleLogin(data.token, data.email, data.powerLevel, data.departmentId, data.roleId);
+          if (data.success) {
+            const session = await createMemberSession(data.token);
+            handleLogin(session.token, session.email, session.powerLevel, session.departmentId, session.roleId, session.expiresAt);
             setOauthStatusMsg(null);
           } else {
-            const msg = data?.error || (res?.status === 429 ? "Too many login attempts. Try again later." : "Google sign-in failed. Try again.");
-            console.log("[clerk-cb] login failed:", msg);
-            setOauthStatusMsg(msg);
+            setOauthStatusMsg(data.error || "Google login failed");
           }
           return;
         } catch (err) {
@@ -469,23 +476,18 @@ export default function MembersLayout() {
       if (authToken && pending === "link" && !linkingFlag.current) {
         linkingFlag.current = true;
         sessionStorage.removeItem("clnk");
-        console.log("[clerk-cb] linking flow — calling /api/auth/link-clerk");
         try {
-          const clerkJwt = await getToken();
-          if (!clerkJwt) {
-            setOauthStatusMsg("Google sign-in is taking longer than expected. Try again.");
-            return;
-          }
+          const clerkToken = await getToken();
+          if (!clerkToken) throw new Error("Google session is not ready");
           const res = await fetch(apiUrl("/api/auth/link-clerk"), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${authToken}`,
             },
-            body: JSON.stringify({ clerkToken: clerkJwt }),
+            body: JSON.stringify({ clerkToken }),
           });
           const data = await res.json();
-          console.log("[clerk-cb] link-clerk response:", JSON.stringify(data));
           if (data.success) {
             setOauthEnabled(true);
             setOauthStatusMsg("Google login enabled! You can now sign in with Google.");
@@ -737,6 +739,7 @@ export default function MembersLayout() {
           {activePanel === "dashboard" && (
             <>
               <div className="dashboard-grid">
+                <TodaySection authToken={authToken!} onOpen={setActivePanel} />
                 {[
                   { icon: "account_tree", label: "Active Projects", value: stats.projectsCount, bg: "rgba(141, 198, 63, 0.15)", color: "var(--primary-green)" },
                   { icon: "groups", label: "Total Members", value: stats.membersCount, bg: "rgba(59, 130, 246, 0.15)", color: "var(--info, #3b82f6)" },
@@ -936,6 +939,8 @@ export default function MembersLayout() {
               oauthEnabled={oauthEnabled}
               statusMsg={oauthStatusMsg}
               onOAuthStatusChange={setOauthStatusMsg}
+              onCredentialChange={(token, expiresAt) => handleLogin(token, email || "", powerLevel, departmentId || undefined, roleId || undefined, expiresAt)}
+              onSignedOut={clearMemberSession}
             />
           )}
 
@@ -1263,10 +1268,8 @@ export default function MembersLayout() {
               <button className="btn outline" style={{ flex: 1, justifyContent: "center", padding: "0.75rem" }} onClick={() => setShowLogoutConfirm(false)}>Cancel</button>
               <button className="btn" style={{ flex: 1, justifyContent: "center", padding: "0.75rem", background: "var(--status-error)", border: "2px solid var(--text-primary)", boxShadow: "3px 3px 0 var(--text-primary)" }} onClick={async () => {
                 setShowLogoutConfirm(false);
-                sessionStorage.clear();
-                sessionStorage.setItem("loggedOut", "true");
-                setAuthToken(null);
-                try { await clerk.signOut(); } catch {}
+                try { await fetch(apiUrl("/api/auth/logout"), { method: "POST", headers: { Authorization: `Bearer ${authToken}` }, signal: AbortSignal.timeout(10_000) }); } catch {}
+                clearMemberSession();
               }}>Sign Out</button>
             </div>
           </div>

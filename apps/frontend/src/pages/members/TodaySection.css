@@ -1,0 +1,5 @@
+.today-queue h3 { margin: 22px 0 10px; }
+.today-queue ul { padding-left: 20px; }
+.today-queue .btn.outline { color: var(--text-primary); }
+.today-queue .btn.outline:hover { color: var(--text-primary); background: var(--surface-green-tint); }
+.today-queue [role="alert"] { color: var(--status-error, #b42318); }
