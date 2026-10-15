@@ -9,7 +9,7 @@ Applies to the personal single-Worker deployment (`members-portal-reimagined`, r
 | Live mirror | `apps/admin-api/storage-failover.ts` (wraps `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`, `GALLERY_CDN`) | Every R2 write is copied to B2 in the background (`ctx.waitUntil`); every R2 delete is mirrored. |
 | Write failover | same | If an R2 write throws, the object is written to B2 instead, so uploads during an R2 outage are not lost. |
 | Read failover | same | If an R2 read/head/list throws, B2 serves it. If R2 has no object, B2 is checked too, so outage-time uploads stay readable after R2 recovers. |
-| Daily full copy | `.github/workflows/backup.yml` (20:30 UTC = 02:00 IST, also manual) | `rclone copy` of all four R2 buckets to B2. Never `sync`, so B2-only objects are kept. |
+| Daily full copy | `.github/workflows/backup.yml` (20:30 UTC = 02:00 IST, also manual) | `rclone copy` of all four R2 buckets to B2 using rclone's native `b2` backend (its S3-compatible mode misreads B2 prefixes as files). Never `sync`, so B2-only objects are kept. |
 | Daily D1 export | same workflow | `wrangler d1 export --remote` of `members-portal-reimagined-db` and `members-portal-reimagined-newsletter`, gzipped. |
 
 Deletes still require R2: a B2-only delete would let the R2 copy reappear later.

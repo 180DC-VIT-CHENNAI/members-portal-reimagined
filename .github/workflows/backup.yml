@@ -27,12 +27,9 @@ jobs:
       RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       RCLONE_CONFIG_R2_ENDPOINT: https://ee4c08f37c3a62fedc87fbd1b8b96ff4.r2.cloudflarestorage.com
       RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
-      RCLONE_CONFIG_B2_TYPE: s3
-      RCLONE_CONFIG_B2_PROVIDER: Other
-      RCLONE_CONFIG_B2_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
-      RCLONE_CONFIG_B2_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
-      RCLONE_CONFIG_B2_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
-      RCLONE_CONFIG_B2_NO_CHECK_BUCKET: "true"
+      RCLONE_CONFIG_B2_TYPE: b2
+      RCLONE_CONFIG_B2_ACCOUNT: ${{ secrets.B2_KEY_ID }}
+      RCLONE_CONFIG_B2_KEY: ${{ secrets.B2_APPLICATION_KEY }}
     steps:
       - name: Install rclone
         run: curl -fsSL https://rclone.org/install.sh | sudo bash
