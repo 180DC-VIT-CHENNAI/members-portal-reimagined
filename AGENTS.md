@@ -2,6 +2,8 @@
 
 This file is the primary entry point for any coding agent working on the `180dc-admin-website` repository.
 
+> **You are on the `reimagined` branch.** This branch is reserved for the product problem statement (`180DC_Unified_Platform_Problem_Statement.md`), edited by junior consultants. On this branch, edit only that file, follow `CONTRIBUTING.md` for writing rules, and open PRs into `reimagined`. Do not make code changes here: code work branches from and targets `main`. The code on this branch is a historical snapshot and may be behind `main`.
+
 ## Project classification
 
 - **Project mode:** BROWNFIELD
@@ -49,10 +51,26 @@ Index of all new docs: `docs/INDEX.md`.
 4. **All schema changes must be backward-compatible and idempotent.** Add new columns/tables with `IF NOT EXISTS` or `ALTER TABLE ... ADD COLUMN` wrapped in `try/catch`. The production database has live data.
 5. **Auth is custom token-based, not Clerk, for the members portal.** The frontend uses Clerk for Google OAuth, but the backend validates a `Bearer` token against the `admin_tokens` table.
 6. **Do not expose secrets in documentation, logs, or code.** Environment variables and Wrangler bindings must be referenced by name only.
-7. **Rate limits and email quotas are enforced in D1.** Respect the `rate_limits` table, the SMTP hourly cap in `email_hour_count` (500 messages/hour), and the Resend fallback cap in `resend_daily_count` (100/day).
+7. **Rate limits and email quotas are enforced in D1.** Respect the `rate_limits` table, and the SMTP hourly cap in `email_hour_count` (500 messages/hour; the queue uses at most 90%). Spacemail SMTP is the only email provider — Resend was removed; do not reintroduce a second provider without a decision.
 8. **Meet links are hidden 24 hours after the scheduled time.** This is implemented in the SQL that returns meet records.
-9. **The `QUEUE` binding in `admin-api` is configured but not actually used.** Bulk email (newsletters, events, meet notifications) is enqueued in the `email_queue` table and drained by the `* * * * *` cron trigger at up to 8 messages/minute (≤50 BCC recipients each). `pending_emails` is legacy and still drainable via `POST /api/meets/process-queue`. The `job-processor` consumer is a placeholder.
+9. **The `QUEUE` binding in `admin-api` is configured but not actually used.** Bulk email (newsletters, events, meet notifications) is enqueued in the `email_queue` table and drained by the `* * * * *` cron trigger with adaptive pacing (up to 15 messages/minute, ≤500/hour); every campaign is one message per recipient, 1.5 s apart (newsletter and event mail personalized per subscriber); no campaign uses BCC batches. `pending_emails` is legacy and still drainable via `POST /api/meets/process-queue`. The `job-processor` consumer is a placeholder.
 10. **Frontend API calls are proxied through the Cloudflare Pages `_middleware.ts` to `admin-api.technical-vitc.workers.dev`.** Do not assume the worker is reached at `180dcvitc.org/api/*` from the Pages site, even though the worker route pattern says that.
+
+## Git workflow: pull requests and releases
+
+Remotes:
+
+- `origin` = `https://github.com/180DC-VIT-CHENNAI/members-portal-reimagined` (development repository)
+- `upstream` = `https://github.com/180DC-VIT-CHENNAI/180dc-admin-website` (production repository)
+- Branch `upstream-main` on `origin` is a read-only mirror of `upstream` `main`, force-synced hourly by `.github/workflows/sync-upstream-main.yml`. Use it to compare or cherry-pick; never commit to it.
+
+Rules:
+
+1. **Every change goes through a pull request.** Never push directly to `main` (or any default/protected branch) on either remote. Work on a feature branch and open a PR.
+2. **PRs target `origin` `main`.** All feature, fix, and docs PRs are opened against `main` on `origin` (`members-portal-reimagined`). Do not open feature PRs against `upstream`. The only exception: junior consultants editing `180DC_Unified_Platform_Problem_Statement.md` open their PRs against the `reimagined` branch, which is reserved for that document and receives no code work.
+3. **Release on `origin` before promoting.** Once the work on `origin` is complete and tested, cut a versioned release on `origin` (a semver git tag such as `v1.4.0` plus a GitHub release with notes).
+4. **Only versioned releases go to `upstream`.** After the release is published on `origin`, open a single PR from that release to `upstream` (`180dc-admin-website`). The PR title must include the version (e.g. `Release v1.4.0`) and the body must link the `origin` release and summarize its changes.
+5. **Never open a PR to `upstream` with untested or unreleased work.** If something is not yet in a tagged `origin` release, it does not go upstream.
 
 ## Repository boundaries
 
@@ -130,11 +148,11 @@ pnpm run generate:completed-projects  # runs scripts/generate-completed-projects
 1. Run `pnpm install` if dependencies changed.
 2. Run `pnpm turbo run build`.
 3. For admin-api, run `pnpm tsc --noEmit` inside `apps/admin-api`.
-4. Run the local worker and exercise the changed endpoints with a valid token.
-5. If a schema change was made, start with an empty local D1 and confirm `ensureDbReady` creates the schema and `runMigrations` add columns without errors.
+4. Run `pnpm test`, the admin-api end-to-end suite. It starts the worker on an empty local D1, so it also checks that `ensureDbReady` creates the schema and `runMigrations` run cleanly.
+5. For changed endpoints without a test yet, add one under `tests/api/`.
 6. For frontend changes, run `pnpm --filter frontend run build`.
 
-There are no automated tests today. Any new feature must be verified manually or by adding a test under `docs/quality/testing-strategy.md`.
+Run the end-to-end API suite after every backend change: `pnpm test` (emails are captured, none sent), or `TEST_EMAIL=you@example.com pnpm test:mail` to also receive one of each email. Every new or changed route needs a test in `tests/api/` (see `tests/README.md`). A test that exposes a bug you are not fixing goes in `tests/lib/known-issues.mjs` as a `todo`. There are no frontend tests yet.
 
 ## What to update after different classes of changes
 
