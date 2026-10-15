@@ -2,6 +2,8 @@
 
 This plan describes the target state and a safe path to reach it. It is not a fixed schedule; it is a dependency map for agents and maintainers.
 
+For the `reimagined` branch, the active sponsor-authorised roadmap is [Unified platform delivery plan](unified-platform-plan.md). It targets the complete web/Android product on Srijan's personal Cloudflare account and evaluates PlanetScale. The extraction roadmap below is historical guidance, not a prerequisite to build every placeholder service.
+
 ## Target state
 
 The platform should have:
@@ -93,3 +95,9 @@ Before any large restructuring, all existing code and data must be preserved:
 - `main` remains deployable at all times.
 - Feature work for each phase should happen on a dedicated branch and be merged via pull request.
 - Documentation updates (like this tree) live on `docs/agent-first` and merge first.
+
+Unified task scheduling increment: separate calendar due dates and priorities now support web create/edit and shared Today reads, with backward-compatible runtime migrations and transactional schedule audit. Rollout requires personal-account staging acceptance; reassignment, boards, blockers and collaboration remain in the unified plan.
+
+Task owner rollout adds the combined details endpoint and changes assignment validation to active project accounts. No data migration is required. Stage lead reassignment, unassignment and stale-edit recovery with the personal account before release; preserve the schedule-only and status routes.
+
+Task timeline increment: stage scoped paginated history, actor/field projection, same-second ordering and transactionally recorded creation/bulk completion. No legacy event reconstruction is attempted. Keep native history, comments, chat and notifications in the remaining collaboration scope.

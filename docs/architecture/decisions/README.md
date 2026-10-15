@@ -11,6 +11,10 @@ This directory records decisions that future agents should understand before cha
 | ADR-003 | `architecture/TEAM_INSTANCES_PLAN.md` | IMPLEMENTED | Team instances feature for events/case competitions with teams, member limits, and minimums. Implemented in `apps/admin-api/index.ts` and `TeamInstancesSection.tsx`. |
 | ADR-004 | `docs/architecture/decisions/ADR-004-NEWSLETTER_SEPARATE_SITE.md` | DECIDED (PENDING IMPLEMENTATION) | Host the Ken-style newsletter viewer/archive in a separate repository and Cloudflare Pages site at `newsletter.180dcvitc.org`, reading public `admin-api` endpoints. Supersedes the SES-only plan for the newsletter surface. |
 
+| ADR-005 | `005-personal-database-evaluation.md` | DECIDED FOR DEVELOPMENT; PRODUCTION PROVISIONAL | Retain two D1 databases while developing; evaluate PlanetScale Postgres/MySQL with correctness, capacity, cost and migration gates before any cutover. |
+
+| ADR-006 | `006-android-client-foundation.md` | DECIDED FOR INITIAL CLIENT | Expo Android member client on shared custom sessions/APIs; native storage, device acceptance and complete capability parity remain release work. |
+
 ## How to add a new ADR
 
 Create a new file under `docs/architecture/decisions/` named `NNN-short-title.md` with:

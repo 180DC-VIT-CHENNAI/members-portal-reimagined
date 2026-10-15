@@ -33,7 +33,7 @@ describe("signup requests", () => {
     const req = await submit(email);
     const mark = await outboxMark();
     const json = expectOk(await post(`/api/signup-requests/${req.id}/approve`, {}, B));
-    const login = expectOk(await post("/api/auth/token-login", { token: json.token }));
+    const login = expectOk(await post("/api/auth/session", { token: json.token }));
     assert.equal(login.email, email);
     assert.equal(login.departmentId, "marketing");
     const [mail] = await waitForMail(email, mark);

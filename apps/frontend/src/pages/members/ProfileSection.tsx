@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useClerk } from "@clerk/react";
 import { apiUrl } from "../../lib/api";
+import { createMemberSession } from "../../lib/member-session";
+import SessionsSection from "./SessionsSection";
 
 interface Props {
   authToken: string;
@@ -11,14 +13,18 @@ interface Props {
   oauthEnabled: boolean;
   statusMsg: string | null;
   onOAuthStatusChange: (msg: string | null) => void;
+  onCredentialChange: (token: string, expiresAt: string) => void;
+  onSignedOut: () => void;
 }
 
-export default function ProfileSection({ authToken, email, powerLevel, departmentId, deptName, oauthEnabled, statusMsg, onOAuthStatusChange }: Props) {
+export default function ProfileSection({ authToken, email, powerLevel, departmentId, deptName, oauthEnabled, statusMsg, onOAuthStatusChange, onCredentialChange, onSignedOut }: Props) {
   const clerk = useClerk();
   const [showToken, setShowToken] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [currentToken, setCurrentToken] = useState(authToken);
+  const isDeviceSession = currentToken.startsWith('180dc_session_');
+  useEffect(() => { setCurrentToken(authToken); setShowToken(false); }, [authToken]);
   const [rotateError, setRotateError] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
@@ -60,9 +66,10 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
         setRotateError(data.error || "Failed to rotate token.");
         return;
       }
-      setCurrentToken(data.token);
-      sessionStorage.setItem("authToken", data.token);
-      setShowToken(true);
+      const session = await createMemberSession(data.token);
+      setCurrentToken(session.token);
+      onCredentialChange(session.token, session.expiresAt);
+      setShowToken(false);
     } catch {
       setRotateError("Network error. Please try again.");
     } finally {
@@ -232,11 +239,11 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
         <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>key</span>
-            <h3 style={{ margin: 0 }}>API Access Token</h3>
+            <h3 style={{ margin: 0 }}>Account access</h3>
           </div>
           
           <div style={{ display: "flex", gap: "1rem", alignItems: "stretch", flexWrap: "wrap" }}>
-            <div style={{ 
+            {!isDeviceSession && <div style={{
               flex: 1, minWidth: 280, padding: "1rem 1.25rem", 
               background: "var(--surface)", border: "1px solid var(--border-light)", 
               borderRadius: 12, fontFamily: "monospace", fontSize: 14,
@@ -251,13 +258,13 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{showToken ? "visibility_off" : "visibility"}</span>
               </button>
-            </div>
+            </div>}
             
             <div style={{ display: "flex", gap: "0.75rem" }}>
-              <button className="btn outline" onClick={handleCopy} style={{ gap: 8, padding: "0 1.5rem" }}>
+              {!isDeviceSession && <button className="btn outline" onClick={handleCopy} style={{ gap: 8, padding: "0 1.5rem" }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{tokenCopied ? "check" : "content_copy"}</span>
                 {tokenCopied ? "Copied" : "Copy"}
-              </button>
+              </button>}
               
               <button className="btn" onClick={handleRotate} disabled={rotating} style={{ gap: 8, padding: "0 1.5rem" }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{rotating ? "sync" : "refresh"}</span>
@@ -285,6 +292,7 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
             Your token is like a password. Do not share it with anyone. Rotating your token will immediately invalidate the previous one and log you out of other sessions using it.
           </div>
         </div>
+        <SessionsSection authToken={authToken} onSignedOut={onSignedOut} />
       </div>
     </div>
   );

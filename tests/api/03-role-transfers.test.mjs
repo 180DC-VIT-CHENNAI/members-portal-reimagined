@@ -16,7 +16,7 @@ async function directorAndSuccessor() {
   return { from, to, transfer };
 }
 
-const roleOf = async (m) => expectOk(await post("/api/auth/token-login", { token: m.token })).roleId;
+const roleOf = async (m) => expectOk(await post("/api/auth/session", { token: m.token })).roleId;
 
 describe("board-approved transfers", () => {
   test("approving moves the role and drops the giver to General Member", async () => {

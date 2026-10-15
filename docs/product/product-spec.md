@@ -157,3 +157,24 @@ Directors and board can create "instances" (events, case competitions, applicati
 - Rebuilding the frontend on Next.js or moving to Cloudflare Access (per `docs/architecture/backend-architecture-cloudflare.txt`, which is historical).
 - Replacing the custom token auth with Clerk for the members portal.
 - Implementing real-time chat or AI chatbot without an explicit new plan.
+# Reimagined incremental capabilities
+
+Members can complete and reopen their own assigned global-project tasks through the members portal. The server supplies task update permissions and enforces them independently. Task load/update failures are visible and refreshable. Project directories and dashboard counts use the same board/department/explicit-role access policy as direct task reads. The remaining unified product roadmap is in `docs/execution/unified-platform-plan.md`.
+
+Member token sign-in now works in production and creates a separate seven-day session. Profile lists that member's current sessions, their expiry and a sign-out action. Signing out a selected session leaves other devices signed in; revoking/rotating the account token invalidates its sessions. Device credentials are hidden in the ordinary profile. Web Google sign-in exchanges the existing provider login result into a device session; live provider and browser acceptance testing remains required.
+
+Google sign-in now requires a member's explicit Profile link backed by a verified provider session. First-time users sign in with their member token and link Google; entering a member's email cannot select that identity. Unlink disables subsequent Google login. Member access revocation/expiry also blocks Google login. Live redirect/browser acceptance remains pending on personal staging.
+
+Club Files now exposes only its approved shared General/Projects/Events library. Private and Letter Studio objects cannot be reached through shared list/download/delete, including by a guessed ID. Contextual attachments that follow project/task/meeting permissions remain planned work.
+
+The members home now starts with Today: open assigned tasks, labeled project deadlines, task completion, relevant meetings in the next seven days, incoming role invitations and board account approvals. It displays freshness and error/loading states and links to existing work/review sections. Individual task due dates, blocked work, unread updates, mentions and Recent activity remain planned extensions. Today desktop/mobile component interaction and visual checks passed with synthetic mocked responses; complete portal/staging acceptance remains pending.
+
+An initial Android member client now exists in `apps/mobile`: token/device-session sign-in, SecureStore credential persistence, Today reads, owned-task completion, HTTPS meeting links, foreground refresh and local/remote logout attempts. Native type/transport/bundle checks passed; device acceptance, full workflow parity, Google/native guest access, push and signed distribution remain pending. See the mobile capability matrix.
+
+The initial Android member client includes a native device-session list and confirmed device sign-out, using the same owned-session backend as the web profile. Revoking the current app clears local access. Native device acceptance and wider profile/workspace parity remain pending.
+
+Project tasks support task-specific due dates and low/normal/high/urgent priority. Authorised project leads create and edit schedules in the web task list; web and Android Today display these fields on the same assigned task records. This does not yet implement task boards, reassignment, blockers, dependencies or native schedule editing.
+
+The web task-details editor now edits owner, due date and priority in a single save, including unassignment. It detects stale edits and offers reload. Web and Android Today consume the updated owner-scoped task record; native lead editing is still pending.
+
+Task rows now expose a scoped, paginated history view for recorded creation, completion/reopening, owner and scheduling changes, showing actors and before/after values. Earlier unrecorded actions are not reconstructed. Native history, comments and broader collaboration remain pending.

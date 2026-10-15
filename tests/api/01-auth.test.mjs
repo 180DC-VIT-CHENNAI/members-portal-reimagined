@@ -9,7 +9,7 @@ import {
 
 describe("token login", () => {
   test("a valid token returns the member's profile", async () => {
-    const json = expectOk(await post("/api/auth/token-login", { token: tokens.director }));
+    const json = expectOk(await post("/api/auth/session", { token: tokens.director }));
     assert.equal(json.email, "director@test.180dcvitc.org");
     assert.equal(json.roleId, "marketing_director");
     assert.equal(json.powerLevel, 50);
@@ -17,17 +17,17 @@ describe("token login", () => {
   });
 
   test("an unknown token is rejected", async () => {
-    expectStatus(await post("/api/auth/token-login", { token: "nope" }), 401);
+    expectStatus(await post("/api/auth/session", { token: "nope" }), 401);
   });
 
   test("a missing token is a 400", async () => {
-    expectStatus(await post("/api/auth/token-login", {}), 400);
+    expectStatus(await post("/api/auth/session", {}), 400);
   });
 
   test("repeated bad tokens from one IP are rate limited", async () => {
     const ip = "203.0.113.50";
     let last;
-    for (let i = 0; i < 11; i++) last = await post("/api/auth/token-login", { token: "bad" + i }, { ip });
+    for (let i = 0; i < 11; i++) last = await post("/api/auth/session", { token: "bad" + i }, { ip });
     expectStatus(last, 429);
   });
 });
@@ -97,7 +97,7 @@ describe("admin tokens (board)", () => {
     const mark = await outboxMark();
     const json = expectOk(await post("/api/admin-tokens", { email, name: "Issued", roleId: "member" }, { token: tokens.board }));
     assert.ok(json.token);
-    const login = expectOk(await post("/api/auth/token-login", { token: json.token }));
+    const login = expectOk(await post("/api/auth/session", { token: json.token }));
     assert.equal(login.email, email);
     await waitForMail(email, mark);
   });
@@ -106,7 +106,7 @@ describe("admin tokens (board)", () => {
     const m = await newMember("revoke");
     expectOk(await post(`/api/admin-tokens/${encodeURIComponent(m.email)}/revoke`, {}, { token: tokens.board }));
     expectStatus(await get("/api/dashboard", { token: m.token }), 401);
-    expectStatus(await post("/api/auth/token-login", { token: m.token }), 401);
+    expectStatus(await post("/api/auth/session", { token: m.token }), 401);
     expectStatus(await post(`/api/admin-tokens/${encodeURIComponent(m.email)}/revoke`, {}, { token: tokens.board }), 409);
   });
 
@@ -131,9 +131,9 @@ describe("Google (Clerk) login", () => {
   });
 
   test("a forged clerkToken is never accepted", async () => {
-    // 500 when CLERK_SECRET_KEY is not set locally, 401 when it is.
+    // 503 when CLERK_SECRET_KEY is not set locally, 401 when it is.
     const res = await post("/api/auth/clerk-login", { clerkToken: "eyJhbGciOiJIUzI1NiJ9.e30.forged" });
-    assert.ok([401, 500].includes(res.status), `got ${res.status}`);
+    assert.ok([401, 503].includes(res.status), `got ${res.status}`);
     assert.ok(!res.json?.token, "no session token issued");
   });
 

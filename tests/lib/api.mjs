@@ -63,7 +63,9 @@ export function expectStatus(res, status, msg) {
   return res.json;
 }
 
-// A request the caller is not allowed to make. Several routes report
+// A request the caller is not allowed to make. Project routes answer 404
+// "not found or inaccessible" so they don't reveal projects the caller can't
+// see; that counts as a denial. Several routes report
 // "Forbidden" with a 500 (they throw from requireBoard into a 500 handler);
 // that is a known issue (tests/README.md), so 500 counts only when the
 // message says forbidden.
@@ -71,6 +73,7 @@ export function expectDenied(res, msg) {
   const ok =
     res.status === 401 ||
     res.status === 403 ||
+    (res.status === 404 && /inaccessible/i.test(res.text)) ||
     (res.status === 500 && /forbidden|unauthori[sz]ed|requires/i.test(res.text));
   assert.ok(ok, `${msg || "expected denial"}: got ${res.status} ${res.text.slice(0, 300)}`);
 }
@@ -143,7 +146,7 @@ export async function newMember(prefix = "temp", departmentId = "business_strate
   const email = uniqueEmail(prefix);
   const res = await post("/api/members", { email, name: prefix + " user", departmentId }, { token: tokens.board });
   const json = expectOk(res, "create member");
-  await post("/api/auth/token-login", { token: json.token });
+  await post("/api/auth/session", { token: json.token });
   const list = expectOk(await get("/api/users", { token: tokens.board }));
   const user = list.data.find((u) => u.email === email);
   return { email, token: json.token, id: user.id };

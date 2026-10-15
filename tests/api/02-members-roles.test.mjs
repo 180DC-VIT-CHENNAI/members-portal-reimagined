@@ -17,7 +17,7 @@ describe("adding members", () => {
     assert.ok(json.token);
     const [mail] = await waitForMail(email, mark);
     assert.ok(mail.html.includes(json.token));
-    const login = expectOk(await post("/api/auth/token-login", { token: json.token }));
+    const login = expectOk(await post("/api/auth/session", { token: json.token }));
     assert.equal(login.roleId, "member");
     assert.equal(login.departmentId, "tech");
   });
@@ -43,7 +43,7 @@ describe("board and director accounts", () => {
   test("board creates a director with a department", async () => {
     const email = uniqueEmail("ops");
     const json = expectOk(await post("/api/board-users", { email, name: "Ops", roleId: "operations_director", departmentId: "operations" }, B));
-    const login = expectOk(await post("/api/auth/token-login", { token: json.token }));
+    const login = expectOk(await post("/api/auth/session", { token: json.token }));
     assert.equal(login.powerLevel, 50);
     assert.equal(login.departmentId, "operations");
   });
@@ -58,7 +58,7 @@ describe("board and director accounts", () => {
     const email = uniqueEmail("adv");
     const json = expectOk(await post("/api/advisory-members", { email, name: "Adv", exTitle: "Ex Treasurer" }, B));
     assert.equal(json.exTitle, "Ex Treasurer");
-    const login = expectOk(await post("/api/auth/token-login", { token: json.token }));
+    const login = expectOk(await post("/api/auth/session", { token: json.token }));
     assert.equal(login.powerLevel, 30);
   });
 
@@ -94,7 +94,7 @@ describe("roles", () => {
     const m = await newMember("promote");
     const mark = await outboxMark();
     expectOk(await put(`/api/members/${m.id}/role`, { newRoleId: "crm_director", departmentId: "crm" }, B));
-    const login = expectOk(await post("/api/auth/token-login", { token: m.token }));
+    const login = expectOk(await post("/api/auth/session", { token: m.token }));
     assert.equal(login.roleId, "crm_director");
     assert.equal(login.departmentId, "crm");
     await waitForMail(m.email, mark);

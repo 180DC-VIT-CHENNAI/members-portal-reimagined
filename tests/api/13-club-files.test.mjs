@@ -30,7 +30,7 @@ describe("club files", () => {
     const dl = await get(`/api/club-files/${id}/download`, M);
     assert.equal(dl.status, 200);
     assert.equal(dl.text, "minutes " + tag);
-    assert.match(dl.headers.get("content-disposition"), /attachment; filename="minutes-/);
+    assert.match(dl.headers.get("content-disposition"), /^attachment; .*filename\*=UTF-8''minutes-/);
 
     expectStatus(await api("DELETE", `/api/club-files/${id}`, M), 403);
     expectOk(await api("DELETE", `/api/club-files/${id}`, D));

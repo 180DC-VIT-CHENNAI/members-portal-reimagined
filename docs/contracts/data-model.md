@@ -33,6 +33,23 @@ newsletters (1) ───< newsletter_subscribers (N) indirect
 
 ## Tables
 
+### `member_sessions` (reimagined)
+
+Stored in the main `DB`, created idempotently by `ensureTables` during fresh bootstrap and existing-database upgrade. No newsletter schema or existing columns are changed.
+
+| Column | Type / constraint | Meaning |
+| --- | --- | --- |
+| id | TEXT PRIMARY KEY | Independent session ID, safe for owner-scoped management |
+| token_hash | TEXT UNIQUE NOT NULL | SHA-256 of a random 256-bit session credential; raw session credentials are never stored |
+| user_id | TEXT NOT NULL, FK users(id) ON DELETE CASCADE | Member identity; deletion removes its device credentials |
+| source_token_hash | TEXT NOT NULL | SHA-256 of the issuing registry token; rotation or removal prevents further session use |
+| device_label | TEXT NOT NULL | Client-supplied display label, at most 80 characters; not device attestation |
+| created_at | DATETIME DEFAULT CURRENT_TIMESTAMP | Creation time |
+| expires_at | TEXT NOT NULL | ISO UTC absolute expiry, seven days after issuance |
+| revoked_at | TEXT nullable | Revocation time |
+
+`member_sessions_user` indexes `(user_id, revoked_at, expires_at)`. Active listings and issuance limits also require the current source-token hash. Old source sessions may remain as inactive hashed records; retention/cleanup policy is pending. Audit events use `member_session` targets, session IDs and non-secret label/expiry metadata. Session credentials and source-token values must not appear in logs.
+
 ### `roles`
 
 | Column | Type | Constraints | Notes |
@@ -334,8 +351,8 @@ This table is for the public leadership page, not the `users` table.
 |--------|------|-------------|-------|
 | ip | TEXT | NOT NULL | Composite PK |
 | endpoint | TEXT | NOT NULL | Composite PK |
-| count | INTEGER | DEFAULT 1 | |
-| window_start | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+| count | INTEGER | DEFAULT 1 | Atomic consumed attempts, saturated at configured limit + 1 |
+| window_start | DATETIME | DEFAULT CURRENT_TIMESTAMP | UTC SQLite timestamp; reused until the configured window expires |
 
 ### `audit_log`
 
@@ -615,3 +632,13 @@ This is a design choice; if you add a D1 table for club files, keep the R2 metad
 ## Letter Studio R2 usage
 
 Generated letter PDFs are stored in the `CLUB_FILES` bucket (`180dc-club-files`) under the `letters/` folder with keys like `letters/<docnum>-<uuid>.pdf` and `application/pdf` content type. Uploaded via `POST /api/letter-studio/upload` (letter session auth) and read back by `POST /api/letter-studio/send` for email attachments.
+
+### Shared library R2 key boundary (reimagined)
+
+Existing shared file objects remain flat `<category>/<id>.<extension>` keys with their existing custom metadata. Only `general`, `projects` and `events` categories are reachable through Club Files. Letter Studio and nested/private namespaces remain outside that API. Shared `projectName` metadata is display-only, not a project foreign key or private resource scope. Contextual attachment metadata/schema is still pending and must be added idempotently to the canonical Worker schema.
+
+`project_tasks` now has nullable `due_date TEXT` containing an explicit calendar date (`YYYY-MM-DD`) and `priority TEXT NOT NULL DEFAULT 'normal'`. Existing rows migrate to no task date and normal priority. Both runtime `ensureTables` and idempotent `runMigrations` define these additive fields. They do not repurpose `projects.deadline` or `completed_at`. Schedule edits append before/after JSON to the existing audit log transactionally.
+
+Task reassignment uses existing `project_tasks.assigned_to`; no extra table/column is added. Combined changes audit owner/date/priority before/after in `audit_log` using action `task_details_changed`. The owner must exist, have an active registry credential, and have board/department/explicit-role project access when assigned. Clearing the owner stores SQL null.
+
+Task timelines read the existing `audit_log`. An idempotent `idx_audit_task_history(target_type, target_id, created_at)` index supports scoped reads. SQLite append row sequence breaks same-second ties and is carried only in the opaque pagination cursor. Database migration/export must preserve this order or translate it to an explicit append sequence. No historical audit data is backfilled.

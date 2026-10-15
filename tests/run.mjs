@@ -75,8 +75,8 @@ async function createAccounts(server) {
   t.member = await mk("/api/members", { email: "member@test.180dcvitc.org", name: "Marketing Member", departmentId: "marketing" });
   t.member2 = await mk("/api/members", { email: "member2@test.180dcvitc.org", name: "Finance Member", departmentId: "finance" });
   t.advisory = await mk("/api/advisory-members", { email: "advisory@test.180dcvitc.org", name: "Advisory Member", exTitle: "Former Chair" });
-  // token-login creates the users row for accounts that only have a token.
-  for (const key of Object.keys(t)) await call(base, "POST", "/api/auth/token-login", null, { token: t[key] });
+  // /api/auth/session creates the users row for accounts that only have a token.
+  for (const key of Object.keys(t)) await call(base, "POST", "/api/auth/session", null, { token: t[key] });
 
   const users = {};
   const list = await call(base, "GET", "/api/users", board);
