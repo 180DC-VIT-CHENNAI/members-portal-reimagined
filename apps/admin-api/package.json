@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev index.ts --var ENVIRONMENT:development",
-    "deploy": "wrangler deploy index.ts"
+    "dev": "wrangler dev -c wrangler.toml --var ENVIRONMENT:development",
+    "deploy": "wrangler deploy -c wrangler.toml"
   },
   "dependencies": {
     "@clerk/backend": "^3.5.0",

@@ -97,29 +97,33 @@ pnpm turbo run build
 pnpm --filter frontend run build
 ```
 
+Two Wrangler configs exist. Wrangler v4 picks the repo-root `wrangler.jsonc` (the personal single-Worker deployment) even from inside `apps/admin-api`, so always pass `-c wrangler.toml` for the club `admin-api` config.
+
 Verify the admin-api compiles and bundles with Wrangler (no `tsconfig.json` is present):
 
 ```bash
 cd apps/admin-api
-pnpm wrangler deploy --dry-run
+pnpm wrangler deploy -c wrangler.toml --dry-run
+# personal single Worker (frontend assets + /api), from the repo root after `pnpm run build`:
+pnpm exec wrangler deploy --dry-run
 ```
 
 Run a worker locally:
 
 ```bash
 cd apps/admin-api
-pnpm wrangler dev
+pnpm wrangler dev -c wrangler.toml
 
 # In another terminal
 cd apps/frontend
 pnpm dev
 ```
 
-Deploy a worker:
+Deploy a worker (the personal deployment deploys automatically from `main` via Workers Builds; branches get Worker Previews):
 
 ```bash
 cd apps/admin-api
-pnpm wrangler deploy
+pnpm wrangler deploy -c wrangler.toml
 ```
 
 Deploy the frontend to Cloudflare Pages:
