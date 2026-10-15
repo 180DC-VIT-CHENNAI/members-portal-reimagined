@@ -26,6 +26,6 @@
   },
   "devDependencies": {
     "turbo": "latest",
-    "wrangler": "^3.114.17"
+    "wrangler": "^4.0.0"
   }
 }

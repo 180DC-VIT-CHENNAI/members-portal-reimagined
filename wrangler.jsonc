@@ -1,0 +1,43 @@
+// Reimagined deployment: ONE Worker on the personal Cloudflare account.
+// - Frontend (apps/frontend/dist) is served as static assets. Asset requests,
+//   including SPA navigations, never invoke the Worker and are not billed.
+// - Only /api/* runs the Worker (apps/admin-api/index.ts).
+// Workers Builds (repo root): build `pnpm run build`, deploy `npx wrangler deploy`.
+// The club production deploy still uses apps/admin-api/wrangler.toml + Pages.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "members-portal-reimagined",
+  "account_id": "ee4c08f37c3a62fedc87fbd1b8b96ff4",
+  "main": "./apps/admin-api/index.ts",
+  "compatibility_date": "2024-04-05",
+  // assets_navigation_prefers_asset_serving: serve index.html for SPA
+  // navigations without invoking the Worker (default only from 2025-04-01).
+  "compatibility_flags": ["nodejs_compat", "assets_navigation_prefers_asset_serving"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "180dc.vitcc.org", "custom_domain": true }],
+  "assets": {
+    "directory": "./apps/frontend/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "members-portal-reimagined-db", "database_id": "d0467c89-9c82-4366-b931-d2c9935631bc" },
+    { "binding": "NEWSLETTER_DB", "database_name": "members-portal-reimagined-newsletter", "database_id": "f956078f-f083-40e0-b281-5a1867a8c5e6" }
+  ],
+  "r2_buckets": [
+    { "binding": "CLUB_FILES", "bucket_name": "members-portal-reimagined-club-files" },
+    { "binding": "BLOG_IMAGES", "bucket_name": "members-portal-reimagined-blog-images" },
+    { "binding": "CASE_STUDIES", "bucket_name": "members-portal-reimagined-case-studies" },
+    { "binding": "GALLERY_CDN", "bucket_name": "members-portal-reimagined-gallery" }
+  ],
+  // No KV and no Queue. Email cron intentionally off until mail secrets are set:
+  // "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "ALLOWED_WEB_ORIGINS": "https://180dc.vitcc.org",
+    "NEWSLETTER_SITE_URL": ""
+  }
+  // Secrets (set in the dashboard or `wrangler secret put`): CLERK_SECRET_KEY,
+  // SPACEMAIL_SMTP_USER, SPACEMAIL_SMTP_PASS, RESEND_API_KEY, GEMINI_API_KEY, GROQ_API_KEY.
+}

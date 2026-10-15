@@ -19,7 +19,6 @@ type Bindings = {
   BLOG_IMAGES: R2Bucket;
   CASE_STUDIES: R2Bucket;
   GALLERY_CDN: R2Bucket;
-  AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   CLERK_SECRET_KEY?: string;
   GEMINI_API_KEY?: string;
