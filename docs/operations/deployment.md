@@ -122,7 +122,7 @@ binding = "QUEUE"
 queue = "jobs-queue"
 
 [triggers]
-# Drains email_queue at up to 8 messages/minute (≤50 BCC recipients each)
+# Drains email_queue (up to 15 messages/minute, one message per recipient)
 crons = ["* * * * *"]
 
 [vars]

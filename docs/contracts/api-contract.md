@@ -23,7 +23,8 @@ This document describes the public and authenticated surface of `admin-api.techn
 | GET | `/api/content/team-members` | public | Leadership team page data. |
 | GET | `/api/content/partners` | public | Partners list. |
 | POST | `/api/newsletter/subscribe` | public | Subscribe to newsletter. |
-| GET | `/api/newsletter/unsubscribe` | public | Unsubscribe from newsletter. |
+| GET | `/api/newsletter/unsubscribe` | public | Legacy unsubscribe by `?email=` (links in emails sent before per-subscriber tokens). |
+| POST | `/api/newsletter/unsubscribe/:token` | public, CSRF-exempt | Unsubscribe by the subscriber's `unsubscribe_token`. Called by the `/unsubscribe/:token` page and by mail clients' RFC 8058 one-click `List-Unsubscribe-Post`. Returns `status` (`unsubscribed` / `already` / `not_found`) and `email`. |
 | GET | `/api/newsletter/subscribers/count` | public | Active subscriber count. |
 | GET | `/api/newsletter` | public | Public newsletter archive — sent (published) issues only. |
 | GET | `/api/newsletter/:id` | public | Single newsletter with sanitized `content` (fetched by the separate newsletter site). |
@@ -257,6 +258,8 @@ This document describes the public and authenticated surface of `admin-api.techn
 | GET | `/api/admin/maintenance` | public | Get maintenance status. |
 | POST | `/api/admin/maintenance` | board | Toggle maintenance mode. |
 | GET | `/api/admin/email-queue` | board | Email queue stats: hourly usage and recent campaigns. |
+| GET | `/api/admin/email-queue/:id/deliveries` | board | One campaign plus its per-recipient `email_deliveries` rows (`sent` / `failed` / `skipped`, error, attempts). |
+| POST | `/api/admin/email-queue/:id/retry-failed` | board | Re-queues a finished campaign; recipients already `sent`/`skipped` are not re-sent. Refused for campaigns that predate delivery tracking. |
 
 ## Newsletter editor (OTP session)
 

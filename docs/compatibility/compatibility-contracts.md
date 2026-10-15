@@ -11,7 +11,8 @@ The following routes are called by the public website without authentication. Th
 - `GET /api/content/partners`
 - `GET /api/newsletter`
 - `POST /api/newsletter/subscribe`
-- `GET /api/newsletter/unsubscribe`
+- `GET /api/newsletter/unsubscribe` (legacy `?email=` links in already-sent emails)
+- `POST /api/newsletter/unsubscribe/:token` (tokens are embedded in sent emails and `List-Unsubscribe` headers; never rotate or change their format)
 - `GET /api/newsletter/subscribers/count`
 - `GET /api/departments`
 - `GET /api/projects/completed`
@@ -132,9 +133,9 @@ Emails are sent from these addresses and use the 180DC VIT Chennai branded templ
 
 ## COMP-EMAIL-02 Send quotas and batching
 
-- SMTP sends are capped at 500 messages/hour, and each message carries at most 50 BCC recipients (`email_hour_count`).
+- SMTP sends are capped at 500 messages/hour (`email_hour_count`). Every queued campaign is one message per recipient; no campaign uses BCC batches.
 - The Resend fallback is capped at 100 recipients/day (`resend_daily_count`).
-- Bulk email bodies are shared across a BCC batch, so per-recipient unsubscribe links are not embedded; the footer links to the public `/unsubscribe` page.
+- Subscriber emails carry a per-recipient `/unsubscribe/<token>` link and RFC 8058 one-click `List-Unsubscribe` headers.
 - Changing these caps or the batching model requires coordination with the email provider and a docs update.
 
 ## COMP-R2-01 Bucket keys

@@ -160,14 +160,15 @@ Once the root domain is verified in Spacemail:
 - Max message size 50 MB.
 - Limits are per mailbox; aliases share the same quota.
 
-Implication for the newsletter: ~500 subscribers = 10 messages (50 BCC recipients each),
-well inside the hourly cap. Because the body is shared across a BCC batch, the
-per-recipient unsubscribe link must become a link to the unsubscribe page
-(`https://180dcvitc.org/unsubscribe`) where the user enters their email.
-
-Meet notifications are intentionally different: each recipient gets a separate
-SMTP message rather than a shared BCC batch. This keeps meet delivery one-person-
-per-email while still using the email queue and its hourly limit.
+Implication for the newsletter (updated 2026-10-07): the list is small (tens of
+subscribers), so newsletters and event mails are sent **one message per subscriber**,
+1.5 s apart, each with that subscriber's `/unsubscribe/<token>` link and RFC 8058
+one-click `List-Unsubscribe` headers. Per-recipient mail avoids the
+`undisclosed-recipients` BCC pattern and makes one-click unsubscribe possible. At
+500 messages/hour, the list can reach several hundred before a send spans more than an
+hour. Beyond that, move only the transport behind `sendEmail()` (e.g. to Amazon SES);
+the queue, templates, and unsubscribe flow stay as they are. Meet notifications are
+also one SMTP message per recipient, so no queued campaign uses BCC batches.
 
 ## Backend migration plan: Resend → Spacemail SMTP
 
@@ -240,12 +241,14 @@ All sending currently goes through `fetch("https://api.resend.com/emails", ...)`
 
 Set via `npx wrangler secret put` and mirrored in `.dev.vars`.
 
-### Step 4 — Unsubscribe UX change (BCC consequence)
+### Step 4 — Unsubscribe UX (superseded 2026-10-07)
 
-A BCC batch shares one email body, so per-recipient
-`/unsubscribe?email={subscriber_email}` links can no longer be embedded. Change the
-footer to link to `https://180dcvitc.org/unsubscribe` and add a fallback "enter your
-email" input on the existing `UnsubscribePage.tsx` when `?email=` is absent.
+Originally the BCC batches forced a shared `https://180dcvitc.org/unsubscribe` footer
+link. Subscriber mail is now one message per recipient, so each email carries a
+personal `https://180dcvitc.org/unsubscribe/<token>` link (token in
+`newsletter_subscribers.unsubscribe_token`) plus one-click headers pointing at
+`POST /api/newsletter/unsubscribe/:token`. The email-entry form on `UnsubscribePage.tsx`
+remains as a fallback.
 
 ## The Ken-style newsletter plan (web-hosted content)
 

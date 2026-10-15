@@ -17,9 +17,9 @@ This single file is the entire production backend. It is a Hono Worker with:
 - R2 object storage for case-study images, source files, club files, and static completed-projects JSON.
 - KV for auth sessions (bound as `AUTH_SESSIONS` but not actively used in `main`; the token registry lives in D1).
 - Queue producer binding (`QUEUE`) configured but unused.
-- Unified email delivery: `sendEmail()` sends through Spacemail SMTP (primary, BCC batches of 50, `cloudflare:sockets`) with automatic per-recipient Resend fallback.
+- Unified email delivery: `sendEmail()` sends through Spacemail SMTP (primary, `cloudflare:sockets`; queued campaigns are one message per recipient) with automatic per-recipient Resend fallback.
 - Hourly/daily email accounting in D1 (`email_hour_count`, `resend_daily_count`, `daily_email_count`).
-- Bulk email queue (`email_queue`) drained by the `* * * * *` cron at up to 8 messages/minute (≤50 BCC recipients each): newsletter, event, and meet notifications enqueue and return immediately; failed campaigns retry up to 5 times; completion writes `recipient_count` back to the newsletter row.
+- Bulk email queue (`email_queue`) drained by the `* * * * *` cron with adaptive pacing (up to 15 messages/minute, ≤500/hour); every campaign is one message per recipient, 1.5 s apart (newsletter and event mail personalized per subscriber): newsletter, event, and meet notifications enqueue and return immediately; failed campaigns retry up to 5 times; completion writes `recipient_count` back to the newsletter row. Per-recipient outcomes are tracked in `email_deliveries` (board can retry failures), and subscribers unsubscribe through tokenized `/unsubscribe/<token>` links with RFC 8058 one-click headers.
 - Newsletter data lives in a separate D1 database (`NEWSLETTER_DB`, `newsletter-db`); the old tables in `180dc-db` are frozen backups.
 - Rate limiting in D1.
 - HTML sanitization (`sanitizeBlogHtml`).

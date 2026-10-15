@@ -33,7 +33,7 @@ The public site at `180dcvitc.org` shows:
 
 ### CAP-PUBLIC-02 Newsletter subscription
 
-Public visitors can subscribe, unsubscribe, and view the public subscriber count. Subscribers are stored in `newsletter_subscribers`.
+Public visitors can subscribe, unsubscribe, and view the public subscriber count. Subscribers are stored in `newsletter_subscribers`. Every email links to a personal `/unsubscribe/<token>` page that unsubscribes on open; mail clients can also unsubscribe in one click via the `List-Unsubscribe` header.
 
 ### CAP-PUBLIC-03 Consulting request
 

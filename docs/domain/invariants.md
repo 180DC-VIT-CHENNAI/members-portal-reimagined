@@ -154,18 +154,18 @@ Invariants are properties that must never become false while the system is runni
 - **Related business rules:** RULE-QUOTA-03.
 - **Current status:** ENFORCED.
 
-### INV-QUOTA-03: Bulk email bodies are shared per BCC batch
+### INV-QUOTA-03: Subscriber emails are sent one per recipient with their own unsubscribe link
 
-- **Statement:** In bulk campaigns (newsletter, event, meet), BCC batches share one rendered body; per-recipient unsubscribe links must not be embedded. All other sends are one recipient per message.
-- **Reason:** Recipients in a BCC batch would receive another subscriber's link.
-- **Where enforced:** `newsletterEmailHtml()`/`eventMailEmailHtml()` are called with `subscriberEmail = undefined` in the bulk handlers, so the footer links to the public `/unsubscribe` page; `sendEmail({ batchRecipients: false })` is the default outside the queue drain.
-- **How verified:** Render a bulk email and confirm the unsubscribe link has no `?email=` parameter; send to multiple recipients outside a campaign and confirm one message per recipient.
-- **Related business rules:** RULE-NEWS-08, RULE-QUOTA-02.
+- **Statement:** Newsletter and event campaigns are sent one message per subscriber, with the `%%UNSUBSCRIBE_URL%%` marker and `List-Unsubscribe` headers filled from that subscriber's `unsubscribe_token`. Every other queued campaign (meet notices, Send Mail lists) is also one message per recipient; no queued campaign uses BCC batches.
+- **Reason:** A shared body would leak one subscriber's unsubscribe link to others; one-click unsubscribe needs a per-recipient URL.
+- **Where enforced:** `drainEmailQueue()` (`personalizeUnsubscribe()`, `unsubscribeHeaders()`); templates render the marker when called without `subscriberEmail`.
+- **How verified:** Queue a newsletter to two subscribers and confirm each delivered email links to a different `/unsubscribe/<token>` and carries `List-Unsubscribe-Post`.
+- **Related business rules:** RULE-NEWS-02, RULE-NEWS-08, RULE-QUOTA-02.
 - **Current status:** ENFORCED.
 
 ### INV-QUOTA-04: Queue campaigns are delivered exactly once and survive crashes
 
-- **Statement:** An `email_queue` campaign advances its `cursor` by delivered+failed recipients and retries up to 5 times; a campaign stuck in `processing` for 10 minutes is reclaimable.
+- **Statement:** An `email_queue` campaign advances its `cursor` by delivered+failed recipients and is marked `failed` after 5 consecutive claims that made no progress (`attempts` resets to 0 whenever a run advances the cursor, so long per-recipient campaigns spanning many cron runs are not cut off); a campaign stuck in `processing` for 10 minutes is reclaimable. For single-recipient campaigns each outcome is written to `email_deliveries` right after the send, and recipients already `sent`/`skipped` are never sent again (on reclaim or on `retry-failed`).
 - **Reason:** A Worker request or cron invocation may die mid-send; recipients must not be lost or spammed repeatedly.
 - **Where enforced:** `drainEmailQueue()` claim/stale logic in `apps/admin-api/index.ts`.
 - **How verified:** Insert a campaign, kill the Worker mid-drain if possible, wait >10 minutes, confirm the next cron reclaims it from `cursor` and completes.

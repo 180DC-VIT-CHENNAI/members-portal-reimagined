@@ -40,7 +40,8 @@ Run against a local `wrangler dev` instance or a Miniflare D1 mock. Candidates:
 - `TEST-PROJECT-01` — board can create a project; member cannot.
 - `TEST-PROJECT-02` — completed project regenerates `static/completedProjects.json`.
 - `TEST-TEAM-01` — adding a member beyond `member_limit` returns 400.
-- `TEST-NEWS-01` — newsletter send batches recipients into BCC groups of 50, respects the hourly SMTP cap, and updates `recipient_count`.
+- `TEST-NEWS-01` — newsletter send delivers one message per active subscriber with that subscriber's `/unsubscribe/<token>` link, skips subscribers who unsubscribed after queueing, records `email_deliveries`, respects the hourly SMTP cap, and updates `recipient_count`.
+- `TEST-NEWS-02` — `POST /api/newsletter/unsubscribe/:token` with a form body and no `Origin` (as mail providers send it) unsubscribes; `retry-failed` re-sends only `failed` deliveries.
 - `TEST-MEET-01` — meet link hidden after 24 hours.
 
 ### End-to-end tests

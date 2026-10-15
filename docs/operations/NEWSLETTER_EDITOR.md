@@ -67,7 +67,8 @@ All under `apps/admin-api/index.ts`.
 - `GET /api/newsletter` — list published newsletters (landing page)
 - `GET /api/newsletter/:id` — single newsletter with sanitized `content` (used by the separate newsletter site, ADR-004)
 - `POST /api/newsletter/subscribe` — subscribe to newsletter
-- `GET /api/newsletter/unsubscribe?email=...` — unsubscribe (returns styled HTML page)
+- `POST /api/newsletter/unsubscribe/:token` — unsubscribe by the subscriber's token (used by `/unsubscribe/<token>` and one-click `List-Unsubscribe-Post`)
+- `GET /api/newsletter/unsubscribe?email=...` — legacy unsubscribe for links in older emails
 - `GET /api/newsletter/subscribers/count` — public count
 
 ## Frontend Files
@@ -122,7 +123,7 @@ All under `apps/admin-api/index.ts`.
 All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 
 - **Primary:** Spacemail SMTP at `mail.spacemail.com:465` (implicit TLS) via `cloudflare:sockets`, AUTH with the mailbox address + password.
-- **Batching:** bulk queue campaigns (newsletter, event, meet) chunk recipients into BCC groups of up to 50 per message; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message (`batchRecipients: false`).
+- **Batching:** no queued campaign uses BCC. Newsletter and event campaigns send one personalized message per subscriber, 1.5 s apart, recording each result in `email_deliveries`; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message (`batchRecipients: false`).
 - **Quota:** 500 SMTP messages/hour tracked in `email_hour_count`; Resend fallback capped at 100 recipients/day in `resend_daily_count`.
 - **Bulk queue:** newsletter, event, meet, and Send Mail lists over 10 recipients insert one `email_queue` campaign and return immediately with `queued`/`total`. The `* * * * *` cron drains it with adaptive pacing (up to 15 messages/minute, capped at 500/hour), retries failed campaigns up to 5 times, and writes `sent_at`/`recipient_count` back to the newsletter row.
 - **Provider switch:** `EMAIL_PRIMARY` (secret) forces Resend-first when set to `resend`; default is Spacemail-first. Used as an incident lever (e.g., Spacemail DKIM outage).
@@ -140,10 +141,10 @@ All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 > as the full site layout (`issueToEmailHtml`); a seeded editorial-sync Issue 01 is shown
 > in the editor drafts list via `scripts/sync-newsletter-content.mjs`.
 
-All outgoing emails include an unsubscribe footer. Bulk sends share one body across BCC batches, so the footer links to the public page without a per-recipient parameter:
+All subscriber emails include a personal unsubscribe link and one-click `List-Unsubscribe` headers. Templates render `%%UNSUBSCRIBE_URL%%`, which the queue replaces per recipient:
 ```
 To stop receiving emails from 180DC, click here to unsubscribe.
-→ https://180dcvitc.org/unsubscribe
+→ https://180dcvitc.org/unsubscribe/<unsubscribe_token>
 ```
 Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_email}`.
 

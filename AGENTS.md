@@ -51,7 +51,7 @@ Index of all new docs: `docs/INDEX.md`.
 6. **Do not expose secrets in documentation, logs, or code.** Environment variables and Wrangler bindings must be referenced by name only.
 7. **Rate limits and email quotas are enforced in D1.** Respect the `rate_limits` table, the SMTP hourly cap in `email_hour_count` (500 messages/hour), and the Resend fallback cap in `resend_daily_count` (100/day).
 8. **Meet links are hidden 24 hours after the scheduled time.** This is implemented in the SQL that returns meet records.
-9. **The `QUEUE` binding in `admin-api` is configured but not actually used.** Bulk email (newsletters, events, meet notifications) is enqueued in the `email_queue` table and drained by the `* * * * *` cron trigger at up to 8 messages/minute (≤50 BCC recipients each). `pending_emails` is legacy and still drainable via `POST /api/meets/process-queue`. The `job-processor` consumer is a placeholder.
+9. **The `QUEUE` binding in `admin-api` is configured but not actually used.** Bulk email (newsletters, events, meet notifications) is enqueued in the `email_queue` table and drained by the `* * * * *` cron trigger with adaptive pacing (up to 15 messages/minute, ≤500/hour); every campaign is one message per recipient, 1.5 s apart (newsletter and event mail personalized per subscriber); no campaign uses BCC batches. `pending_emails` is legacy and still drainable via `POST /api/meets/process-queue`. The `job-processor` consumer is a placeholder.
 10. **Frontend API calls are proxied through the Cloudflare Pages `_middleware.ts` to `admin-api.technical-vitc.workers.dev`.** Do not assume the worker is reached at `180dcvitc.org/api/*` from the Pages site, even though the worker route pattern says that.
 
 ## Git workflow: pull requests and releases
