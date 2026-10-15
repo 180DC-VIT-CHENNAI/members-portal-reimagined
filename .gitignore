@@ -9,6 +9,7 @@ __pycache__/
 .env.local
 .env.*.local
 .dev.vars
+wrangler.personal.toml
 
 # Build outputs
 dist/
@@ -34,3 +35,12 @@ coverage/
 *.tmp
 .pnpm-debug.log
 .turbo
+
+# Browser verification artifacts
+**/test-results/
+**/playwright-report/
+
+# Expo generated development/native state
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
