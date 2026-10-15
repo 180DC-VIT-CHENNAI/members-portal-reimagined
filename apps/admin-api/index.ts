@@ -1,9 +1,16 @@
+import { commentBody } from './task-comment-input';
+import { taskHistoryEvent } from './task-history';
+import { taskSchedule } from './task-scheduling';
 import { Hono } from "hono";
+import { isSharedFileCategory, sharedFileObjects, sharedFileKeyById, downloadFileHeaders } from "./club-file-policy";
+import { consumeRateLimit } from "./rate-limit";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
-import { createClerkClient, verifyToken } from "@clerk/backend";
-import { TokenVerificationError } from "@clerk/backend/errors";
+import { verifyToken } from "@clerk/backend";
+import { ClerkIdentityError, verifiedClerkIdentity } from "./clerk-identity";
 import { connect } from "cloudflare:sockets";
+import { isAllowedWebOrigin } from "./origin-policy";
+import { activeRegistryToken, credentialHash, newSessionCredential, SESSION_PREFIX, SESSION_DURATION_MS } from "./session-security";
 
 type Bindings = {
   DB: any;
@@ -23,10 +30,12 @@ type Bindings = {
   SPACEMAIL_HOURLY_LIMIT?: string;
   EMAIL_PRIMARY?: string;
   NEWSLETTER_SITE_URL?: string;
+  ALLOWED_WEB_ORIGINS?: string;
 };
 
 type Variables = {
   user: any;
+  sessionId: string | null;
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -41,11 +50,11 @@ function isPublicRoute(pathname: string, method: string): boolean {
   const LOGIN_ROUTES = [
     "/api/dev-login",
     "/api/auth/clerk-login",
-    "/api/auth/token-login",
   ];
   if (LOGIN_ROUTES.includes(pathname)) return true;
 
   const PUBLIC_ROUTES: [string, string?, string?][] = [
+    ["/api/auth/session", "POST"],
     ["/api/signup-requests", "POST"],
     ["/api/consulting-request"],
     ["/api/auth/forgot-token"],
@@ -274,60 +283,10 @@ function getClientIp(c: any): string {
   return c.req.header("CF-Connecting-IP") || "unknown";
 }
 
-// In-memory rate limit cache (resets when isolate dies — ideal for rate limiting)
-const rateLimitCache = new Map<
-  string,
-  { count: number; windowStart: number }
->();
-
-// Periodic cleanup of expired rate limit entries — initialized lazily in first request
-let rateLimitCleanupStarted = false;
-function ensureRateLimitCleanup() {
-  if (rateLimitCleanupStarted) return;
-  rateLimitCleanupStarted = true;
-  // Use setTimeout chain instead of setInterval (safe for Workers)
-  const cleanup = () => {
-    const now = Date.now();
-    for (const [key, entry] of rateLimitCache) {
-      if (now - entry.windowStart > 360_000) {
-        rateLimitCache.delete(key);
-      }
-    }
-    setTimeout(cleanup, 300_000);
-  };
-  setTimeout(cleanup, 300_000);
-}
-
 // In-memory maintenance mode cache (refreshed every 60s)
 let maintenanceCache: { enabled: number; message: string } | null = null;
 let maintenanceCacheTime = 0;
 const MAINTENANCE_CACHE_TTL = 60_000;
-
-function checkRateLimitSync(
-  ip: string,
-  endpoint: string,
-  maxRequests: number,
-  windowSeconds = 60,
-): { allowed: boolean; retryAfter: number } {
-  ensureRateLimitCleanup();
-  const key = `${ip}:${endpoint}`;
-  const now = Date.now();
-  const entry = rateLimitCache.get(key);
-  if (!entry) {
-    rateLimitCache.set(key, { count: 1, windowStart: now });
-    return { allowed: true, retryAfter: 0 };
-  }
-  const elapsed = (now - entry.windowStart) / 1000;
-  if (elapsed > windowSeconds) {
-    rateLimitCache.set(key, { count: 1, windowStart: now });
-    return { allowed: true, retryAfter: 0 };
-  }
-  if (entry.count >= maxRequests) {
-    return { allowed: false, retryAfter: Math.ceil(windowSeconds - elapsed) };
-  }
-  entry.count++;
-  return { allowed: true, retryAfter: 0 };
-}
 
 async function checkRateLimit(
   c: any,
@@ -335,37 +294,10 @@ async function checkRateLimit(
   maxRequests: number,
   windowSeconds = 60,
 ): Promise<{ allowed: boolean; retryAfter: number }> {
-  const ip = getClientIp(c);
-  return checkRateLimitSync(ip, endpoint, maxRequests, windowSeconds);
+  return consumeRateLimit(c.env.DB, getClientIp(c), endpoint, maxRequests, windowSeconds);
 }
 
-async function checkLoginRateLimit(
-  c: any,
-  endpoint: string,
-  maxRequests: number,
-  windowSeconds = 60,
-): Promise<{ allowed: boolean; retryAfter: number }> {
-  const ip = getClientIp(c);
-  return checkRateLimitSync(ip, endpoint, maxRequests, windowSeconds);
-}
-
-async function incrementLoginRateLimit(c: any, endpoint: string) {
-  const ip = getClientIp(c);
-  const key = `${ip}:${endpoint}`;
-  const now = Date.now();
-  const entry = rateLimitCache.get(key);
-  if (!entry) {
-    rateLimitCache.set(key, { count: 1, windowStart: now });
-  } else {
-    entry.count++;
-  }
-}
-
-async function resetLoginRateLimit(c: any, endpoint: string) {
-  const ip = getClientIp(c);
-  const key = `${ip}:${endpoint}`;
-  rateLimitCache.delete(key);
-}
+const checkLoginRateLimit = checkRateLimit;
 
 async function addAuditLog(
   c: any,
@@ -1933,8 +1865,10 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS role_transfers (id TEXT PRIMARY KEY, from_user_id TEXT NOT NULL, to_user_id TEXT NOT NULL, role_id TEXT NOT NULL, status TEXT DEFAULT 'pending', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (from_user_id) REFERENCES users(id), FOREIGN KEY (to_user_id) REFERENCES users(id), FOREIGN KEY (role_id) REFERENCES roles(id));
     CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, company_org TEXT, status TEXT DEFAULT 'upcoming', deadline DATETIME, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS task_comments (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, task_id TEXT NOT NULL, author_id TEXT, request_id TEXT, body TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, deleted_at DATETIME, FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE, FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE, FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL);
+    CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(project_id, task_id, created_at);
     CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
-    CREATE TABLE IF NOT EXISTS project_tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, assigned_to TEXT, status TEXT DEFAULT 'pending', created_by TEXT, completed_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id));
+    CREATE TABLE IF NOT EXISTS project_tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, assigned_to TEXT, status TEXT DEFAULT 'pending', created_by TEXT, due_date TEXT, priority TEXT NOT NULL DEFAULT 'normal', completed_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id));
     CREATE TABLE IF NOT EXISTS team_instances (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, group_label TEXT DEFAULT 'Company', level_count INTEGER DEFAULT 1, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS instance_departments (instance_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (instance_id, department_id), FOREIGN KEY (instance_id) REFERENCES team_instances(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS instance_teams (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, group_id TEXT, name TEXT NOT NULL, description TEXT, member_limit INTEGER, min_members INTEGER, sort_order INTEGER DEFAULT 0, current_level INTEGER DEFAULT 1, status TEXT DEFAULT 'active', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id));
@@ -1945,6 +1879,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS instance_team_external_members (team_id TEXT NOT NULL, external_id TEXT NOT NULL, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (team_id, external_id), FOREIGN KEY (team_id) REFERENCES instance_teams(id), FOREIGN KEY (external_id) REFERENCES instance_external_members(id));
     CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE INDEX IF NOT EXISTS idx_audit_task_history ON audit_log(target_type, target_id, created_at);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS email_hour_count (hour TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
@@ -1962,6 +1897,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS letter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS letter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS letters_sent (id TEXT PRIMARY KEY, docnum TEXT, doc_type TEXT, member_name TEXT, recipient_email TEXT NOT NULL, file_key TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS member_sessions (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, user_id TEXT NOT NULL, source_token_hash TEXT NOT NULL, device_label TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, expires_at TEXT NOT NULL, revoked_at TEXT, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
+    CREATE INDEX IF NOT EXISTS member_sessions_user ON member_sessions(user_id, revoked_at, expires_at);
     `);
   await runMigrations(db);
 }
@@ -1969,6 +1906,12 @@ async function ensureTables(db: any) {
 let migrationsApplied = false;
 
 async function runMigrations(db: any) {
+  try { await db.exec("ALTER TABLE task_comments ADD COLUMN request_id TEXT"); } catch {}
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_task_comment_requests ON task_comments(author_id, request_id)");
+
+  try { await db.exec("ALTER TABLE project_tasks ADD COLUMN due_date TEXT"); } catch {}
+  try { await db.exec("ALTER TABLE project_tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'"); } catch {}
+
   if (migrationsApplied) return;
   try {
     await db.exec(
@@ -2680,15 +2623,27 @@ const isDevOrigin = (o: string) => {
 app.use(
   "*",
   cors({
-    origin: (origin) => {
-      if (!origin || isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin))
+    origin: (origin, c) => {
+      if (!origin || isDevOrigin(origin) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS))
         return origin;
       return null;
     },
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
   }),
 );
+
+// Hono's CSRF middleware checks form-compatible content types. Also enforce
+// explicit browser origins for JSON writes; CORS alone does not reject a request.
+app.use("*", async (c, next) => {
+  if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
+    const origin = c.req.header("Origin");
+    if (origin && !isDevOrigin(origin) && !isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) {
+      return c.json({ error: "Forbidden origin" }, 403);
+    }
+  }
+  await next();
+});
 
 app.use(
   "*",
@@ -2701,7 +2656,7 @@ app.use(
       )
         return true;
       if (!origin) return false;
-      if (isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return true;
+      if (isDevOrigin(origin) || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS)) return true;
       return false;
     },
   }),
@@ -2752,23 +2707,34 @@ app.use("*", async (c, next) => {
   // Validate Bearer token against admin_tokens registry.
   let email = undefined as undefined | string;
   let tokenRow: any = null;
+  let sessionId: string | null = null;
   try {
     const authHeader = c.req.header("Authorization") || "";
     if (authHeader.trim().toLowerCase().startsWith("bearer ")) {
       const token = authHeader.slice(7).trim();
-      tokenRow = await c.env.DB.prepare(
+      if (token.startsWith(SESSION_PREFIX)) {
+        const session = await c.env.DB.prepare(
+          "SELECT s.id, s.source_token_hash, u.email FROM member_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.revoked_at IS NULL AND julianday(s.expires_at) > julianday('now')",
+        ).bind(await credentialHash(token)).first();
+        if (session) {
+          tokenRow = await c.env.DB.prepare(
+            "SELECT token, revoked_at, expires_at FROM admin_tokens WHERE email = ?",
+          ).bind(session.email).first();
+          if (activeRegistryToken(tokenRow) && await credentialHash(tokenRow.token) === session.source_token_hash) {
+            email = session.email;
+            sessionId = session.id;
+          }
+        }
+      } else {
+        tokenRow = await c.env.DB.prepare(
         "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
       )
         .bind(token)
         .first();
 
-      if (
-        tokenRow &&
-        !tokenRow.revoked_at &&
-        (!tokenRow.expires_at ||
-          new Date(tokenRow.expires_at + "Z") > new Date())
-      ) {
+      if (activeRegistryToken(tokenRow)) {
         email = tokenRow.email;
+      }
       }
     }
   } catch (e) {
@@ -2813,6 +2779,7 @@ app.use("*", async (c, next) => {
   }
 
   c.set("user", user);
+  c.set("sessionId", sessionId);
   await next();
 });
 
@@ -5089,90 +5056,86 @@ app.post("/api/members", async (c) => {
 });
 
 // ---------------------------------------------------------
-// TOKEN LOGIN (public @ production-safe token login)
-// Maps an admin token -> email -> user. Not gated by ENVIRONMENT.
-// ---------------------------------------------------------
-app.post("/api/auth/token-login", async (c) => {
+// Production-capable token exchange. The source credential is never persisted
+// in member_sessions; every subsequent request checks its current registry row.
+app.post("/api/auth/session", async (c) => {
+  c.header("Cache-Control", "private, no-store");
   try {
-    await ensureDbReady(c.env.DB, c.env);
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-
-    const rl = await checkLoginRateLimit(c, "token_login", 10, 60);
-    if (!rl.allowed) {
-      return c.json(
-        {
-          error: "Too many login attempts. Try again later.",
-          retryAfter: rl.retryAfter,
-        },
-        429,
-      );
-    }
-
-    const token = sanitizeStr(body.token, MAX_STR_LEN * 4);
-    if (!token) {
-      await incrementLoginRateLimit(c, "token_login");
-      return c.json({ error: "Missing token" }, 400);
-    }
-
-    const entry: any = await c.env.DB.prepare(
+    const rate = await checkRateLimit(c, "session_login", 10, 60);
+    if (!rate.allowed) return c.json({ error: "Too many sign-in attempts", retryAfter: rate.retryAfter }, 429);
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+    const token = sanitizeStr(body?.token, 512);
+    const label = body?.deviceLabel === undefined ? "Web browser" : sanitizeStr(body.deviceLabel, 80);
+    if (!token || !label) return c.json({ error: "Token and a valid device label are required" }, 400);
+    const source = await c.env.DB.prepare(
       "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
-    )
-      .bind(token)
-      .first();
-
-    if (
-      !entry ||
-      entry.revoked_at ||
-      (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date())
-    ) {
-      await incrementLoginRateLimit(c, "token_login");
-      return c.json({ error: "Invalid token" }, 401);
-    }
-
-    const existing: any = await c.env.DB.prepare(
-      "SELECT id FROM users WHERE email = ?",
-    )
-      .bind(entry.email)
-      .first();
-    if (!existing) {
-      const roleId = entry.role_id || "member";
-      await c.env.DB.prepare(
-        "INSERT INTO users (id, name, email, role_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-      )
-        .bind(entry.name || entry.email.split("@")[0], entry.email, roleId)
-        .run();
-    }
-
-    const user: any = await c.env.DB.prepare(
-      "SELECT u.email, u.name, u.role_id, u.department_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
-    )
-      .bind(entry.email)
-      .first();
-
-    if (!user) {
-      return c.json({ error: "User role misconfigured: role not found" }, 500);
-    }
-
-    await resetLoginRateLimit(c, "token_login");
-
-    return c.json({
-      success: true,
-      email: entry.email,
-      name: user.name || entry.name,
-      roleId: user.role_id || entry.role_id || "member",
-      roleName: user.role_name || null,
-      powerLevel: user.power_level ?? 10,
-      departmentId: user.department_id || null,
-    });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
+    ).bind(token).first();
+    if (!activeRegistryToken(source)) return c.json({ error: "Invalid or expired token" }, 401);
+    // Preserve onboarding for registry accounts that have not signed in yet.
+    await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO users (id, name, email, role_id) SELECT ?, ?, t.email, t.role_id FROM admin_tokens t WHERE t.token = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR julianday(t.expires_at) > julianday('now'))",
+    ).bind(crypto.randomUUID(), source.name || source.email.split("@")[0], token).run();
+    const user = await c.env.DB.prepare(
+      "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+    ).bind(source.email).first();
+    if (!user) return c.json({ error: "Member account is unavailable" }, 401);
+    const maintenance = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+    if (maintenance?.enabled && user.power_level < 100) return c.json({ error: maintenance.message || "Portal under maintenance" }, 503);
+    const sourceHash = await credentialHash(token);
+    const count = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM member_sessions WHERE user_id = ? AND source_token_hash = ? AND revoked_at IS NULL AND julianday(expires_at) > julianday('now')",
+    ).bind(user.id, sourceHash).first();
+    if (count.count >= 20) return c.json({ error: "Too many active sessions. Revoke a session before signing in again." }, 429);
+    const credential = newSessionCredential();
+    const id = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
+    const insert = c.env.DB.prepare(
+      "INSERT INTO member_sessions (id, token_hash, user_id, source_token_hash, device_label, expires_at) SELECT ?, ?, ?, ?, ?, ? FROM admin_tokens t JOIN users u ON u.email = t.email WHERE t.token = ? AND u.id = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR julianday(t.expires_at) > julianday('now')) AND (SELECT COUNT(*) FROM member_sessions WHERE user_id = ? AND source_token_hash = ? AND revoked_at IS NULL AND julianday(expires_at) > julianday('now')) < 20",
+    ).bind(id, await credentialHash(credential), user.id, sourceHash, label, expiresAt, token, user.id, user.id, sourceHash);
+    const audit = c.env.DB.prepare(
+      "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, 'session_created', ?, 'member_session', ?, ? WHERE changes() > 0",
+    ).bind(crypto.randomUUID(), user.email, id, JSON.stringify({ deviceLabel: label, expiresAt }));
+    const [created] = await c.env.DB.batch([insert, audit]);
+    if (!created.meta.changes) return c.json({ error: "Session could not be issued; try signing in again" }, 401);
+    return c.json({ success: true, token: credential, sessionId: id, expiresAt,
+      email: user.email, name: user.name, roleId: user.role_id, roleName: user.role_name,
+      powerLevel: user.power_level, departmentId: user.department_id || null });
+  } catch {
+    return c.json({ error: "Unable to create session" }, 500);
   }
 });
 
-// ---------------------------------------------------------
+app.get("/api/auth/sessions", async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const source = await c.env.DB.prepare("SELECT token, revoked_at, expires_at FROM admin_tokens WHERE email = ?").bind(c.get("user").email).first();
+  if (!activeRegistryToken(source)) return c.json({ error: "Account access is no longer active" }, 401);
+  const rows = await c.env.DB.prepare(
+    "SELECT id, device_label, created_at, expires_at FROM member_sessions WHERE user_id = ? AND source_token_hash = ? AND revoked_at IS NULL AND julianday(expires_at) > julianday('now') ORDER BY created_at DESC LIMIT 20",
+  ).bind(c.get("user").id, source ? await credentialHash(source.token) : "").all();
+  return c.json({ success: true, data: (rows.results || []).map((row: any) => ({ ...row, current: row.id === c.get("sessionId") })) });
+});
+
+async function revokeOwnedSession(c: any, id: string) {
+  c.header("Cache-Control", "private, no-store");
+  const user = c.get("user");
+  const row = await c.env.DB.prepare("SELECT id FROM member_sessions WHERE id = ? AND user_id = ?").bind(id, user.id).first();
+  if (!row) return c.json({ error: "Session not found" }, 404);
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE member_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND revoked_at IS NULL").bind(id, user.id),
+    c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id) SELECT ?, 'session_revoked', ?, 'member_session', ? WHERE changes() > 0").bind(crypto.randomUUID(), user.email, id),
+  ]);
+  return c.json({ success: true });
+}
+
+app.delete("/api/auth/sessions/:id", async (c) => revokeOwnedSession(c, c.req.param("id")));
+app.post("/api/auth/logout", async (c) => {
+  const id = c.get("sessionId");
+  if (id) return revokeOwnedSession(c, id);
+  c.header("Cache-Control", "private, no-store");
+  return c.json({ success: true, legacyToken: true });
+});
+
 // Developer token login (dev only) - maps token -> email via ADMIN_TOKENS
 // ADMIN_TOKENS example: { "token123": { "email": "admin@vitstudent.ac.in", "roleId": "chairperson", "name": "Admin" } }
 // This returns the mapped email so the frontend can use it as the dev identity.
@@ -5200,7 +5163,6 @@ app.post("/api/dev-login", async (c) => {
 
     const token = body.token;
     if (!token) {
-      await incrementLoginRateLimit(c, "dev_login");
       return c.json({ error: "Missing token" }, 400);
     }
 
@@ -5215,7 +5177,6 @@ app.post("/api/dev-login", async (c) => {
       entry.revoked_at ||
       (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date())
     ) {
-      await incrementLoginRateLimit(c, "dev_login");
       return c.json({ error: "Invalid token" }, 401);
     }
 
@@ -5244,7 +5205,6 @@ app.post("/api/dev-login", async (c) => {
       return c.json({ error: "User role misconfigured: role not found" }, 500);
     }
 
-    await resetLoginRateLimit(c, "dev_login");
 
     return c.json({
       success: true,
@@ -5345,114 +5305,21 @@ app.post("/api/auth/clerk-login", async (c) => {
       return c.json({ error: "Missing clerkToken" }, 400);
     }
 
-    const clerkSecret = c.env.CLERK_SECRET_KEY;
-    if (!clerkSecret) {
-      return c.json({ error: "Clerk not configured on server" }, 500);
-    }
+    c.header("Cache-Control", "private, no-store");
+    const clerkUserId = await verifiedClerkIdentity(clerkToken, c.env.CLERK_SECRET_KEY, {
+      configured: c.env.ALLOWED_WEB_ORIGINS,
+      defaults: ALLOWED_ORIGINS,
+      development: c.env.ENVIRONMENT !== "production",
+    }, verifyToken);
 
-    let jwtPayload: any;
-    try {
-      jwtPayload = await verifyToken(clerkToken, {
-        secretKey: clerkSecret,
-      });
-    } catch (e: any) {
-      if (e instanceof TokenVerificationError) {
-        return c.json({ error: "Invalid or expired Clerk token" }, 401);
-      }
-      logError("Clerk JWT verification failed", e, c);
-      return c.json({ error: "Invalid or expired Clerk token" }, 401);
+    // Email supplied by a client never proves ownership. Links require member auth + Clerk proof.
+    const matches = await c.env.DB.prepare(
+      "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.clerk_user_id = ? LIMIT 2",
+    ).bind(clerkUserId).all();
+    if (matches.results?.length > 1) {
+      return c.json({ error: "Google account has conflicting member links. Contact an administrator." }, 403);
     }
-    const clerkUserId = jwtPayload.sub;
-    if (!clerkUserId) {
-      return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
-    }
-
-    // Never trust client-supplied emails. Resolve the account's email from
-    // Clerk itself and only accept addresses Clerk has verified (e.g. Google OAuth).
-    let verifiedEmails: string[] = [];
-    try {
-      const clerkUser = await createClerkClient({
-        secretKey: clerkSecret,
-      }).users.getUser(clerkUserId);
-      verifiedEmails = (clerkUser.emailAddresses || [])
-        .filter((e: any) => e.verification?.status === "verified")
-        .map((e: any) => e.emailAddress.toLowerCase());
-    } catch (e: any) {
-      logError("Clerk user lookup failed", e, c);
-      return c.json({ error: "Unable to verify Clerk account" }, 401);
-    }
-    if (verifiedEmails.length === 0) {
-      return c.json(
-        { error: "Clerk account has no verified email address" },
-        401,
-      );
-    }
-
-    // Try lookup by clerk_user_id first (already linked)
-    let user: any = await c.env.DB.prepare(
-      "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.clerk_user_id = ?",
-    )
-      .bind(clerkUserId)
-      .first();
-
-    // A stored link that does not match any verified email on this Clerk
-    // account is stale or was tampered with — ignore it.
-    if (user && !verifiedEmails.includes(String(user.email).toLowerCase())) {
-      console.warn(
-        `[clerk-login] Ignoring stale clerk link for ${user.email} (clerk_user_id=${clerkUserId})`,
-      );
-      user = null;
-    }
-
-    // If not linked, match only against the verified emails returned by Clerk.
-    if (!user) {
-      const requestedEmail = validateEmail(body.email)?.toLowerCase();
-      const candidates: string[] = [];
-      if (requestedEmail && verifiedEmails.includes(requestedEmail)) {
-        candidates.push(requestedEmail);
-      }
-      for (const email of verifiedEmails) {
-        if (!candidates.includes(email)) candidates.push(email);
-      }
-      for (const candidate of candidates) {
-        user = await c.env.DB.prepare(
-          "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE lower(u.email) = ?",
-        )
-          .bind(candidate)
-          .first();
-        if (user) break;
-      }
-
-      if (user) {
-        const otherLink: any = await c.env.DB.prepare(
-          "SELECT id FROM users WHERE clerk_user_id = ? AND id != ?",
-        )
-          .bind(clerkUserId, user.id)
-          .first();
-        if (otherLink) {
-          return c.json(
-            {
-              error:
-                "This Google account is already linked to another member. Contact a board member.",
-            },
-            409,
-          );
-        }
-        await c.env.DB.prepare(
-          "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
-        )
-          .bind(clerkUserId, user.id)
-          .run();
-        user.oauth_enabled = 1;
-        await addAuditLog(
-          c,
-          "clerk_linked",
-          "user",
-          user.id,
-          "Clerk account linked via verified email for " + user.email,
-        );
-      }
-    }
+    const user: any = matches.results?.[0];
 
     if (!user) {
       return c.json(
@@ -5474,24 +5341,14 @@ app.post("/api/auth/clerk-login", async (c) => {
       );
     }
 
-    // Create or reuse an admin token for this session
+    // Google identity cannot restore revoked/expired member access.
     const existingToken: any = await c.env.DB.prepare(
-      "SELECT token FROM admin_tokens WHERE email = ? AND revoked_at IS NULL",
-    )
-      .bind(user.email)
-      .first();
-
-    let sessionToken: string;
-    if (existingToken) {
-      sessionToken = existingToken.token;
-    } else {
-      sessionToken = crypto.randomUUID().replace(/-/g, "");
-      await c.env.DB.prepare(
-        "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
-      )
-        .bind(sessionToken, user.email, user.name, user.role_id, user.id)
-        .run();
+      "SELECT token, expires_at, revoked_at FROM admin_tokens WHERE email = ?",
+    ).bind(user.email).first();
+    if (!activeRegistryToken(existingToken)) {
+      return c.json({ error: "Member access is inactive. Contact an administrator." }, 403);
     }
+    const sessionToken = existingToken.token;
 
     return c.json({
       success: true,
@@ -5504,7 +5361,8 @@ app.post("/api/auth/clerk-login", async (c) => {
       departmentId: user.department_id || null,
     });
   } catch (e: any) {
-    if (e instanceof TokenVerificationError) {
+    if (e instanceof ClerkIdentityError) return c.json({ error: e.message }, e.status);
+    if (e.message?.includes("JWT") || e.message?.includes("token")) {
       return c.json({ error: "Invalid or expired Clerk token" }, 401);
     }
     return errorResponse(c, e.message, 500);
@@ -5535,60 +5393,34 @@ app.post("/api/auth/link-clerk", async (c) => {
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
     }
+    c.header("Cache-Control", "private, no-store");
     const clerkToken = sanitizeStr(body.clerkToken, MAX_CLERK_TOKEN_LEN);
-    if (!clerkToken) {
-      return c.json({ error: "Missing clerkToken" }, 400);
-    }
-    const clerkSecret = c.env.CLERK_SECRET_KEY;
-    if (!clerkSecret) {
-      return c.json({ error: "Clerk not configured on server" }, 500);
-    }
-    let clerkUserId: string | undefined;
-    try {
-      const payload = await verifyToken(clerkToken, {
-        secretKey: clerkSecret,
-      });
-      clerkUserId = payload.sub;
-    } catch {
-      return c.json({ error: "Invalid or expired Clerk token" }, 401);
-    }
-    if (!clerkUserId) {
-      return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
-    }
+    if (!clerkToken) return c.json({ error: "Missing clerkToken" }, 400);
+    const clerkUserId = await verifiedClerkIdentity(clerkToken, c.env.CLERK_SECRET_KEY, {
+      configured: c.env.ALLOWED_WEB_ORIGINS,
+      defaults: ALLOWED_ORIGINS,
+      development: c.env.ENVIRONMENT !== "production",
+    }, verifyToken);
 
-    const otherLink: any = await c.env.DB.prepare(
-      "SELECT id FROM users WHERE clerk_user_id = ? AND id != ?",
-    )
-      .bind(clerkUserId, user.id)
-      .first();
-    if (otherLink) {
-      return c.json(
-        {
-          error: "This Google account is already linked to another member.",
-        },
-        409,
-      );
+    // The single conditional write prevents concurrent links of one identity to two members.
+    const linked = await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ? AND NOT EXISTS (SELECT 1 FROM users other WHERE other.clerk_user_id = ? AND other.id != ?)",
+      ).bind(clerkUserId, user.id, clerkUserId, user.id),
+      c.env.DB.prepare(
+        "INSERT INTO audit_log (id, action, actor_email, target_type, target_id) SELECT ?, 'clerk_linked', ?, 'user', ? WHERE changes() > 0",
+      ).bind(crypto.randomUUID(), user.email, user.id),
+    ]);
+    if (!linked[0].meta?.changes) {
+      return c.json({ error: "Google account is already linked to another member" }, 409);
     }
-
-    await c.env.DB.prepare(
-      "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
-    )
-      .bind(clerkUserId, user.id)
-      .run();
-
-    await addAuditLog(
-      c,
-      "clerk_linked",
-      "user",
-      user.id,
-      "Clerk account linked for " + user.email,
-    );
 
     return c.json({
       success: true,
       message: "Google login enabled successfully",
     });
   } catch (e: any) {
+    if (e instanceof ClerkIdentityError) return c.json({ error: e.message }, e.status);
     return errorResponse(c, e.message, 500);
   }
 });
@@ -5614,19 +5446,10 @@ app.post("/api/auth/unlink-clerk", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    await c.env.DB.prepare(
-      "UPDATE users SET clerk_user_id = NULL, oauth_enabled = 0 WHERE id = ?",
-    )
-      .bind(user.id)
-      .run();
-
-    await addAuditLog(
-      c,
-      "clerk_unlinked",
-      "user",
-      user.id,
-      "Clerk account unlinked for " + user.email,
-    );
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE users SET clerk_user_id = NULL, oauth_enabled = 0 WHERE id = ? AND (clerk_user_id IS NOT NULL OR oauth_enabled != 0)").bind(user.id),
+      c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id) SELECT ?, 'clerk_unlinked', ?, 'user', ? WHERE changes() > 0").bind(crypto.randomUUID(), user.email, user.id),
+    ]);
 
     return c.json({ success: true, message: "Google login disabled" });
   } catch (e: any) {
@@ -5678,6 +5501,48 @@ app.post("/api/auth/rotate-token", async (c) => {
 });
 
 // ---------------------------------------------------------
+// Personal work queue: reuse canonical project visibility and current membership.
+app.get("/api/work-queue", async (c) => {
+  try {
+    const user: any = c.get("user");
+    const limit = await checkRateLimit(c, "work_queue", 30, 60);
+    if (!limit.allowed) return c.json({ error: "Too many requests", retryAfter: limit.retryAfter }, 429);
+    const tasks = await c.env.DB.prepare(`
+      SELECT pt.id, pt.project_id, pt.title, pt.status, pt.description, pt.due_date, pt.priority,
+        p.name AS project_name, p.deadline AS project_deadline
+      FROM project_tasks pt JOIN projects p ON pt.project_id = p.id
+      WHERE pt.assigned_to = ? AND pt.status != 'completed' AND p.status != 'completed'
+        AND ${PROJECT_READ_SCOPE}
+      ORDER BY CASE WHEN pt.due_date IS NULL THEN 1 ELSE 0 END, pt.due_date, CASE pt.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, pt.created_at, pt.id
+      LIMIT 101
+    `).bind(user.id, user.power_level, user.department_id || "", user.id).all();
+    const meetings = await c.env.DB.prepare(`
+      SELECT * FROM (
+        SELECT id, 'club' AS type, title, scheduled_at, meet_link FROM club_meets
+        UNION ALL
+        SELECT id, 'department', title, scheduled_at, meet_link FROM department_meets
+          WHERE department_id = ? OR ? >= 100
+        UNION ALL
+        SELECT id, 'inter-department', title, scheduled_at, meet_link FROM inter_dept_meets
+          WHERE (? != '' AND instr(',' || departments || ',', ',' || ? || ',') > 0) OR ? >= 100
+      ) WHERE julianday(scheduled_at) >= julianday('now') AND julianday(scheduled_at) < julianday('now', '+7 days')
+      ORDER BY julianday(scheduled_at), type, id LIMIT 21
+    `).bind(user.department_id || "", user.power_level, user.department_id || "", user.department_id || "", user.power_level).all();
+    const incomingTransfers: any = await c.env.DB.prepare("SELECT COUNT(*) AS count FROM role_transfers WHERE to_user_id = ? AND status = 'pending'").bind(user.id).first();
+    const accountRequests: any = user.power_level >= 100
+      ? await c.env.DB.prepare("SELECT COUNT(*) AS count FROM signup_requests WHERE status = 'pending'").first()
+      : null;
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ success: true, generatedAt: new Date().toISOString(),
+      tasks: (tasks.results || []).slice(0, 100), hasMoreTasks: (tasks.results || []).length > 100,
+      meetings: (meetings.results || []).slice(0, 20), hasMoreMeetings: (meetings.results || []).length > 20,
+      attention: { incomingTransfers: incomingTransfers?.count || 0,
+        ...(accountRequests ? { accountRequests: accountRequests.count } : {}) },
+    });
+  } catch (e: any) { return errorResponse(c, e.message, 500); }
+});
+
+// ---------------------------------------------------------
 // DASHBOARD BOOTSTRAP (single server payload for the members page)
 // ---------------------------------------------------------
 app.get("/api/dashboard", async (c) => {
@@ -5722,8 +5587,9 @@ app.get("/api/dashboard", async (c) => {
       .all()
       .then((r: any) => r.results);
     const [{ count: projectsCount }]: any = await c.env.DB.prepare(
-      "SELECT COUNT(*) as count FROM projects WHERE status != 'completed'",
+      `SELECT COUNT(*) as count FROM projects p WHERE p.status != 'completed' AND ${PROJECT_READ_SCOPE}`,
     )
+      .bind(user.power_level, user.department_id || "", user.id)
       .all()
       .then((r: any) => r.results);
 
@@ -6640,20 +6506,14 @@ app.delete("/api/members/:id", async (c) => {
       .bind(targetId)
       .first();
 
-    await c.env.DB.prepare("DELETE FROM users WHERE id = ?")
-      .bind(targetId)
-      .run();
-
-    if (deletedUser?.email) {
-      await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
-        .bind(deletedUser.email)
-        .run();
-      await c.env.DB.prepare(
-        "DELETE FROM role_transfers WHERE from_user_id = ? OR to_user_id = ?",
-      )
-        .bind(targetId, targetId)
-        .run();
-    }
+    if (!deletedUser) return c.json({ error: "Member not found" }, 404);
+    // Remove the registry and identity atomically so token exchange cannot
+    // recreate a just-deleted member between these operations.
+    await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(deletedUser.email),
+      c.env.DB.prepare("DELETE FROM role_transfers WHERE from_user_id = ? OR to_user_id = ?").bind(targetId, targetId),
+      c.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(targetId),
+    ]);
     await addAuditLog(c, "member_removed", "user", targetId, "Member removed");
     return c.json({ success: true, message: "Member removed permanently." });
   } catch (e: any) {
@@ -7560,8 +7420,23 @@ app.delete("/api/announcements/:id", async (c) => {
 });
 
 // ---------------------------------------------------------
-// PROJECTS (board creates, all view, leads assign roles)
+// PROJECTS (board creates; department and explicit project membership scope reads)
 // ---------------------------------------------------------
+// Keep the same predicate for lists, counts and direct resource reads. Guest
+// identities will have separate policies and must never enter this member path.
+const PROJECT_READ_SCOPE = `(? >= 100 OR EXISTS (
+  SELECT 1 FROM project_departments pd WHERE pd.project_id = p.id AND pd.department_id = ?
+) OR EXISTS (
+  SELECT 1 FROM project_roles pr WHERE pr.project_id = p.id AND pr.user_id = ?
+))`;
+
+async function canReadProject(c: any, projectId: string, user = c.get("user")): Promise<boolean> {
+  const project = await c.env.DB.prepare(
+    `SELECT p.id FROM projects p WHERE p.id = ? AND ${PROJECT_READ_SCOPE}`,
+  ).bind(projectId, user.power_level, user.department_id || "", user.id).first();
+  return !!project;
+}
+
 function canManageProject(c: any) {
   const user: any = c.get("user");
   if (user.power_level >= 100) return true;
@@ -7574,18 +7449,9 @@ app.get("/api/projects", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
 
-    let projects;
-    if (user.power_level >= 100 || !user.department_id) {
-      projects = await c.env.DB.prepare(
-        "SELECT p.* FROM projects p ORDER BY p.created_at DESC",
-      ).all();
-    } else {
-      projects = await c.env.DB.prepare(
-        "SELECT p.* FROM projects p JOIN project_departments pd ON p.id = pd.project_id WHERE pd.department_id = ? ORDER BY p.created_at DESC",
-      )
-        .bind(user.department_id)
-        .all();
-    }
+    const projects = await c.env.DB.prepare(
+      `SELECT p.* FROM projects p WHERE ${PROJECT_READ_SCOPE} ORDER BY p.created_at DESC`,
+    ).bind(user.power_level, user.department_id || "", user.id).all();
 
     const results = [];
     for (const proj of projects.results || []) {
@@ -7840,32 +7706,151 @@ app.delete("/api/projects/:id/roles/:roleId", async (c) => {
 // PROJECT TASKS
 // ---------------------------------------------------------
 async function canManageProjectTasks(c: any, projectId: string) {
-  const user: any = c.get("user");
-  if (user.power_level >= 100) return true;
-  if (user.power_level >= 50 && user.department_id) {
-    const deptCheck: any = await c.env.DB.prepare(
-      "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
-    )
-      .bind(projectId, user.department_id)
-      .first();
-    if (deptCheck) return true;
-  }
+  if (await mayManageProjectTasks(c, projectId)) return true;
   throw new Error("Forbidden: cannot manage tasks for this project");
+}
+
+// Bind candidate twice, then project twice; shared by creation and reassignment.
+const ACTIVE_PROJECT_ASSIGNEE = `(? IS NULL OR EXISTS (SELECT 1 FROM users au JOIN roles ar ON ar.id = au.role_id JOIN admin_tokens at ON at.email = au.email
+          WHERE au.id = ? AND at.token != '' AND at.revoked_at IS NULL AND (at.expires_at IS NULL OR julianday(at.expires_at) > julianday('now'))
+          AND (ar.power_level >= 100 OR EXISTS (SELECT 1 FROM project_departments pd WHERE pd.project_id = ? AND pd.department_id = au.department_id)
+            OR EXISTS (SELECT 1 FROM project_roles pr WHERE pr.project_id = ? AND pr.user_id = au.id))))`;
+
+async function mayManageProjectTasks(c: any, projectId: string): Promise<boolean> {
+  const user = c.get("user");
+  if (user.power_level >= 100) return true;
+  if (user.power_level < 50 || !user.department_id) return false;
+  return !!await c.env.DB.prepare(
+    "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
+  ).bind(projectId, user.department_id).first();
 }
 
 app.get("/api/projects/:id/tasks", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
+    if (!await canReadProject(c, projectId)) {
+      return c.json({ error: "Project not found or inaccessible" }, 404);
+    }
     const rows = await c.env.DB.prepare(
       "SELECT pt.*, u.name as assigned_name FROM project_tasks pt LEFT JOIN users u ON pt.assigned_to = u.id WHERE pt.project_id = ? ORDER BY pt.created_at ASC",
     )
       .bind(projectId)
       .all();
-    return c.json({ success: true, data: rows.results || [] });
+    const user = c.get("user");
+    const manages = await mayManageProjectTasks(c, projectId);
+    return c.json({ success: true, data: (rows.results || []).map((task: any) => ({
+      ...task, can_update: manages || task.assigned_to === user.id,
+    })) });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
+});
+
+async function readableTask(c: any, projectId: string, taskId: string) {
+  return await canReadProject(c, projectId) && !!await c.env.DB.prepare("SELECT id FROM project_tasks WHERE id = ? AND project_id = ?").bind(taskId, projectId).first();
+}
+app.get("/api/projects/:id/tasks/:taskId/comments", async (c) => {
+  try {
+    const projectId = c.req.param('id'), taskId = c.req.param('taskId');
+    if (!await readableTask(c, projectId, taskId)) return c.json({ error: 'Task not found or inaccessible' }, 404);
+    const limit = await checkRateLimit(c, 'task_comments_read', 30, 60);
+    if (!limit.allowed) return c.json({ error: 'Too many requests', retryAfter: limit.retryAfter }, 429);
+    let before: { time: string; sequence: number } | null = null;
+    const cursor = c.req.query('cursor');
+    if (cursor !== undefined) {
+      try {
+        if (!cursor || cursor.length > 1024) throw new Error();
+        before = JSON.parse(atob(cursor));
+        if (!before || typeof before.time !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(before.time) || !Number.isSafeInteger(before.sequence) || before.sequence < 1) throw new Error();
+      } catch { return c.json({ error: 'Invalid comment cursor' }, 400); }
+    }
+    const rows = await c.env.DB.prepare(`SELECT tc.rowid AS sequence, tc.id, tc.author_id, tc.body, tc.created_at, tc.deleted_at, u.name AS author_name FROM task_comments tc LEFT JOIN users u ON u.id = tc.author_id
+      WHERE tc.project_id = ? AND tc.task_id = ? ${before ? 'AND (tc.created_at < ? OR (tc.created_at = ? AND tc.rowid < ?))' : ''}
+      ORDER BY tc.created_at DESC, tc.rowid DESC LIMIT 51`).bind(projectId, taskId, ...(before ? [before.time, before.time, before.sequence] : [])).all();
+    const page = (rows.results || []).slice(0, 50);
+    const manages = await mayManageProjectTasks(c, projectId), user = c.get('user');
+    const last = page.at(-1);
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data: page.map((row: any) => ({ id: row.id, authorName: row.author_name || 'Former member', body: row.deleted_at ? null : row.body, createdAt: row.created_at, deleted: !!row.deleted_at, canDelete: !row.deleted_at && (manages || row.author_id === user.id) })), nextCursor: (rows.results || []).length > 50 && last ? btoa(JSON.stringify({ time: last.created_at, sequence: last.sequence })) : null });
+  } catch (e: any) { return errorResponse(c, e.message, 500); }
+});
+app.post("/api/projects/:id/tasks/:taskId/comments", async (c) => {
+  try {
+    const projectId = c.req.param('id'), taskId = c.req.param('taskId'), user = c.get('user');
+    if (!await readableTask(c, projectId, taskId)) return c.json({ error: 'Task not found or inaccessible' }, 404);
+    const limit = await checkRateLimit(c, 'task_comments_write', 10, 60);
+    if (!limit.allowed) return c.json({ error: 'Too many requests', retryAfter: limit.retryAfter }, 429);
+    let request;
+    try { request = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON request' }, 400); }
+    if (typeof request?.requestId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(request.requestId)) return c.json({ error: 'A valid request ID is required' }, 400);
+    let body;
+    try { body = commentBody(request?.body); } catch (e: any) { return c.json({ error: e.message }, 400); }
+    const replay = async () => {
+      const prior = await c.env.DB.prepare('SELECT id, project_id, task_id, body, deleted_at FROM task_comments WHERE author_id = ? AND request_id = ?').bind(user.id, request.requestId).first();
+      if (!prior) return null;
+      if (prior.project_id !== projectId || prior.task_id !== taskId || prior.deleted_at || prior.body !== body) return c.json({ error: 'Comment request changed or was removed; start a new request' }, 409);
+      c.header('Cache-Control', 'private, no-store');
+      return c.json({ success: true, id: prior.id, replayed: true }, 201);
+    };
+    const existing = await replay();
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    const [result] = await c.env.DB.batch([
+      c.env.DB.prepare(`INSERT INTO task_comments (id, project_id, task_id, author_id, request_id, body) SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM project_tasks WHERE id = ? AND project_id = ?) AND ${ACTIVE_PROJECT_ASSIGNEE} ON CONFLICT(author_id, request_id) DO NOTHING`).bind(id, projectId, taskId, user.id, request.requestId, body, taskId, projectId, user.id, user.id, projectId, projectId),
+      c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, 'task_comment_added', ?, 'project_task', ?, ? WHERE changes() > 0").bind(crypto.randomUUID(), user.email, taskId, JSON.stringify({ projectId, commentId: id })),
+    ]);
+    if (!result.meta.changes) return await replay() || c.json({ error: 'Task access changed; refresh and try again' }, 409);
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, id }, 201);
+  } catch (e: any) { return errorResponse(c, e.message, 500); }
+});
+app.delete("/api/projects/:id/tasks/:taskId/comments/:commentId", async (c) => {
+  try {
+    const projectId = c.req.param('id'), taskId = c.req.param('taskId'), user = c.get('user'), id = c.req.param('commentId');
+    if (!await readableTask(c, projectId, taskId)) return c.json({ error: 'Task not found or inaccessible' }, 404);
+    const comment = await c.env.DB.prepare('SELECT author_id, deleted_at FROM task_comments WHERE id = ? AND project_id = ? AND task_id = ?').bind(id, projectId, taskId).first();
+    if (!comment) return c.json({ error: 'Comment not found' }, 404);
+    if (comment.author_id !== user.id && !await mayManageProjectTasks(c, projectId)) return c.json({ error: 'Only the author or project lead may remove this comment' }, 403);
+    if (comment.deleted_at) return c.json({ success: true });
+    const limit = await checkRateLimit(c, 'task_comments_remove', 10, 60);
+    if (!limit.allowed) return c.json({ error: 'Too many requests', retryAfter: limit.retryAfter }, 429);
+    const [result] = await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE task_comments SET body = '', deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND project_id = ? AND task_id = ? AND deleted_at IS NULL
+        AND ${ACTIVE_PROJECT_ASSIGNEE} AND (author_id = ? OR EXISTS (SELECT 1 FROM users mu JOIN roles mr ON mr.id = mu.role_id WHERE mu.id = ? AND (mr.power_level >= 100 OR (mr.power_level >= 50 AND EXISTS (SELECT 1 FROM project_departments pd WHERE pd.project_id = ? AND pd.department_id = mu.department_id)))))`).bind(id, projectId, taskId, user.id, user.id, projectId, projectId, user.id, user.id, projectId),
+      c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, 'task_comment_removed', ?, 'project_task', ?, ? WHERE changes() > 0").bind(crypto.randomUUID(), user.email, taskId, JSON.stringify({ projectId, commentId: id })),
+    ]);
+    if (!result.meta.changes) return c.json({ error: 'Comment or access changed; refresh and try again' }, 409);
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true });
+  } catch (e: any) { return errorResponse(c, e.message, 500); }
+});
+
+app.get("/api/projects/:id/tasks/:taskId/history", async (c) => {
+  try {
+    const projectId = c.req.param("id"), taskId = c.req.param("taskId");
+    if (!await canReadProject(c, projectId)) return c.json({ error: "Project not found or inaccessible" }, 404);
+    if (!await c.env.DB.prepare("SELECT id FROM project_tasks WHERE id = ? AND project_id = ?").bind(taskId, projectId).first()) return c.json({ error: "Task not found" }, 404);
+    let before: { time: string; sequence: number } | null = null;
+    const cursor = c.req.query('cursor');
+    if (cursor !== undefined) {
+      try {
+        if (!cursor || cursor.length > 1024) throw new Error();
+        before = JSON.parse(atob(cursor));
+        if (!before || typeof before.time !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(before.time) || !Number.isSafeInteger(before.sequence) || before.sequence < 1) throw new Error();
+      } catch { return c.json({ error: "Invalid history cursor" }, 400); }
+    }
+    const rows = await c.env.DB.prepare(`SELECT a.rowid AS sequence, a.id, a.action, a.created_at, a.details, u.name AS actor_name FROM audit_log a LEFT JOIN users u ON u.email = a.actor_email
+      WHERE a.target_type = 'project_task' AND a.target_id = ?
+        AND a.action IN ('task_created', 'task_status_changed', 'task_schedule_changed', 'task_details_changed', 'task_comment_added', 'task_comment_removed')
+        AND CASE WHEN json_valid(a.details) THEN json_extract(a.details, '$.projectId') END = ?
+        ${before ? 'AND (a.created_at < ? OR (a.created_at = ? AND a.rowid < ?))' : ''}
+      ORDER BY a.created_at DESC, a.rowid DESC LIMIT 51`).bind(taskId, projectId, ...(before ? [before.time, before.time, before.sequence] : [])).all();
+    const page = (rows.results || []).slice(0, 50);
+    const last = page.at(-1);
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data: page.map(taskHistoryEvent), nextCursor: (rows.results || []).length > 50 && last ? btoa(JSON.stringify({ time: last.created_at, sequence: last.sequence })) : null });
+  } catch (e: any) { return errorResponse(c, e.message, 500); }
 });
 
 app.post("/api/projects/:id/tasks", async (c) => {
@@ -7873,6 +7858,7 @@ app.post("/api/projects/:id/tasks", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const user: any = c.get("user");
+    if (!await canReadProject(c, projectId)) return c.json({ error: "Project not found or inaccessible" }, 404);
     await canManageProjectTasks(c, projectId);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -7881,17 +7867,72 @@ app.post("/api/projects/:id/tasks", async (c) => {
     const title = sanitizeStr(body.title);
     const description = sanitizeStr(body.description);
     const assignedTo = sanitizeStr(body.assignedTo);
+    let schedule;
+    try { schedule = taskSchedule(body); } catch (e: any) { return c.json({ error: e.message }, 400); }
     if (!title) return c.json({ error: "Missing task title" }, 400);
-    await c.env.DB.prepare(
-      "INSERT INTO project_tasks (id, project_id, title, description, assigned_to, status, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, 'pending', ?)",
+    if (body.assignedTo != null && body.assignedTo !== "" && !assignedTo) return c.json({ error: "Invalid assignee" }, 400);
+    if (assignedTo) {
+      const assignee = await c.env.DB.prepare(
+        "SELECT u.id, u.department_id, r.power_level, at.token, at.expires_at, at.revoked_at FROM users u JOIN roles r ON u.role_id = r.id JOIN admin_tokens at ON at.email = u.email WHERE u.id = ?",
+      ).bind(assignedTo).first();
+      if (!activeRegistryToken(assignee) || !await canReadProject(c, projectId, assignee)) {
+        return c.json({ error: "Assignee must have access to this project" }, 400);
+      }
+    }
+    const taskId = crypto.randomUUID();
+    const insert = c.env.DB.prepare(
+      `INSERT INTO project_tasks (id, project_id, title, description, assigned_to, status, created_by, due_date, priority) SELECT ?, ?, ?, ?, ?, 'pending', ?, ?, ? WHERE ${ACTIVE_PROJECT_ASSIGNEE}`,
     )
-      .bind(projectId, title, description || null, assignedTo || null, user.id)
-      .run();
+      .bind(taskId, projectId, title, description || null, assignedTo || null, user.id, schedule.dueDate, schedule.priority, assignedTo || null, assignedTo || null, projectId, projectId);
+    const [created] = await c.env.DB.batch([insert,
+      c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, 'task_created', ?, 'project_task', ?, ? WHERE changes() > 0").bind(crypto.randomUUID(), user.email, taskId, JSON.stringify({ projectId, from: {}, to: { assignedTo: assignedTo || null, dueDate: schedule.dueDate, priority: schedule.priority, status: 'pending' } })),
+    ]);
+    if (!created.meta.changes) return c.json({ error: "Assignee access changed; refresh and try again" }, 409);
     return c.json({ success: true, message: "Task created" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
 });
+
+async function updateProjectTaskDetails(c: any, withAssignment = false) {
+  try {
+    const projectId = c.req.param("id"), taskId = c.req.param("taskId");
+    if (!await canReadProject(c, projectId)) return c.json({ error: "Project not found or inaccessible" }, 404);
+    if (!await mayManageProjectTasks(c, projectId)) return c.json({ error: "Forbidden: task scheduling requires project management access" }, 403);
+    const task = await c.env.DB.prepare("SELECT assigned_to, due_date, priority FROM project_tasks WHERE id = ? AND project_id = ?").bind(taskId, projectId).first();
+    if (!task) return c.json({ error: "Task not found" }, 404);
+    const body = await c.req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Invalid request body" }, 400);
+    if (withAssignment) {
+      const expected = body.expected;
+      if (!expected || typeof expected !== 'object' || Array.isArray(expected) || !Object.hasOwn(expected, 'assignedTo') || !Object.hasOwn(expected, 'dueDate') || !Object.hasOwn(expected, 'priority')) return c.json({ error: "Previous task values are required" }, 400);
+      if (expected.assignedTo !== task.assigned_to || expected.dueDate !== task.due_date || expected.priority !== task.priority) return c.json({ error: "Task changed; refresh and try again" }, 409);
+    }
+    let assignedTo = task.assigned_to;
+    if (withAssignment && Object.hasOwn(body, 'assignedTo')) {
+      if (body.assignedTo !== null && (typeof body.assignedTo !== 'string' || !body.assignedTo || body.assignedTo.length > 128 || body.assignedTo.trim() !== body.assignedTo)) return c.json({ error: "Invalid task owner" }, 400);
+      assignedTo = body.assignedTo;
+      if (assignedTo !== null) {
+        const assignee = await c.env.DB.prepare("SELECT u.id, u.department_id, r.power_level, at.token, at.expires_at, at.revoked_at FROM users u JOIN roles r ON u.role_id = r.id JOIN admin_tokens at ON at.email = u.email WHERE u.id = ?").bind(assignedTo).first();
+        if (!activeRegistryToken(assignee) || !await canReadProject(c, projectId, assignee)) return c.json({ error: "Task owner must have active access to this project" }, 400);
+      }
+    }
+    let schedule;
+    if (!Object.hasOwn(body, 'dueDate') && !Object.hasOwn(body, 'priority') && !(withAssignment && Object.hasOwn(body, 'assignedTo'))) return c.json({ error: "Provide a due date or priority" }, 400);
+    try { schedule = taskSchedule({ dueDate: task.due_date, priority: task.priority, ...body }); } catch (e: any) { return c.json({ error: e.message }, 400); }
+    if (task.assigned_to === assignedTo && task.due_date === schedule.dueDate && task.priority === schedule.priority) return c.json({ success: true });
+    const checkedAssignee = withAssignment && Object.hasOwn(body, 'assignedTo') ? assignedTo : null;
+    const [result] = await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE project_tasks SET assigned_to = ?, due_date = ?, priority = ? WHERE id = ? AND project_id = ? AND assigned_to IS ? AND due_date IS ? AND priority = ?
+        AND ${ACTIVE_PROJECT_ASSIGNEE}`).bind(assignedTo, schedule.dueDate, schedule.priority, taskId, projectId, task.assigned_to, task.due_date, task.priority, checkedAssignee, checkedAssignee, projectId, projectId),
+      c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, ?, ?, 'project_task', ?, ? WHERE changes() > 0").bind(crypto.randomUUID(), withAssignment ? "task_details_changed" : "task_schedule_changed", c.get("user").email, taskId, JSON.stringify({ projectId, from: { assignedTo: task.assigned_to, dueDate: task.due_date, priority: task.priority }, to: { assignedTo, ...schedule } })),
+    ]);
+    if (!result.meta.changes) return c.json({ error: "Task changed; refresh and try again" }, 409);
+    return c.json({ success: true });
+  } catch (e: any) { return errorResponse(c, e.message, 500); }
+}
+app.patch("/api/projects/:id/tasks/:taskId/schedule", c => updateProjectTaskDetails(c));
+app.patch("/api/projects/:id/tasks/:taskId/details", c => updateProjectTaskDetails(c, true));
 
 app.put("/api/projects/:id/tasks/:taskId", async (c) => {
   try {
@@ -7899,7 +7940,17 @@ app.put("/api/projects/:id/tasks/:taskId", async (c) => {
     const projectId = c.req.param("id");
     const taskId = c.req.param("taskId");
     const user: any = c.get("user");
-    await canManageProjectTasks(c, projectId);
+    if (!await canReadProject(c, projectId)) {
+      return c.json({ error: "Project not found or inaccessible" }, 404);
+    }
+    const task = await c.env.DB.prepare(
+      "SELECT id, assigned_to, status FROM project_tasks WHERE id = ? AND project_id = ?",
+    ).bind(taskId, projectId).first();
+    if (!task) return c.json({ error: "Task not found" }, 404);
+    const manages = await mayManageProjectTasks(c, projectId);
+    if (!manages && task.assigned_to !== user.id) {
+      return c.json({ error: "Forbidden: only your assigned tasks may be updated" }, 403);
+    }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -7908,19 +7959,19 @@ app.put("/api/projects/:id/tasks/:taskId", async (c) => {
     if (!status || !["pending", "completed"].includes(status)) {
       return c.json({ error: "Invalid status" }, 400);
     }
-    if (status === "completed") {
-      await c.env.DB.prepare(
-        "UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND project_id = ?",
-      )
-        .bind(taskId, projectId)
-        .run();
-    } else {
-      await c.env.DB.prepare(
-        "UPDATE project_tasks SET status = 'pending', completed_at = NULL WHERE id = ? AND project_id = ?",
-      )
-        .bind(taskId, projectId)
-        .run();
-    }
+    if (task.status === status) return c.json({ success: true, message: "Task already has this status" });
+    // Compare current status and assignee so a reassignment or concurrent edit
+    // cannot turn a stale permission check into a successful update.
+    const update = c.env.DB.prepare(
+      "UPDATE project_tasks SET status = ?, completed_at = CASE WHEN ? = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = ? AND project_id = ? AND status = ? AND assigned_to IS ?",
+    ).bind(status, status, taskId, projectId, task.status, task.assigned_to);
+    // D1 executes the batch transactionally. The audit insert depends on the
+    // preceding UPDATE changing a row, so conflicts never create false history.
+    const audit = c.env.DB.prepare(
+      "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, 'task_status_changed', ?, 'project_task', ?, ? WHERE changes() > 0",
+    ).bind(crypto.randomUUID(), user.email, taskId, JSON.stringify({ projectId, from: task.status, to: status }));
+    const [result] = await c.env.DB.batch([update, audit]);
+    if (!result.meta.changes) return c.json({ error: "Task changed; refresh and try again" }, 409);
     return c.json({ success: true, message: "Task updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -7932,12 +7983,12 @@ app.post("/api/projects/:id/tasks/complete-all", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const user: any = c.get("user");
+    if (!await canReadProject(c, projectId)) return c.json({ error: "Project not found or inaccessible" }, 404);
     await canManageProjectTasks(c, projectId);
-    await c.env.DB.prepare(
-      "UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE project_id = ? AND status = 'pending'",
-    )
-      .bind(projectId)
-      .run();
+    await c.env.DB.batch([
+      c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT lower(hex(randomblob(16))), 'task_status_changed', ?, 'project_task', id, ? FROM project_tasks WHERE project_id = ? AND status = 'pending'").bind(user.email, JSON.stringify({ projectId, from: 'pending', to: 'completed', bulk: true }), projectId),
+      c.env.DB.prepare("UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE project_id = ? AND status = 'pending'").bind(projectId),
+    ]);
     return c.json({ success: true, message: "All tasks completed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -11238,11 +11289,10 @@ app.get("/api/club-files", async (c) => {
     const projectName = (c.req.query("projectName") || "").toLowerCase();
     const search = (c.req.query("search") || "").toLowerCase();
 
-    const prefix = category ? `${category}/` : "";
-    const listed = await c.env.CLUB_FILES.list({ prefix });
+    if (category && !isSharedFileCategory(category)) return c.json({ error: "Invalid shared file category" }, 400);
 
     const files: any[] = [];
-    for (const obj of listed.objects) {
+    for await (const obj of sharedFileObjects(c.env.CLUB_FILES, category || undefined)) {
       const head = await c.env.CLUB_FILES.head(obj.key);
       if (!head) continue;
       const m = head.customMetadata || {};
@@ -11278,9 +11328,8 @@ app.get("/api/club-files/events", async (c) => {
     if (!user || user.power_level < 10)
       return c.json({ error: "Forbidden" }, 403);
 
-    const listed = await c.env.CLUB_FILES.list({ prefix: "events/" });
     const names = new Set<string>();
-    for (const obj of listed.objects) {
+    for await (const obj of sharedFileObjects(c.env.CLUB_FILES, "events")) {
       const head = await c.env.CLUB_FILES.head(obj.key);
       if (head?.customMetadata?.eventName)
         names.add(head.customMetadata.eventName);
@@ -11298,9 +11347,8 @@ app.get("/api/club-files/projects", async (c) => {
     if (!user || user.power_level < 10)
       return c.json({ error: "Forbidden" }, 403);
 
-    const listed = await c.env.CLUB_FILES.list({ prefix: "projects/" });
     const names = new Set<string>();
-    for (const obj of listed.objects) {
+    for await (const obj of sharedFileObjects(c.env.CLUB_FILES, "projects")) {
       const head = await c.env.CLUB_FILES.head(obj.key);
       if (head?.customMetadata?.projectName)
         names.add(head.customMetadata.projectName);
@@ -11329,14 +11377,7 @@ app.delete("/api/club-files/:id", async (c) => {
       );
 
     const id = c.req.param("id");
-    const listed = await c.env.CLUB_FILES.list();
-    let targetKey = "";
-    for (const obj of listed.objects) {
-      if (obj.key.endsWith(`/${id}.`) || obj.key.includes(`/${id}.`)) {
-        targetKey = obj.key;
-        break;
-      }
-    }
+    const targetKey = await sharedFileKeyById(c.env.CLUB_FILES, id);
     if (!targetKey) return c.json({ error: "File not found" }, 404);
 
     await c.env.CLUB_FILES.delete(targetKey);
@@ -11361,14 +11402,7 @@ app.get("/api/club-files/:id/download", async (c) => {
       return c.json({ error: "Forbidden" }, 403);
 
     const id = c.req.param("id");
-    const listed = await c.env.CLUB_FILES.list();
-    let targetKey = "";
-    for (const obj of listed.objects) {
-      if (obj.key.endsWith(`/${id}.`) || obj.key.includes(`/${id}.`)) {
-        targetKey = obj.key;
-        break;
-      }
-    }
+    const targetKey = await sharedFileKeyById(c.env.CLUB_FILES, id);
     if (!targetKey) return c.json({ error: "File not found" }, 404);
 
     const obj = await c.env.CLUB_FILES.get(targetKey);
@@ -11383,10 +11417,7 @@ app.get("/api/club-files/:id/download", async (c) => {
       head?.httpMetadata?.contentType || "application/octet-stream";
 
     return new Response(obj.body, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-      },
+      headers: downloadFileHeaders(fileName, contentType),
     });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -11412,11 +11443,13 @@ app.post("/api/club-files/upload", async (c) => {
 
     const formData = await c.req.formData();
     const file = formData.get("file") as File | null;
-    if (!file) return c.json({ error: "No file provided" }, 400);
+    if (!(file instanceof File)) return c.json({ error: "No file provided" }, 400);
 
     const category = (formData.get("category") as string) || "general";
+    if (!isSharedFileCategory(category)) return c.json({ error: "Invalid shared file category" }, 400);
     const id = crypto.randomUUID().replace(/-/g, "");
-    const ext = file.name.split(".").pop() || "bin";
+    const candidateExt = file.name.split(".").pop() || "bin";
+    const ext = /^[A-Za-z0-9]{1,16}$/.test(candidateExt) ? candidateExt : "bin";
     const key = `${category}/${id}.${ext}`;
 
     const metadata: Record<string, string> = {
