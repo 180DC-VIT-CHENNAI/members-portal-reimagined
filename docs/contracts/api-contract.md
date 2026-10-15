@@ -258,6 +258,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 | GET | `/api/admin/maintenance` | public | Get maintenance status. |
 | POST | `/api/admin/maintenance` | board | Toggle maintenance mode. |
 | GET | `/api/admin/email-queue` | board | Email queue stats: hourly usage and recent campaigns. |
+| GET / DELETE | `/api/dev/outbox` | dev only | Emails recorded by `EMAIL_TEST_MODE` (used by `tests/`). Returns 404 unless the mode is on, and always 404 when `ENVIRONMENT=production`. |
 | GET | `/api/admin/email-queue/:id/deliveries` | board | One campaign plus its per-recipient `email_deliveries` rows (`sent` / `failed` / `skipped`, error, attempts). |
 | POST | `/api/admin/email-queue/:id/retry-failed` | board | Re-queues a finished campaign; recipients already `sent`/`skipped` are not re-sent. Refused for campaigns that predate delivery tracking. |
 

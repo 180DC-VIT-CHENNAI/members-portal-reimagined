@@ -20,6 +20,8 @@ type Bindings = {
   SPACEMAIL_SMTP_USER?: string;
   SPACEMAIL_SMTP_PASS?: string;
   SPACEMAIL_HOURLY_LIMIT?: string;
+  EMAIL_TEST_MODE?: string;
+  EMAIL_TEST_RECIPIENT?: string;
   NEWSLETTER_SITE_URL?: string;
 };
 
@@ -66,6 +68,8 @@ function isPublicRoute(pathname: string, method: string): boolean {
   if (pathname.startsWith("/api/gallery-cdn/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
   if (pathname === "/api/newsletter" && method === "GET") return true;
+  // Dev-only test outbox; the handlers 404 unless EMAIL_TEST_MODE is active.
+  if (pathname === "/api/dev/outbox") return true;
   if (
     method === "POST" &&
     /^\/api\/newsletter\/unsubscribe\/[a-f0-9]+$/.test(pathname)
@@ -1013,7 +1017,10 @@ async function incrementHourlyEmailCount(db: any, amount = 1) {
 }
 
 function isEmailConfigured(c: any): boolean {
-  return Boolean(c.env.SPACEMAIL_SMTP_USER && c.env.SPACEMAIL_SMTP_PASS);
+  return Boolean(
+    (c.env.SPACEMAIL_SMTP_USER && c.env.SPACEMAIL_SMTP_PASS) ||
+      emailTestMode(c.env) === "capture",
+  );
 }
 
 function newsletterSiteBase(c: any): string {
@@ -1051,6 +1058,109 @@ async function saturateHourlyEmailCount(env: any) {
     .run();
 }
 
+// ---------------------------------------------------------
+// Dev-only email test mode (used by tests/). Never active in production.
+//   EMAIL_TEST_MODE=capture   record every message in dev_outbox, send nothing
+//   EMAIL_TEST_MODE=redirect  record it, and deliver the first message of each
+//                             subject to EMAIL_TEST_RECIPIENT instead of the
+//                             real recipient (later ones are only recorded, so
+//                             a club-wide send doesn't flood the test inbox)
+// In both modes, recipients @reject.invalid are refused at RCPT like a 550,
+// @tempfail.invalid like a 450, and @timeout.invalid make the whole session
+// time out, so tests can exercise failure handling.
+// ---------------------------------------------------------
+type EmailTestMode = "capture" | "redirect";
+
+function emailTestMode(env: any): EmailTestMode | null {
+  const mode = String(env?.EMAIL_TEST_MODE || "").trim().toLowerCase();
+  if (mode !== "capture" && mode !== "redirect") return null;
+  if (env?.ENVIRONMENT === "production") {
+    console.error("[email] EMAIL_TEST_MODE is ignored in production");
+    return null;
+  }
+  return mode;
+}
+
+const DEV_OUTBOX_DDL =
+  "CREATE TABLE IF NOT EXISTS dev_outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, recipient TEXT NOT NULL, from_address TEXT, subject TEXT, html TEXT, headers TEXT, attachments TEXT, delivered_to TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)";
+
+async function deliverInTestMode(
+  c: any,
+  mode: EmailTestMode,
+  options: SendEmailOptions,
+  batch: string[],
+): Promise<{ ok: boolean; accepted: string[]; rejected: string[]; error?: string }> {
+  const target =
+    mode === "redirect" ? validateEmail(c.env.EMAIL_TEST_RECIPIENT) : null;
+  if (mode === "redirect" && !target) {
+    return {
+      ok: false,
+      accepted: [],
+      rejected: [],
+      error: "EMAIL_TEST_MODE=redirect needs a valid EMAIL_TEST_RECIPIENT (550)",
+    };
+  }
+  if (batch.some((r) => /@timeout\.invalid$/i.test(r))) {
+    return { ok: false, accepted: [], rejected: [], error: "SMTP timeout" };
+  }
+  const refused = batch.filter((r) => /@(reject|tempfail)\.invalid$/i.test(r));
+  if (refused.length > 0) {
+    const temporary = refused.some((r) => /@tempfail\.invalid$/i.test(r));
+    const rest = batch.filter((r) => !refused.includes(r));
+    const inner = rest.length > 0
+      ? await deliverInTestMode(c, mode, options, rest)
+      : { ok: true, accepted: [] as string[], rejected: [] as string[] };
+    return {
+      ok: inner.ok,
+      accepted: inner.accepted,
+      rejected: [...inner.rejected, ...refused],
+      error: temporary
+        ? "SMTP RCPT failed (450): test temporary failure"
+        : "SMTP RCPT failed (550): test rejection",
+    };
+  }
+  await c.env.DB.exec(DEV_OUTBOX_DDL);
+  const attachmentNames = JSON.stringify(
+    (options.attachments || []).map((a) => a.filename),
+  );
+  const alreadyDelivered =
+    mode === "redirect" &&
+    (await c.env.DB.prepare(
+      "SELECT 1 FROM dev_outbox WHERE subject = ? AND delivered_to IS NOT NULL LIMIT 1",
+    )
+      .bind(options.subject)
+      .first());
+  const deliverTo = alreadyDelivered ? null : target;
+  for (const recipient of batch) {
+    await c.env.DB.prepare(
+      "INSERT INTO dev_outbox (recipient, from_address, subject, html, headers, attachments, delivered_to) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        recipient,
+        options.from,
+        options.subject,
+        options.html,
+        JSON.stringify(options.extraHeaders || {}),
+        attachmentNames,
+        deliverTo,
+      )
+      .run();
+  }
+  if (!deliverTo) return { ok: true, accepted: batch, rejected: [] };
+  const smtp = await smtpSendMessage(
+    c.env.SPACEMAIL_SMTP_USER,
+    c.env.SPACEMAIL_SMTP_PASS,
+    {
+      ...options,
+      to: [target!],
+      subject: "[TEST to " + batch.join(", ") + "] " + options.subject,
+    },
+  );
+  return smtp.ok && smtp.accepted.length > 0
+    ? { ok: true, accepted: batch, rejected: [] }
+    : { ok: smtp.ok, accepted: [], rejected: smtp.ok ? batch : [], error: smtp.error };
+}
+
 async function sendEmail(
   c: any,
   options: SendEmailOptions,
@@ -1063,7 +1173,8 @@ async function sendEmail(
 
   const smtpUser = c.env.SPACEMAIL_SMTP_USER;
   const smtpPass = c.env.SPACEMAIL_SMTP_PASS;
-  if (!smtpUser || !smtpPass) {
+  const testMode = emailTestMode(c.env);
+  if (testMode !== "capture" && (!smtpUser || !smtpPass)) {
     result.failed = recipients.length;
     result.error = "Email not configured (SPACEMAIL_SMTP_USER/PASS missing)";
     return result;
@@ -1078,14 +1189,16 @@ async function sendEmail(
     // Anything not attempted is reported as skipped; the queue retries it.
     if (hourlyCount + smtpMessagesSent >= limit) break;
     const batch = recipients.slice(index, index + chunkSize);
-    const smtp = await smtpSendMessage(smtpUser, smtpPass, {
-      from: options.from,
-      to: batch,
-      subject: options.subject,
-      html: options.html,
-      attachments: options.attachments,
-      extraHeaders: options.extraHeaders,
-    });
+    const smtp = testMode
+      ? await deliverInTestMode(c, testMode, options, batch)
+      : await smtpSendMessage(smtpUser, smtpPass, {
+          from: options.from,
+          to: batch,
+          subject: options.subject,
+          html: options.html,
+          attachments: options.attachments,
+          extraHeaders: options.extraHeaders,
+        });
     if (smtp.ok) {
       if (smtp.accepted.length > 0) smtpMessagesSent++;
       result.sent += smtp.accepted.length;
@@ -1504,7 +1617,9 @@ async function drainEmailQueue(
       html = personalizeUnsubscribe(html, sub?.token);
       extraHeaders = unsubscribeHeaders(sub?.token);
     }
-    if (sentThisRun > 0) await sleep(QUEUE_SEND_DELAY_MS);
+    // Capture mode (tests) sends nothing, so there is nothing to pace.
+    if (sentThisRun > 0 && emailTestMode(env) !== "capture")
+      await sleep(QUEUE_SEND_DELAY_MS);
     const result = await sendEmail(
       { env },
       {
@@ -11736,6 +11851,42 @@ app.post("/api/admin/email-queue/:id/retry-failed", async (c) => {
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
+});
+
+// Dev-only: messages recorded by EMAIL_TEST_MODE, for tests/. 404 otherwise,
+// and always 404 in production (emailTestMode ignores it there).
+app.get("/api/dev/outbox", async (c) => {
+  if (!emailTestMode(c.env)) return c.json({ error: "Not found" }, 404);
+  await c.env.DB.exec(DEV_OUTBOX_DDL);
+  const since = Number(c.req.query("since") || 0) || 0;
+  const to = c.req.query("to");
+  const rows: any = to
+    ? await c.env.DB.prepare(
+        "SELECT * FROM dev_outbox WHERE id > ? AND lower(recipient) = lower(?) ORDER BY id ASC",
+      )
+        .bind(since, to)
+        .all()
+    : await c.env.DB.prepare(
+        "SELECT * FROM dev_outbox WHERE id > ? ORDER BY id ASC",
+      )
+        .bind(since)
+        .all();
+  const messages = (rows.results || []).map((r: any) => ({
+    ...r,
+    headers: JSON.parse(r.headers || "{}"),
+    attachments: JSON.parse(r.attachments || "[]"),
+  }));
+  const last: any = await c.env.DB.prepare(
+    "SELECT COALESCE(MAX(id), 0) AS id FROM dev_outbox",
+  ).first();
+  return c.json({ success: true, lastId: last?.id || 0, messages });
+});
+
+app.delete("/api/dev/outbox", async (c) => {
+  if (!emailTestMode(c.env)) return c.json({ error: "Not found" }, 404);
+  await c.env.DB.exec(DEV_OUTBOX_DDL);
+  await c.env.DB.prepare("DELETE FROM dev_outbox").run();
+  return c.json({ success: true });
 });
 
 export default {

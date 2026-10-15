@@ -145,11 +145,11 @@ pnpm run generate:completed-projects  # runs scripts/generate-completed-projects
 1. Run `pnpm install` if dependencies changed.
 2. Run `pnpm turbo run build`.
 3. For admin-api, run `pnpm tsc --noEmit` inside `apps/admin-api`.
-4. Run the local worker and exercise the changed endpoints with a valid token.
-5. If a schema change was made, start with an empty local D1 and confirm `ensureDbReady` creates the schema and `runMigrations` add columns without errors.
+4. Run `pnpm test`, the admin-api end-to-end suite. It starts the worker on an empty local D1, so it also checks that `ensureDbReady` creates the schema and `runMigrations` run cleanly.
+5. For changed endpoints without a test yet, add one under `tests/api/`.
 6. For frontend changes, run `pnpm --filter frontend run build`.
 
-There are no automated tests today. Any new feature must be verified manually or by adding a test under `docs/quality/testing-strategy.md`.
+Run the end-to-end API suite after every backend change: `pnpm test` (emails are captured, none sent), or `TEST_EMAIL=you@example.com pnpm test:mail` to also receive one of each email. Every new or changed route needs a test in `tests/api/` (see `tests/README.md`). A test that exposes a bug you are not fixing goes in `tests/lib/known-issues.mjs` as a `todo`. There are no frontend tests yet.
 
 ## What to update after different classes of changes
 

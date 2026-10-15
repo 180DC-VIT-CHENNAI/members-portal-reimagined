@@ -2,7 +2,22 @@
 
 ## Current state
 
-The repository has **no automated tests**. Verification today is manual or through Wrangler local dev. This document records what exists, what is missing, and the minimum tests that should be added before risky changes.
+`tests/` holds an end-to-end suite for the admin-api: 215 tests covering every route
+(see `tests/README.md` for the feature map and the known bugs it found). Run it after every
+backend change:
+
+```bash
+pnpm test                                  # emails captured, none sent
+TEST_EMAIL=you@example.com pnpm test:mail  # also deliver one of each email to you
+```
+
+Each run starts `wrangler dev` on a fresh local D1/R2, creates one account per role
+(board, director, member, advisory) and exercises the API over HTTP. Emails go through
+the dev-only `EMAIL_TEST_MODE` (ignored in production), so tests can assert on recipients,
+bodies, unsubscribe links and OTP codes without emailing anyone real.
+
+There is no frontend (browser) test suite yet, and no unit tests. The rest of this
+document is the original plan; the integration items below are now covered by `tests/`.
 
 ## What must be verified manually today
 
