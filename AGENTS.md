@@ -64,7 +64,7 @@ Remotes:
 Rules:
 
 1. **Every change goes through a pull request.** Never push directly to `main` (or any default/protected branch) on either remote. Work on a feature branch and open a PR.
-2. **PRs target `origin` by default.** All feature, fix, and docs PRs are opened against `origin` (`members-portal-reimagined`). Do not open feature PRs against `upstream`.
+2. **PRs target `origin` `main`.** All feature, fix, and docs PRs are opened against `main` on `origin` (`members-portal-reimagined`). Do not open feature PRs against `upstream`. The only exception: junior consultants editing `180DC_Unified_Platform_Problem_Statement.md` open their PRs against the `reimagined` branch, which is reserved for that document and receives no code work.
 3. **Release on `origin` before promoting.** Once the work on `origin` is complete and tested, cut a versioned release on `origin` (a semver git tag such as `v1.4.0` plus a GitHub release with notes).
 4. **Only versioned releases go to `upstream`.** After the release is published on `origin`, open a single PR from that release to `upstream` (`180dc-admin-website`). The PR title must include the version (e.g. `Release v1.4.0`) and the body must link the `origin` release and summarize its changes.
 5. **Never open a PR to `upstream` with untested or unreleased work.** If something is not yet in a tagged `origin` release, it does not go upstream.
