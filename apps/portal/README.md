@@ -57,6 +57,16 @@ The portal is live at https://180dc-portal.srijan-guchhait.workers.dev. Its D1 d
 
 Static files are served by Workers Assets and do not invoke the Worker. Only `/api/*` and `/__void/*` run it. Do not add files under `middleware/`: any global middleware makes Void run the Worker before every asset. Resolve per-request state in `src/server/guard.ts` instead.
 
+## Email
+
+Spacemail SMTP is the only transport (`mail.spacemail.com:465`, TLS). Configure `SPACEMAIL_SMTP_USER` and `SPACEMAIL_SMTP_PASS` as Worker secrets. `SPACEMAIL_HOURLY_LIMIT` optionally overrides the default 500/hour allowance. `daily_email_count` is reporting only, not a daily cap.
+
+The awaited `crons/email.ts` job runs every minute. Campaigns send one message per recipient, pace attempts 1.5 seconds apart, use at most 90% of the hourly allowance, and attempt at most 15 recipients per invocation. Direct mail shares the hourly counter. Each send atomically reserves capacity before SMTP and releases it on failure; a crash can conservatively retain that reservation until the next hour. SMTP acceptance and its tracking write are separate operations: a crash between them can resend a message. Delivery records mean SMTP acceptance, not inbox delivery.
+
+For local tests, set `EMAIL_TEST_MODE=capture` to store accepted mail in `dev_outbox` without connecting to SMTP. `redirect` captures every message but sends the first occurrence of each subject to `EMAIL_TEST_RECIPIENT`; it needs SMTP credentials. Test modes are disabled in production builds and when `ENVIRONMENT=production`. The outbox and synchronous drain routes use `.dev.ts` and are excluded from production. Capture-mode simulated domains are `reject.invalid` (550), `tempfail.invalid` (450), and `timeout.invalid` (session timeout).
+
+The e2e harness awaits the real `/__void/scheduled` trigger with the startup token before reading queue/outbox state; it uses no delivery sleeps or polling. Queue attachments reference keys in `CASE_STUDIES`; missing objects are logged and omitted.
+
 ## Access model
 
 - **Status** (`people.status`) decides whether someone can sign in at all:
@@ -93,6 +103,10 @@ To add a permission:
 | `POST /api/imports/people` | `people.import`; `{ csv, dryRun }` with columns `email,full_name,department,position,access_role` |
 | `GET /api/audit` | `audit.view` |
 | `GET /api/departments` | public (100/min per IP): id, name, description, active |
+| `GET /api/admin/email-queue`, `GET /api/admin/email-queue/:id/deliveries` | `email.view` (global campaign visibility). Includes shared hourly usage and SMTP acceptance records. |
+| `POST /api/admin/email-queue/:id/retry-failed` | `email.manage`; 409 while sending, 400 with no failures, 404 if missing. Settled recipients are not resent. |
+| `POST /api/send-email` | `email.send`; `{to,subject,body}`, with comma/space/semicolon-separated email addresses in `to`. Department-scoped senders can only reach active/on-leave people in permitted departments. Up to 10 recipients send directly; larger sets and quota-paused direct sends queue and return `campaignId`. |
+| `GET /api/dev/outbox`, `DELETE /api/dev/outbox`, `POST /api/dev/drain-email` | Development test mode only; production routes are absent. Drain is capture-only and awaited. |
 | `GET /api/departments/:id/members` | `departments.members.view` for that department. People whose home department it is, active or on leave, with their current-term positions. |
 | `GET /api/departments/:id/instructions` | `departments.instructions.view` for that department |
 | `POST /api/departments/:id/instructions`, `DELETE /api/departments/:id/instructions/:instructionId` | `departments.instructions.manage` for that department |
@@ -101,7 +115,7 @@ To add a permission:
 | `POST /api/departments/:id/projects`, `PUT /api/departments/:id/projects/:projectId/status` | `departments.projects.manage` for that department. This tracker is separate from club-wide projects. |
 | `GET /api/content/case-studies`, `GET /api/content/partners`, `GET /api/content/team-members` | public (rate limited 100/min per IP). Team lists active/on-leave people with an open current-term tenure; public fields only. |
 | `POST /api/consulting-request` | public (1 per hour per IP) |
-| `GET /api/consulting-requests`, `DELETE /api/consulting-requests/:id`, `POST /api/consulting-requests/:id/accept`, `POST /api/consulting-requests/:id/reject` | `consulting.manage`. Replies are recorded; emailing them arrives with the email queue. |
+| `GET /api/consulting-requests`, `DELETE /api/consulting-requests/:id`, `POST /api/consulting-requests/:id/accept`, `POST /api/consulting-requests/:id/reject` | `consulting.manage`. Decisions and replies are recorded even if SMTP is unavailable; `emailSent` reports actual SMTP acceptance. |
 | `GET /api/case-studies`, `POST /api/case-studies`, `PUT /api/case-studies/:id` | `content.publish` |
 | `DELETE /api/case-studies/:id` | `content.manage` |
 | `POST /api/partners`, `PATCH /api/partners/:id`, `DELETE /api/partners/:id` | `content.manage` |

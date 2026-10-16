@@ -2,6 +2,17 @@
 
 This document describes the system from the domain perspective. Each section covers a capability, its actors, rules, and state changes.
 
+## Void portal email rules
+
+These rules apply to the separate `apps/portal` deployment while the legacy deployment remains live.
+
+- Mail uses Spacemail SMTP only. Campaigns send one message per recipient, never BCC batches; the minute cron awaits one claimed campaign.
+- Hourly capacity is reserved atomically in D1 before sending, shared by direct and queued mail. Failed sends release reservations; a crash may conservatively retain a reservation until the hour changes. The default allowance is 500/hour; campaigns stop at 90% of that allowance and attempt at most 15 recipients per invocation, paced 1.5 seconds apart.
+- Daily counts are reporting, not a 100/day cap. This follows the legacy implementation rather than the obsolete cap description.
+- Recipient rejection, including SMTP 450, is recorded as failed and does not block subsequent recipients. Session failure pauses without advancing the cursor. Five no-progress claims make a campaign eligible for failure on the next drain.
+- Settled recipients are skipped on explicit retry. SMTP acceptance and the delivery record are not transactional, so crash recovery can resend a message; acceptance is not a guarantee of inbox delivery.
+- Campaign inspection and retries are global administrative permissions (`email.view`, `email.manage`). Department-scoped `email.send` restricts recipients server-side to active/on-leave people in those departments. Titles never grant mail access.
+
 ## Authentication and sessions
 
 On `reimagined`, token sign-in uses `POST /api/auth/session` in all environments. It exchanges the existing registry credential for a new device session with fixed seven-day expiry. A registry-only onboarding account may create its user row only while the source token remains active. Every device request loads current identity/role and verifies its session and source registry state; role changes take effect without reissuing the session. Source-token revoke/delete/rotate invalidates its device sessions. Individual session revocation is account-owner scoped. Member removal batches registry and identity deletion to prevent concurrent exchange from recreating the removed member.

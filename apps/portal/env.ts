@@ -4,6 +4,12 @@ import { defineEnv, string } from 'void/env';
 export default defineEnv({
   AUTH_GOOGLE_CLIENT_ID: string(),
   AUTH_GOOGLE_CLIENT_SECRET: string(),
+  SPACEMAIL_SMTP_USER: string().optional(),
+  SPACEMAIL_SMTP_PASS: string().optional(),
+  SPACEMAIL_HOURLY_LIMIT: string().optional(),
+  EMAIL_TEST_MODE: string().optional(),
+  EMAIL_TEST_RECIPIENT: string().optional(),
+  ENVIRONMENT: string().optional(),
   // Optional Backblaze B2 failover for the R2 buckets (src/server/buckets.ts).
   // Without the first four, files live in R2 only.
   B2_S3_ENDPOINT: string().optional(),
