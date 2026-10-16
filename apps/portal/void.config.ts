@@ -7,6 +7,9 @@ export default defineConfig({
     compatibility_date: '2026-10-01',
     compatibility_flags: ['nodejs_compat'],
   },
+  auth: {
+    providers: ['google'],
+  },
   cloudflare: {
     name: '180dc-portal',
   },

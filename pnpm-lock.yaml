@@ -185,6 +185,9 @@ importers:
 
   apps/portal:
     dependencies:
+      better-auth:
+        specifier: 1.7.9
+        version: 1.7.9(drizzle-kit@0.31.11)(drizzle-orm@0.45.4(@cloudflare/workers-types@5.20261015.1)(better-sqlite3@13.0.3)(kysely@0.29.6)(mysql2@3.24.6(@types/node@24.12.4))(pg@8.23.1))(mysql2@3.24.6(@types/node@24.12.4))(pg@8.23.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       react:
         specifier: ^19.2.6
         version: 19.2.6

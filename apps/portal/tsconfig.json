@@ -10,7 +10,8 @@
       "void/env"
     ],
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true
   },
   "include": [
     "src",
