@@ -26,7 +26,7 @@ const rowSchema = v.object({
 export const POST = defineHandler.withValidator({
   body: v.object({ csv: v.pipe(v.string(), v.maxLength(500_000)), dryRun: v.optional(v.boolean(), false) }),
 })(async (c, { body }) => {
-  const actor = requirePermission(c, 'people.import');
+  const actor = await requirePermission(c, 'people.import');
   const records = parseCsvRecords(body.csv);
   if (records.length === 0) badRequest('empty_csv');
   if (records.length > MAX_ROWS) badRequest(`too_many_rows_max_${MAX_ROWS}`);

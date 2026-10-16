@@ -16,7 +16,7 @@ export const PATCH = defineHandler.withValidator({
 })(async (c, { body }) => {
   const [position] = await db.select().from(positions).where(eq(positions.id, idParam(c)));
   if (!position) notFound('position_not_found');
-  const actor = requirePermission(c, 'positions.manage', position.departmentId);
+  const actor = await requirePermission(c, 'positions.manage', position.departmentId);
   if (Object.keys(body).length === 0) badRequest('nothing_to_update');
   const [updated] = await db.update(positions).set(body).where(eq(positions.id, position.id)).returning();
   await audit(actor.person.id, 'position.update', 'position', position.id, body);

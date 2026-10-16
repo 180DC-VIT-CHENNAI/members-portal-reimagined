@@ -12,7 +12,7 @@ export const GET = defineHandler.withValidator({
     before: v.optional(v.pipe(v.string(), v.toNumber(), v.integer())),
   }),
 })(async (c, { query }) => {
-  requirePermission(c, 'audit.view');
+  await requirePermission(c, 'audit.view');
   const where = [];
   if (query.targetType) where.push(eq(auditLog.targetType, query.targetType));
   if (query.targetId) where.push(eq(auditLog.targetId, query.targetId));

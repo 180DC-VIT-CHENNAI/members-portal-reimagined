@@ -16,7 +16,7 @@ export const POST = defineHandler.withValidator({ body: v.object({ endedOn: v.op
     .innerJoin(people, eq(people.id, tenures.personId))
     .where(eq(tenures.id, idParam(c)));
   if (!row) notFound('tenure_not_found');
-  const actor = requirePermission(c, 'people.edit', row.positionDept ?? row.personDept);
+  const actor = await requirePermission(c, 'people.edit', row.positionDept ?? row.personDept);
   if (row.tenure.endedOn) badRequest('tenure_already_ended');
   const endedOn = body.endedOn ?? new Date().toISOString().slice(0, 10);
   if (endedOn < row.tenure.startedOn) badRequest('ends_before_start');

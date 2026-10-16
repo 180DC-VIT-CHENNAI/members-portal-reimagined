@@ -15,7 +15,7 @@ export const POST = defineHandler.withValidator({
   const person = await getPersonOr404(idParam(c));
   const [position] = await db.select().from(positions).where(eq(positions.id, body.positionId));
   if (!position || !position.active) badRequest('unknown_position');
-  const actor = requirePermission(c, 'people.edit', position.departmentId ?? person.departmentId);
+  const actor = await requirePermission(c, 'people.edit', position.departmentId ?? person.departmentId);
 
   const [term] = await db
     .select()

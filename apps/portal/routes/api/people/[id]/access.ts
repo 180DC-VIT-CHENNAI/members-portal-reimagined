@@ -19,7 +19,7 @@ export const PUT = defineHandler.withValidator({
     ),
   }),
 })(async (c, { body }) => {
-  const actor = requirePermission(c, 'people.grants');
+  const actor = await requirePermission(c, 'people.grants');
   const person = await getPersonOr404(idParam(c));
   if (actor.person.id === person.id) badRequest('cannot_change_own_access');
 

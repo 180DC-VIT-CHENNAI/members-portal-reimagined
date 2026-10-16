@@ -26,7 +26,7 @@ const permissionsBody = v.object({
  * permission so nobody can lock the club out.
  */
 export const PUT = defineHandler.withValidator({ body: permissionsBody })(async (c, { body }) => {
-  const actor = requirePermission(c, 'roles.manage');
+  const actor = await requirePermission(c, 'roles.manage');
   const roleId = idParam(c);
   if (!/^[a-z][a-z0-9_]{1,40}$/.test(roleId)) badRequest('invalid_role_id');
   if (roleId === 'admin') badRequest('admin_role_is_fixed');

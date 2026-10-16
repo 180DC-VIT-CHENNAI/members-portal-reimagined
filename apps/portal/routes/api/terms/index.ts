@@ -8,7 +8,7 @@ import { badRequest, conflict } from '../../../src/server/http';
 import { isoDate } from '../../../src/server/validation';
 
 export const GET = defineHandler(async (c) => {
-  requirePrincipal(c);
+  await requirePrincipal(c);
   return db.select().from(terms).orderBy(desc(terms.startsOn));
 });
 
@@ -21,7 +21,7 @@ export const POST = defineHandler.withValidator({
     endsOn: isoDate,
   }),
 })(async (c, { body }) => {
-  const actor = requirePermission(c, 'terms.manage');
+  const actor = await requirePermission(c, 'terms.manage');
   if (body.endsOn <= body.startsOn) badRequest('ends_before_start');
   const [dupe] = await db.select({ id: terms.id }).from(terms).where(eq(terms.id, body.id));
   if (dupe) conflict('term_exists');

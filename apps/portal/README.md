@@ -11,7 +11,7 @@ Void's version-matched docs live in `node_modules/void/docs/`. The `void` agent 
 | Path | What lives there |
 | --- | --- |
 | `routes/api/**` | One file per URL. Named exports `GET`/`POST`/`PATCH`/`PUT` (`[id]` becomes a parameter). |
-| `middleware/01.principal.ts` | Resolves the Better Auth session to the signed-in person and their permissions on every `/api/*` request. |
+| `src/server/guard.ts` | `requirePrincipal` / `requirePermission`: resolve the Better Auth session to the signed-in person and their permissions (once per request). There is deliberately no `middleware/` directory: global middleware makes Void run the Worker before every static asset, so the SPA would stop being served free from Workers Assets. |
 | `auth.ts` | Better Auth config: Google only, invite-only sign-up, no sessions without access. |
 | `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit. |
 | `db/migrations/` | Generated SQL (`void db generate`) plus seeded reference data. Applied by Void on deploy and at dev start. |
@@ -34,6 +34,21 @@ For real Google sign-in locally, the OAuth client must allow `http://localhost:5
 
 The e2e harness signs people in by creating real Better Auth `user`/`session` rows in the temp database and signing the
 cookie with Void's development secret. The app has no test login of any kind.
+
+## Deployment (CI/CD)
+
+`.github/workflows/portal-ci.yml` checks every PR. On a push to `main` it runs `void deploy --platform cloudflare`, which:
+- builds the app;
+- applies new D1 migrations;
+- uploads the `180dc-portal` Worker and verifies the version before sending it traffic, rolling back if that check fails.
+
+Setup (once):
+- Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The token is account-owned and needs Workers Scripts Edit and D1 Edit.
+- Worker secrets `AUTH_GOOGLE_CLIENT_ID` and `AUTH_GOOGLE_CLIENT_SECRET`, set with `void secret put`. Void creates `BETTER_AUTH_SECRET` itself.
+- The Google OAuth client must allow `https://<portal host>/api/auth/callback/google`.
+- The first deploy runs from one machine. Commit the `void.lock.json` it writes, then set the repo variable `PORTAL_DEPLOY=enabled`. The deploy job fails if a deploy changes `void.lock.json` without the change being committed.
+
+Static files are served by Workers Assets and do not invoke the Worker. Only `/api/*` and `/__void/*` run it. Do not add files under `middleware/`: any global middleware makes Void run the Worker before every asset. Resolve per-request state in `src/server/guard.ts` instead.
 
 ## Access model
 

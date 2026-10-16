@@ -11,7 +11,7 @@ import { id, profileFields } from '../../../../src/server/validation';
 
 /** One person with their full tenure history. */
 export const GET = defineHandler(async (c) => {
-  const viewer = requirePrincipal(c);
+  const viewer = await requirePrincipal(c);
   const person = await getPersonOr404(idParam(c));
   if (viewer.person.id !== person.id && !can(viewer.permissions, 'people.view')) forbidden();
   const history = await db
@@ -41,7 +41,7 @@ const patchBody = v.object({ ...profileFields, departmentId: v.optional(v.nullab
  * department(s).
  */
 export const PATCH = defineHandler.withValidator({ body: patchBody })(async (c, { body }) => {
-  const actor = requirePrincipal(c);
+  const actor = await requirePrincipal(c);
   const person = await getPersonOr404(idParam(c));
   const self = actor.person.id === person.id;
   const { departmentId, ...profile } = body;
