@@ -8,11 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "void prepare && tsc --noEmit",
-    "deploy": "void deploy"
+    "deploy": "void deploy",
+    "test:unit": "node --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "better-auth": "1.7.9"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
