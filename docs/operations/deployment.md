@@ -2,6 +2,14 @@
 
 ## Environments
 
+### Void portal rollout
+
+`apps/portal` is a separate blank-data deployment on `180dc-portal`, delivered by `.github/workflows/portal-ci.yml` after PRs merge to origin main. The old Worker and custom domain remain in place until the final cutover. Do not copy old database rows or R2 objects for this launch.
+
+Email is scheduled by `apps/portal/crons/email.ts` every minute. Set `SPACEMAIL_SMTP_USER` and `SPACEMAIL_SMTP_PASS` as portal Worker secrets before expecting SMTP delivery; `SPACEMAIL_HOURLY_LIMIT` optionally overrides 500/hour. Without credentials, direct sends pause and custom mail is queued rather than reported as sent. The queue remains pending and eventually fails after five no-progress claims.
+
+`EMAIL_TEST_MODE` and `EMAIL_TEST_RECIPIENT` are local-test settings only; never provision them on the deployed Worker. Production builds disable capture/redirect regardless of those values, and `.dev.ts` outbox/drain routes are excluded. `ENVIRONMENT=production` also disables test modes in development runtime tests. See [portal setup and email operations](../../apps/portal/README.md#email).
+
 ### Personal deployment on reimagined
 
 The reimagined deployment is **one Cloudflare Worker** (`members-portal-reimagined`) on Srijan's personal account, configured by the repo-root `wrangler.jsonc` and served at `https://180dc.vitcc.org` (Worker custom domain on the `vitcc.org` zone; `workers.dev` and preview URLs are disabled).

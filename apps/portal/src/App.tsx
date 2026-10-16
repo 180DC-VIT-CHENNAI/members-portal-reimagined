@@ -14,6 +14,8 @@ import { AdminHome } from './pages/admin/AdminHome.tsx';
 import { CaseStudiesAdminPage } from './pages/admin/CaseStudiesAdminPage.tsx';
 import { ConsultingAdminPage } from './pages/admin/ConsultingAdminPage.tsx';
 import { MaintenancePage } from './pages/admin/MaintenancePage.tsx';
+import { EmailQueuePage } from './pages/admin/EmailQueuePage.tsx';
+import { SendEmailPage } from './pages/admin/SendEmailPage.tsx';
 import { PartnersAdminPage } from './pages/admin/PartnersAdminPage.tsx';
 import { AuditPage } from './pages/admin/AuditPage.tsx';
 import { ImportPage } from './pages/admin/ImportPage.tsx';
@@ -227,6 +229,8 @@ function route(path: string, home: string, next: string | null) {
   const person = matchPath('/people/:id', path);
   if (person) return <PersonPage key={person.id} id={person.id} />;
   if (path === '/admin') return <AdminHome />;
+  if (path === '/admin/email-queue') return <EmailQueuePage />;
+  if (path === '/admin/send-email') return <SendEmailPage />;
   if (path === '/admin/invite') return <InvitePage />;
   if (path === '/admin/import') return <ImportPage />;
   if (path === '/admin/positions') return <PositionsPage />;

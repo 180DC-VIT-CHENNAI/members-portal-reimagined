@@ -23,6 +23,8 @@ export interface AdminTool {
 }
 
 export const ADMIN_TOOLS: readonly AdminTool[] = [
+  { path: '/admin/email-queue', label: 'Email queue', description: 'Campaign progress, SMTP acceptance and retries.', permission: 'email.view', icon: 'inbox' },
+  { path: '/admin/send-email', label: 'Send email', description: 'Send a plain-text message to permitted recipients.', permission: 'email.send', icon: 'inbox' },
   { path: '/admin/invite', label: 'Invite', description: 'Add one person by email.', permission: 'people.invite', icon: 'userPlus' },
   { path: '/admin/import', label: 'Import', description: 'Invite many people from a CSV file.', permission: 'people.import', icon: 'upload' },
   { path: '/admin/positions', label: 'Positions', description: 'Titles people can hold, by department.', permission: 'positions.manage', icon: 'briefcase' },
@@ -37,5 +39,5 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
 ];
 
 export function visibleAdminTools(perms: PermissionMap): AdminTool[] {
-  return ADMIN_TOOLS.filter((tool) => can(perms, tool.permission));
+  return ADMIN_TOOLS.filter((tool) => can(perms, tool.permission, tool.permission === 'email.view' ? null : undefined));
 }

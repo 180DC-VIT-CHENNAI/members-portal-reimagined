@@ -5,11 +5,11 @@ import { audit } from './audit';
 import { requirePermission } from './guard';
 import { badRequest, idParam, notFound } from './http';
 import { rateLimit } from './rate-limit';
+import { sendEmail } from './email/send';
+import { escapeHtml } from './html';
 
 /**
- * Accept or reject a pending request and record the reply. Sending the reply
- * by email arrives with the email queue (port plan slice 7), so emailSent is
- * false for now; the reply text is kept with the request.
+ * Record a decision even if SMTP is unavailable, and report acceptance honestly.
  */
 export async function decideRequest(c: Context, decision: 'accepted' | 'rejected', reply: { emailSubject: string; emailBody: string }) {
   const actor = await requirePermission(c, 'consulting.manage');
@@ -26,5 +26,11 @@ export async function decideRequest(c: Context, decision: 'accepted' | 'rejected
   if (!updated) badRequest('request_already_processed');
   await db.insert(consultingResponses).values({ id: crypto.randomUUID(), requestId: id, ...reply, sentBy: actor.person.id });
   await audit(actor.person.id, `consulting.${decision === 'accepted' ? 'accept' : 'reject'}`, 'consulting_request', id, { subject: reply.emailSubject });
-  return { id, status: decision, emailSent: false as const };
+  const delivery = await sendEmail({
+    from: '180DC Consulting <technical@180dcvitc.org>',
+    to: request.email,
+    subject: reply.emailSubject,
+    html: '<p>' + escapeHtml(reply.emailBody).replace(/\n/g, '<br>') + '</p>',
+  });
+  return { id, status: decision, emailSent: delivery.status === 'sent' };
 }

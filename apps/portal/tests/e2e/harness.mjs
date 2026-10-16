@@ -33,7 +33,7 @@ function waitForOutput(child, predicate, timeoutMs) {
       log += buf.toString();
       if (predicate(log)) {
         clearTimeout(timer);
-        resolve();
+        resolve(log);
       }
     };
     child.stdout.on('data', onData);
@@ -45,7 +45,7 @@ function waitForOutput(child, predicate, timeoutMs) {
   });
 }
 
-export async function startPortal() {
+export async function startPortal(bindings = {}) {
   const stateDir = mkdtempSync(join(tmpdir(), 'portal-e2e-'));
   const port = await freePort();
   const child = spawn('pnpm', ['exec', 'vite', '--port', String(port), '--strictPort'], {
@@ -56,6 +56,7 @@ export async function startPortal() {
       NO_COLOR: '1',
       AUTH_GOOGLE_CLIENT_ID: 'e2e-client.apps.googleusercontent.com',
       AUTH_GOOGLE_CLIENT_SECRET: 'e2e-secret',
+      ...bindings,
     },
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -68,9 +69,14 @@ export async function startPortal() {
   };
   const base = `http://localhost:${port}`;
   let db;
+  let triggerToken;
   try {
     // Strip ANSI codes: CI runners get coloured output with the port in bold.
-    await waitForOutput(child, (log) => log.replace(/\x1b\[[0-9;]*m/g, '').includes(`:${port}/`), 120_000);
+    const startup = await waitForOutput(child, (log) => {
+      const clean = log.replace(/\x1b\[[0-9;]*m/g, '');
+      return clean.includes(`:${port}/`) && /x-void-dev-trigger: ([^"\s]+)/.test(clean);
+    }, 120_000);
+    triggerToken = /x-void-dev-trigger: ([^"\s]+)/.exec(startup.replace(/\x1b\[[0-9;]*m/g, ''))?.[1];
     // The first API request runs the migrations against the fresh database.
     const health = await fetch(`${base}/api/health`);
     if (!health.ok) throw new Error(`health ${health.status}`);
@@ -90,6 +96,15 @@ export async function startPortal() {
   return {
     base,
     db,
+    async runCron() {
+      const response = await fetch(`${base}/__void/scheduled`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-void-dev-trigger': triggerToken },
+        body: JSON.stringify({ cron: '* * * * *', scheduledTime: Date.now() }),
+      });
+      if (!response.ok) throw new Error(`cron ${response.status}: ${await response.text()}`);
+      return response.json();
+    },
     async stop() {
       db.close();
       await kill();
