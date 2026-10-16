@@ -33,7 +33,8 @@ Session responses carry `Cache-Control: private, no-store`. Bearer auth accepts 
 | GET | `/api/content/case-studies` | public | Public case study listing. |
 | GET | `/api/content/team-members` | public | Leadership team page data. |
 | GET | `/api/content/partners` | public | Partners list. |
-| POST | `/api/newsletter/subscribe` | public | Subscribe to newsletter. |
+| POST | `/api/newsletter/subscribe` | public | `{ email, name? }` → always `{ success, pending: true, message }`; emails a confirmation link. 5/hour/IP. |
+| POST | `/api/newsletter/confirm` | public | `{ token }` from the emailed link activates the subscription and sends the welcome email; invalid/expired/used → 400. |
 | GET | `/api/newsletter/unsubscribe` | public | Legacy unsubscribe by `?email=` (links in emails sent before per-subscriber tokens). |
 | POST | `/api/newsletter/unsubscribe/:token` | public, CSRF-exempt | Unsubscribe by the subscriber's `unsubscribe_token`. Called by the `/unsubscribe/:token` page and by mail clients' RFC 8058 one-click `List-Unsubscribe-Post`. Returns `status` (`unsubscribed` / `already` / `not_found`) and `email`. |
 | GET | `/api/newsletter/subscribers/count` | public | Active subscriber count. |
@@ -44,7 +45,9 @@ Session responses carry `Cache-Control: private, no-store`. Bearer auth accepts 
 | POST | `/api/signup-requests` | public | Submit a member account request. |
 | POST | `/api/consulting-request` | public | Submit a consulting request. |
 | POST | `/api/dev-login` | public | Log in with admin token (dev only; 403 when `ENVIRONMENT=production`). Creates user if missing. |
-| POST | `/api/auth/clerk-login` | public | Log in with a Clerk session JWT (Google OAuth). Requires an active, approved-origin Clerk session explicitly linked to exactly one OAuth-enabled member with active registry access; request-body email is ignored. Production token login uses `/api/auth/session`. |
+| GET | `/api/auth/google/start` | public | 302 to Google with PKCE and a single-use state; sets the HttpOnly `g_oauth_state` cookie. 20/min/IP. |
+| GET | `/api/auth/google/callback` | public | Google redirect target. Redirects to `/members?google_code=…`, `?google=linked&panel=profile`, or `?google_error=<code>`. |
+| POST | `/api/auth/google/exchange` | public | `{ code }` → member session (same shape as `/api/auth/session`). Single-use, 60 s. 10/min. |
 | POST | `/api/auth/forgot-token` | public | Email token to member (always returns success). |
 | GET | `/api/departments` | public | Department list (name, description). |
 | GET | `/api/projects/completed` | public | Completed projects (R2 cache, fallback to DB). |
@@ -55,8 +58,8 @@ Session responses carry `Cache-Control: private, no-store`. Bearer auth accepts 
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/auth/link-clerk` | token | Link the Clerk user ID from a verified `clerkToken` JWT to the member. |
-| POST | `/api/auth/unlink-clerk` | token | Unlink Clerk user ID. |
+| POST | `/api/auth/google/link-start` | token | Returns `{ url }` to link the caller's Google account. 10/hour. |
+| POST | `/api/auth/google/unlink` | token | Unlink Google and disable Google sign-in. 5/hour. |
 | POST | `/api/auth/rotate-token` | token | Revoke current token and email a new one. |
 
 ## Dashboard
@@ -328,11 +331,9 @@ Standard mail subjects/bodies are generated server-side per document type (`lett
 - The frontend always calls `/api/*` and relies on `apps/frontend/functions/_middleware.ts` to proxy to the `admin-api` Worker.
 - CORS is enabled for `https://newsletter.180dcvitc.org` (the separate newsletter site, ADR-004) plus the existing `180dcvitc.org` origins. CORS/CSRF allowlists live in `apps/admin-api/index.ts` (`ALLOWED_ORIGINS`).
 
-## Reimagined Google identity proof
+## Google sign-in
 
-`POST /api/auth/clerk-login` accepts `{ clerkToken }` and retains its successful response shape for compatibility. Email input is ignored for identity selection. The verified Clerk session must identify an explicitly linked, OAuth-enabled member with active registry access. Invalid/expired/foreign-origin/pending sessions return 401; missing links, conflicting links and inactive member access return 403; missing server configuration returns 503. Responses containing credentials use `Cache-Control: private, no-store`.
-
-`POST /api/auth/link-clerk` requires member Bearer authentication and `{ clerkToken }`. A user ID string alone is insufficient and returns 400. The verified provider subject is linked to the authenticated member; another member's existing link returns 409. Successful link and unlink writes are transactionally audited. Existing `/api/auth/unlink-clerk` keeps its request/response shape and disables subsequent provider login.
+Clerk routes (`/api/auth/clerk-login`, `/api/auth/link-clerk`, `/api/auth/unlink-clerk`) were removed. Google sign-in is the Worker OAuth flow above. The callback requires the `g_oauth_state` cookie to match the state, and the state is deleted on first use. `google_error` codes: `invalid_state`, `expired`, `cancelled`, `not_configured`, `exchange_failed`, `already_linked`, `not_linked`, `inactive`, `maintenance`, `session_failed`, `rate_limited`. The redirect URI is `<request origin>/api/auth/google/callback`. `GOOGLE_AUTH_URL`/`GOOGLE_TOKEN_URL` overrides are honoured only when `ENVIRONMENT` is not `production`. `/api/me` returns `googleLinked` (boolean). Responses containing credentials use `Cache-Control: private, no-store`.
 
 ## Reimagined shared library boundary
 

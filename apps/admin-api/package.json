@@ -7,7 +7,6 @@
     "deploy": "wrangler deploy -c wrangler.toml"
   },
   "dependencies": {
-    "@clerk/backend": "^3.5.0",
     "aws4fetch": "^1.0.20",
     "hono": "^4.13.7",
     "mammoth": "^1.12.1",

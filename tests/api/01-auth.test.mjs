@@ -1,10 +1,10 @@
 // Login and token management: token login, dev login, forgot-token,
-// token rotation, admin token create/revoke/delete, Google (Clerk) login.
+// token rotation, admin token create/revoke/delete, Google sign-in.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   get, post, del, tokens, expectOk, expectStatus, expectDenied,
-  outbox, outboxMark, waitForMail, newMember, uniqueEmail,
+  outbox, outboxMark, waitForMail, newMember, uniqueEmail, googleFlow, BASE,
 } from "../lib/api.mjs";
 
 describe("token login", () => {
@@ -125,26 +125,81 @@ describe("admin tokens (board)", () => {
   });
 });
 
-describe("Google (Clerk) login", () => {
-  test("missing clerkToken is a 400", async () => {
-    expectStatus(await post("/api/auth/clerk-login", {}), 400);
+describe("Google sign-in (Worker OAuth)", () => {
+  const signInAs = async (sub) => {
+    const flow = await googleFlow({ sub });
+    assert.equal(flow.callback.status, 302);
+    return flow;
+  };
+
+  test("start redirects to Google with PKCE, a state, and an HttpOnly state cookie", async () => {
+    const res = await get("/api/auth/google/start");
+    assert.equal(res.status, 302);
+    const url = new URL(res.headers.get("location"));
+    assert.equal(url.searchParams.get("client_id"), "test-client.apps.googleusercontent.com");
+    assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+    // wrangler dev rewrites the request host to the configured route, so only the path is stable here.
+    assert.equal(new URL(url.searchParams.get("redirect_uri")).pathname, "/api/auth/google/callback");
+    assert.ok(url.searchParams.get("state"));
+    assert.match(res.headers.get("set-cookie") || "", /g_oauth_state=[^;]+;.*HttpOnly/);
   });
 
-  test("a forged clerkToken is never accepted", async () => {
-    // 503 when CLERK_SECRET_KEY is not set locally, 401 when it is.
-    const res = await post("/api/auth/clerk-login", { clerkToken: "eyJhbGciOiJIUzI1NiJ9.e30.forged" });
-    assert.ok([401, 503].includes(res.status), `got ${res.status}`);
-    assert.ok(!res.json?.token, "no session token issued");
+  test("an unlinked Google account cannot sign in", async () => {
+    const flow = await signInAs("unlinked-" + Date.now());
+    assert.equal(flow.location.searchParams.get("google_error"), "not_linked");
   });
 
-  test("linking needs a member session and a clerkToken", async () => {
-    expectStatus(await post("/api/auth/link-clerk", { clerkToken: "x" }), 401);
-    expectStatus(await post("/api/auth/link-clerk", {}, { token: tokens.member }), 400);
+  test("the callback is refused without this browser's state cookie, and state is single-use", async () => {
+    const noCookie = await googleFlow({ sub: "x", withCookie: false });
+    assert.equal(noCookie.location.searchParams.get("google_error"), "invalid_state");
+    const flow = await googleFlow({ sub: "replay-" + Date.now() });
+    const replay = await get(`/api/auth/google/callback?${flow.query}`, { headers: { Cookie: flow.cookie } });
+    assert.equal(new URL(replay.headers.get("location"), BASE).searchParams.get("google_error"), "expired");
   });
 
-  test("unlinking turns Google login off for the caller", async () => {
-    const m = await newMember("unlink");
-    const json = expectOk(await post("/api/auth/unlink-clerk", {}, { token: m.token }));
-    assert.match(json.message, /disabled/i);
+  test("linking needs a member session", async () => {
+    expectStatus(await post("/api/auth/google/link-start", {}), 401);
+  });
+
+  test("a member links Google, then Google sign-in issues a working single-use session", async () => {
+    const m = await newMember("glink");
+    const sub = "sub-" + m.email;
+    const link = await googleFlow({ sub, linkToken: m.token });
+    assert.equal(link.location.searchParams.get("google"), "linked");
+    assert.equal(link.location.searchParams.get("panel"), "profile");
+
+    const login = await signInAs(sub);
+    const code = login.location.searchParams.get("google_code");
+    assert.ok(code, "handoff code in redirect");
+    const session = expectOk(await post("/api/auth/google/exchange", { code }));
+    assert.equal(session.email, m.email);
+    assert.match(session.token, /^180dc_session_/);
+    expectOk(await get("/api/dashboard", { token: session.token }));
+    expectStatus(await post("/api/auth/google/exchange", { code }), 401, "handoff code is single-use");
+  });
+
+  test("one Google account cannot be linked to two members", async () => {
+    const a = await newMember("gdup-a");
+    const b = await newMember("gdup-b");
+    const sub = "dup-" + Date.now();
+    assert.equal((await googleFlow({ sub, linkToken: a.token })).location.searchParams.get("google"), "linked");
+    const second = await googleFlow({ sub, linkToken: b.token });
+    assert.equal(second.location.searchParams.get("google_error"), "already_linked");
+  });
+
+  test("unlinking turns Google sign-in off", async () => {
+    const m = await newMember("gunlink");
+    const sub = "unlink-" + m.email;
+    await googleFlow({ sub, linkToken: m.token });
+    assert.match(expectOk(await post("/api/auth/google/unlink", {}, { token: m.token })).message, /disabled/i);
+    assert.equal((await signInAs(sub)).location.searchParams.get("google_error"), "not_linked");
+  });
+
+  test("Google sign-in cannot restore access after the member token is revoked", async () => {
+    const m = await newMember("grevoke");
+    const sub = "revoke-" + m.email;
+    await googleFlow({ sub, linkToken: m.token });
+    expectOk(await post(`/api/admin-tokens/${encodeURIComponent(m.email)}/revoke`, {}, { token: tokens.board }));
+    assert.equal((await signInAs(sub)).location.searchParams.get("google_error"), "inactive");
   });
 });

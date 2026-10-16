@@ -2,7 +2,7 @@
 
 ## Overview
 
-Separate newsletter creation/sending system at `/subscriber/newsletter`, independent from the members portal. Uses OTP-based auth (not Clerk).
+Separate newsletter creation/sending system at `/subscriber/newsletter`, independent from the members portal. Uses OTP-based auth.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ All under `apps/admin-api/index.ts`.
 | File | Purpose |
 |------|---------|
 | `apps/frontend/src/pages/NewsletterEditorPage.tsx` | OTP login + newsletter/event mail editor page |
-| `apps/frontend/src/pages/SubscriberPage.tsx` | Public subscriber page (Clerk Google auth) |
+| `apps/frontend/src/pages/SubscriberPage.tsx` | Public subscriber page (email double opt-in) |
 | `apps/frontend/src/pages/UnsubscribePage.tsx` | Public unsubscribe page (`/unsubscribe?email=...`) |
 | `apps/frontend/src/sections/NewsletterSection.tsx` | Landing page newsletter section |
 | `apps/frontend/src/pages/members/NewsletterSection.tsx` | Members board — authorized email management only |
@@ -84,8 +84,8 @@ All under `apps/admin-api/index.ts`.
 
 ## Routes (main.tsx)
 
-- `/subscriber` — Clerk-based subscriber page (Google sign-in, Terms & Conditions consent)
-- `/subscriber/newsletter` — OTP-based newsletter/event mail editor (no Clerk)
+- `/subscriber` — subscriber page: email + optional name, confirmation email, `?confirm=<token>` confirm button (Terms & Conditions consent)
+- `/subscriber/newsletter` — OTP-based newsletter/event mail editor
 - `/unsubscribe?email=...` — Public unsubscribe page (reads email from query param)
 
 ## Key Fixes Applied
@@ -112,7 +112,6 @@ All under `apps/admin-api/index.ts`.
 
 | Variable | Location | Purpose |
 |----------|----------|---------|
-| `VITE_CLERK_PUBLISHABLE_KEY` | `apps/frontend/.env` | Clerk auth for subscriber page |
 | `NEWSLETTER_SITE_URL` | `wrangler.toml` `[vars]` + `.dev.vars` | Base URL of the newsletter site (ADR-004): `https://180dc-newsletters.technical-vitc.workers.dev`. Bulk CTAs render `{url}/newsletter/{slug}`. |
 | `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Workers secrets + `.dev.vars` | The only email sender: authenticated mailbox `technical@180dcvitc.org` + password. All From addresses use this mailbox, so Spacemail's sender-ownership check passes. |
 | `NEWSLETTER_DB` | D1 binding (`wrangler.toml`) | Separate `newsletter-db` database holding all newsletter tables. |

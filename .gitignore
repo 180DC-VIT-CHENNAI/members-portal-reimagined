@@ -40,6 +40,9 @@ coverage/
 **/test-results/
 **/playwright-report/
 
+# Google OAuth client downloads (contain the client secret)
+client_secret*.json
+
 # Expo generated development/native state
 apps/mobile/.expo/
 apps/mobile/android/

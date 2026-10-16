@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { useClerk } from "@clerk/react";
 import { apiUrl } from "../../lib/api";
-import { createMemberSession } from "../../lib/member-session";
+import { createMemberSession, startGoogleLink } from "../../lib/member-session";
 import SessionsSection from "./SessionsSection";
 
 interface Props {
@@ -18,7 +17,6 @@ interface Props {
 }
 
 export default function ProfileSection({ authToken, email, powerLevel, departmentId, deptName, oauthEnabled, statusMsg, onOAuthStatusChange, onCredentialChange, onSignedOut }: Props) {
-  const clerk = useClerk();
   const [showToken, setShowToken] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
@@ -77,18 +75,18 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
     }
   };
 
-  const handleConnectGoogle = () => {
-    sessionStorage.setItem("clnk", "link");
-    clerk.redirectToSignIn({
-      signInFallbackRedirectUrl: "/members",
-      signInForceRedirectUrl: "/members",
-    });
+  const handleConnectGoogle = async () => {
+    try {
+      window.location.href = await startGoogleLink(authToken);
+    } catch (err) {
+      onOAuthStatusChange(err instanceof Error ? err.message : "Could not start Google linking.");
+    }
   };
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      const res = await fetch(apiUrl("/api/auth/unlink-clerk"), {
+      const res = await fetch(apiUrl("/api/auth/google/unlink"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${authToken}`,

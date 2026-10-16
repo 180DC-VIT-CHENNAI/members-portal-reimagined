@@ -14,7 +14,7 @@ Public visitors / members
         v
 Cloudflare Pages  (apps/frontend)
   ├─ Vite + React SPA
-  ├─ Clerk for Google OAuth
+  ├─ Google sign-in by redirect to the Worker's OAuth routes
   └─ _middleware.ts proxies /api/* to admin-api Worker
         |
         v
@@ -27,7 +27,7 @@ Cloudflare Worker (apps/admin-api)
   └─ Spacemail SMTP (all email, via cloudflare:sockets)
         |
         v
-External: Spacemail SMTP, Clerk, Google Fonts/CDN
+External: Spacemail SMTP, Google OAuth, Google Fonts/CDN
 ```
 
 ## Components
@@ -38,7 +38,7 @@ External: Spacemail SMTP, Clerk, Google Fonts/CDN
 - **Framework:** React 19 + TypeScript.
 - **Routing:** `react-router-dom` (BrowserRouter).
 - **Styling:** CSS variables, GSAP for scroll and reveal animations, `lenis` for smooth scrolling.
-- **Auth:** `@clerk/react` for Google OAuth on `/members`, `/subscriber`, and `/subscriber/newsletter`.
+- **Auth:** no auth SDK. Token sign-in plus Google sign-in by full-page redirect to `/api/auth/google/*`; `/subscriber` uses email double opt-in.
 - **Member token storage:** `sessionStorage` for `authToken`, `authEmail`, `authPowerLevel`, `authDepartmentId`, `authRoleId`. `localStorage` for `authExpiresAt` (7-day inactivity expiry) and `membersSidebarCollapsed`.
 - **Pages middleware:** `apps/frontend/functions/_middleware.ts` adds security headers, serves the SPA fallback for 404s, sets JS MIME types, and proxies `/api/*` to `admin-api.technical-vitc.workers.dev`.
 
@@ -52,7 +52,7 @@ External: Spacemail SMTP, Clerk, Google Fonts/CDN
 - **Cache/session:** KV `AUTH_SESSIONS` (bound but not used in `main`).
 - **Queue:** `QUEUE` producer binding (bound but not used in `main`).
 - **Email:** Unified `sendEmail()` choke-point — Spacemail SMTP (`mail.spacemail.com:465`, `SPACEMAIL_SMTP_USER`/`SPACEMAIL_SMTP_PASS`) is the only provider (no fallback). One recipient per message; quota tracked in `email_hour_count` (500/hour, queue limited to 90%).
-- **Clerk:** `@clerk/backend` `verifyToken` used only for Google login linking.
+- **Google OAuth:** `apps/admin-api/google-oauth.ts` implements the authorization code flow with PKCE and ID-token checks using `fetch` only.
 - **Schema and migrations:** `ensureTables` and `runMigrations` in `index.ts`.
 
 ### Public API (`apps/public-api`)
@@ -95,23 +95,21 @@ External: Spacemail SMTP, Clerk, Google Fonts/CDN
 ### Member login with token
 
 1. User opens `/members`.
-2. `ClerkGate.tsx` wraps `MembersLayout.tsx`.
+2. `MembersLayout.tsx` shows `MembersLogin.tsx` when no session is stored.
 3. User enters token and clicks "Continue with Token".
 4. Frontend `MembersLogin.tsx` posts `POST /api/dev-login`.
 5. `admin-api` validates token against `admin_tokens` table.
 6. On success, frontend stores `authToken`, `authEmail`, `authPowerLevel`, `authDepartmentId`, `authRoleId`, and `authExpiresAt` in `sessionStorage`/`localStorage`.
 7. Subsequent requests include `Authorization: Bearer <token>`.
 
-### Google login with Clerk
+### Google sign-in (Worker OAuth)
 
-1. User clicks "Sign in with Google".
-2. Clerk redirects to Google OAuth.
-3. On return, `MembersLayout.tsx` obtains a Clerk JWT from `getToken()`.
-4. Frontend posts `POST /api/auth/clerk-login` with `clerkToken`.
-5. `admin-api` verifies the Clerk JWT using `CLERK_SECRET_KEY`.
-6. `admin-api` fetches the Clerk user via the Clerk Backend API and only trusts Clerk-verified emails (never the request body).
-7. If `clerk_user_id` is linked to a user (and matches a verified email) and `oauth_enabled = 1`, an `admin_tokens` row is created or reused; otherwise the user is matched by a verified email and linked.
-8. Frontend stores the returned token and profile.
+1. User clicks "Sign in with Google" on `/members`; the browser navigates to `GET /api/auth/google/start`.
+2. The Worker stores a single-use state (hashed, 10-minute TTL, with a PKCE verifier) in `oauth_states`, sets the HttpOnly `g_oauth_state` cookie, and redirects to Google.
+3. Google redirects to `GET /api/auth/google/callback`. The Worker requires the cookie to match the state, deletes the state, exchanges the code with `GOOGLE_CLIENT_SECRET` and the PKCE verifier, and checks the ID token's issuer, audience, expiry and subject.
+4. The Worker finds exactly one member with that `users.google_sub` and `oauth_enabled = 1`, with an active (unrevoked, unexpired) registry token. Email never selects an account.
+5. It issues the same member session as token sign-in, stores it under a single-use 60-second handoff code in `oauth_handoffs`, and redirects to `/members?google_code=...`.
+6. The frontend posts the code to `POST /api/auth/google/exchange` and stores the returned session. Failures redirect to `/members?google_error=<code>`.
 
 ### Authenticated API call
 

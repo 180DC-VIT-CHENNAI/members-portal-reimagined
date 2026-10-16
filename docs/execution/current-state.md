@@ -30,8 +30,8 @@ This single file is the entire production backend. It is a Hono Worker with:
 A Vite + React + TypeScript SPA with React Router.
 
 - Public landing page (`/`).
-- `/members` members portal with Clerk gate.
-- `/subscriber` public newsletter subscription page with Clerk.
+- `/members` members portal (token or Google sign-in).
+- `/subscriber` public newsletter subscription page (email double opt-in).
 - `/subscriber/newsletter` OTP-based newsletter editor.
 - `/unsubscribe` public unsubscribe page.
 - `/recruitments` and `/request-account` public pages.
@@ -89,7 +89,7 @@ The frontend is deployed as a Cloudflare Pages project named `180dc-admin-fronte
 
 | Document/code | Claims | Reality | Classification |
 |---------------|--------|---------|----------------|
-| `docs/architecture/backend-architecture-cloudflare.txt` | Cloudflare Access enforces Google OAuth before admin requests. | Auth is custom token-based; Clerk is only used for Google login in the frontend, not Cloudflare Access. | ACCIDENTAL/HISTORICAL |
+| `docs/architecture/backend-architecture-cloudflare.txt` | Cloudflare Access enforces Google OAuth before admin requests. | Auth is custom token-based; Google sign-in is the Worker's own OAuth flow, not Cloudflare Access. | ACCIDENTAL/HISTORICAL |
 | `docs/architecture/backend-architecture-cloudflare.txt` | Public API is a separate Hono Worker at `api.180dc-vit.in`. | `public-api` is a placeholder. All API calls are served by `admin-api`. | ACCIDENTAL/HISTORICAL |
 | `docs/architecture/backend-architecture-cloudflare.txt` | KV caching for public API. | KV is bound but not used for caching. | ACCIDENTAL/HISTORICAL |
 | `docs/architecture/backend-architecture-cloudflare.txt` | Zod validation. | No Zod schemas in code. | ACCIDENTAL/HISTORICAL |
@@ -137,7 +137,7 @@ The following bindings and secrets are used by `admin-api`:
 | `AUTH_SESSIONS` | KV namespace | Bound but not actively used in `main`. |
 | `QUEUE` | Queue producer | Bound but not used in `main`; bulk email uses `email_queue` + cron. |
 | `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Secret | The only email sender (mailbox `technical@180dcvitc.org`). |
-| `CLERK_SECRET_KEY` | Secret | Clerk JWT verification. |
+| `GOOGLE_CLIENT_SECRET` | Secret | Google OAuth client secret (`GOOGLE_CLIENT_ID` is a var). |
 | `ENVIRONMENT` | Var | Set to `production` on the deployed worker. |
 | `NEWSLETTER_SITE_URL` | Var | Base URL of the newsletter site (ADR-004): `https://180dc-newsletters.technical-vitc.workers.dev`. Bulk email CTAs link to `{site}/newsletter/{slug}`. |
 | `SPACEMAIL_SMTP_USER` | Secret | Authenticated SMTP mailbox (`technical@180dcvitc.org`), also the From address. Set in production. |
@@ -148,7 +148,6 @@ The following are used by the frontend:
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `VITE_CLERK_PUBLISHABLE_KEY` | Env var | Clerk public key for Google sign-in. |
 | `VITE_API_BASE_URL` | Env var | Optional override for local API base. Defaults to `http://127.0.0.1:8787` in dev and same-origin in production. |
 
 ## Known current behavior that must be preserved

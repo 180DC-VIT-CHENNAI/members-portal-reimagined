@@ -173,13 +173,38 @@ export const PNG_1PX = Buffer.from(
 
 // Subscribes an address through the public form and returns its unsubscribe
 // token (taken from the welcome email's List-Unsubscribe header).
-export async function subscribe(email = uniqueEmail("reader")) {
+// Requests a subscription and returns the confirmation token from the email.
+export async function requestSubscription(email = uniqueEmail("reader")) {
   const mark = await outboxMark();
-  expectOk(await post("/api/newsletter/subscribe", { email, name: "Reader" }));
+  const json = expectOk(await post("/api/newsletter/subscribe", { email, name: "Reader" }));
+  const [mail] = await waitForMail(email, mark);
+  const confirmToken = /\/subscriber\?confirm=([A-Za-z0-9_-]+)/.exec(mail.html)?.[1];
+  assert.ok(confirmToken, "confirmation email carries a confirm link");
+  return { email, confirmToken, json, mail };
+}
+
+export async function subscribe(email = uniqueEmail("reader")) {
+  const { confirmToken } = await requestSubscription(email);
+  const mark = await outboxMark();
+  expectOk(await post("/api/newsletter/confirm", { token: confirmToken }));
   const [welcome] = await waitForMail(email, mark);
   const token = /unsubscribe\/([a-f0-9]{48})>/.exec(welcome.headers["List-Unsubscribe"] || "")?.[1];
   assert.ok(token, "welcome email carries a personal unsubscribe token");
   return { email, token, welcome };
+}
+
+// Drives the Worker's Google OAuth flow against the fake token endpoint in
+// tests/lib/server.mjs. `sub` is the Google account ID the fake returns.
+export async function googleFlow({ sub, linkToken, code, withCookie = true } = {}) {
+  const start = linkToken
+    ? await post("/api/auth/google/link-start", {}, { token: linkToken })
+    : await get("/api/auth/google/start");
+  const authorize = new URL(linkToken ? start.json?.url : start.headers.get("location"));
+  const cookie = (start.headers.get("set-cookie") || "").split(";")[0];
+  const state = authorize.searchParams.get("state");
+  const query = new URLSearchParams({ state, code: code ?? Buffer.from(JSON.stringify({ sub, email: `${sub}@gmail.example` })).toString("base64url") });
+  const callback = await get(`/api/auth/google/callback?${query}`, withCookie ? { headers: { Cookie: cookie } } : {});
+  return { start, authorize, cookie, state, query, callback, location: new URL(callback.headers.get("location") || "/", BASE) };
 }
 
 // Logs into the newsletter editor or letter studio through the OTP flow,

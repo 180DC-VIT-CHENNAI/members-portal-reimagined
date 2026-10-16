@@ -4,8 +4,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   get, post, del, tokens, expectOk, expectStatus, expectDenied,
-  subscribe, outbox, outboxMark, drainUntilDone, findCampaign, upload, fixture, runCron,
+  subscribe, outbox, outboxMark, drainUntilDone, findCampaign, upload, fixture, runCron, state,
 } from "../lib/api.mjs";
+import { d1 } from "../lib/server.mjs";
 
 const B = { token: tokens.board };
 const issue = async (id) => expectOk(await get(`/api/newsletter/${id}`)).data;
@@ -99,6 +100,8 @@ describe("sending", () => {
     // @reject.invalid is refused like a 550 in test mode.
     const bad = "bounce." + Date.now() + "@reject.invalid";
     expectOk(await post("/api/newsletter/subscribe", { email: bad }));
+    // The confirmation email to this address is refused, so confirm it directly.
+    await d1(state.stateDir, "newsletter-db", `UPDATE newsletter_subscribers SET active = 1, unsubscribed_at = NULL, unsubscribe_token = '${"b".repeat(48)}', confirm_token_hash = NULL WHERE email = '${bad}'`);
     const { id } = expectOk(await post("/api/newsletter", { title: "Retry " + Date.now() }, B));
     const { campaignId } = expectOk(await post("/api/newsletter/send", { newsletterId: id }, B));
     let done = await drainUntilDone(campaignId);

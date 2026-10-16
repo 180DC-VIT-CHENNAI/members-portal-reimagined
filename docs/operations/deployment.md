@@ -12,7 +12,7 @@ The reimagined deployment is **one Cloudflare Worker** (`members-portal-reimagin
 - Bindings: D1 `members-portal-reimagined-db` (`DB`) and `members-portal-reimagined-newsletter` (`NEWSLETTER_DB`); R2 `members-portal-reimagined-{club-files,blog-images,case-studies,gallery}`. No KV and no Queue. The email cron is disabled until mail secrets are set (uncomment `triggers` in `wrangler.jsonc`).
 - CI: Workers Builds on `members-portal-reimagined` builds from the repo root on pushes to `main` with `pnpm run build` then `npx wrangler deploy` (Wrangler v4 is required for `run_worker_first` route arrays).
 - Backblaze B2 (`180dc-vitc`) is the R2 failover and daily backup target: vars `B2_S3_ENDPOINT`, `B2_BUCKET` in `wrangler.jsonc`, secrets `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_READ_KEY_ID`, `B2_READ_APPLICATION_KEY` on the Worker, and the `Backup to Backblaze B2` GitHub workflow. See [BACKUP_B2.md](BACKUP_B2.md).
-- Secrets (`CLERK_SECRET_KEY`, mail credentials, AI keys) are set on the Worker, never in `wrangler.jsonc`. The frontend needs the build-time variable `VITE_CLERK_PUBLISHABLE_KEY` set in the Workers Builds build environment.
+- Secrets (`GOOGLE_CLIENT_SECRET`, mail credentials, AI keys) are set on the Worker, never in `wrangler.jsonc`. `GOOGLE_CLIENT_ID` is a plain var in `wrangler.jsonc`. The frontend needs no auth build variables.
 
 The Pages proxy variable `API_ORIGIN` (legacy `API_PROXY_BASE`) only applies to the club Pages deployment.
 
@@ -49,8 +49,10 @@ The personal deployment never uses the club identifiers in `apps/admin-api/wrang
 Create `apps/admin-api/.dev.vars` for local development:
 
 ```ini
-CLERK_SECRET_KEY=sk_test_...
 ENVIRONMENT=development
+# Optional: Google sign-in locally (register http://127.0.0.1:8787/api/auth/google/callback on the OAuth client)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 # Spacemail SMTP — the only email provider (authenticated mailbox; team@ is an alias on it)
 SPACEMAIL_SMTP_USER=technical@180dcvitc.org
 SPACEMAIL_SMTP_PASS=
@@ -58,10 +60,9 @@ SPACEMAIL_SMTP_PASS=
 NEWSLETTER_SITE_URL=
 ```
 
-The frontend needs `VITE_CLERK_PUBLISHABLE_KEY` in `apps/frontend/.env.local`:
+The frontend only needs the API base in `apps/frontend/.env.local`:
 
 ```ini
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
 VITE_API_BASE_URL=http://127.0.0.1:8787
 ```
 
@@ -150,7 +151,7 @@ NEWSLETTER_SITE_URL = ""
 # back to development: `pnpm dev` runs `wrangler dev --var ENVIRONMENT:development`.
 
 # Secrets must be set via `wrangler secret put`
-# CLERK_SECRET_KEY
+# GOOGLE_CLIENT_SECRET   (Google OAuth client secret; GOOGLE_CLIENT_ID is a var)
 # SPACEMAIL_SMTP_USER     (technical@180dcvitc.org — also used as the From address)
 # SPACEMAIL_SMTP_PASS     (mailbox password)
 # SPACEMAIL_HOURLY_LIMIT  (optional: mailbox plan's messages/hour cap; default 500. Set 20 on trial plans)
@@ -248,7 +249,7 @@ The Pages middleware rewrites `/api/*` requests to the Worker, so the frontend d
 
 ### Google identity release gate
 
-Use the personal Clerk application's `VITE_CLERK_PUBLISHABLE_KEY` and corresponding server `CLERK_SECRET_KEY`. Configure the frontend HTTPS origin in `ALLOWED_WEB_ORIGINS`; session `azp` must match an approved origin, and production rejects loopback origins. No additional secret or table migration was added for proof-backed linking. Deploy backend before frontend. Old open clients must refresh before linking because the request now requires a Clerk session JWT, not an arbitrary user ID. First-time Google sign-in requires token login followed by explicit linking in Profile. Review imported historical links for uniqueness and ownership. Verify real Google redirect, link, login, unlink, disabled account and member session exchange on isolated personal staging before release. The local ephemeral-key test proves SDK signature/expiry checks and API policy, not the provider redirect configuration.
+Set `GOOGLE_CLIENT_ID` in `wrangler.jsonc` and `GOOGLE_CLIENT_SECRET` as a Worker secret, and register `<origin>/api/auth/google/callback` for every origin that serves sign-in (production: `https://180dc.vitcc.org/api/auth/google/callback`). No other migration step is needed; `ensureTables` adds `users.google_sub`, `oauth_states` and `oauth_handoffs`. Members who used Clerk-based Google sign-in must sign in with their token and link Google again in Profile. Verify a real Google sign-in, link, unlink and a not-linked account after each release that touches auth.
 
 ### Persistent rate limits
 

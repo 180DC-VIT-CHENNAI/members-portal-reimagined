@@ -31,10 +31,10 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-AUTH-03: Google login cannot bypass token auth
 
-- **Statement:** Clerk/Google login only provides a credential if a verified, approved-origin active Clerk session is explicitly linked to exactly one OAuth-enabled member with active registry access. Caller email/user ID cannot prove provider identity, and OAuth cannot restore revoked or expired member access.
+- **Statement:** Google sign-in only provides a session if the Worker-verified Google account (ID-token `sub`) is explicitly linked to exactly one OAuth-enabled member with active registry access. Caller email cannot prove identity, and Google sign-in cannot restore revoked or expired member access.
 - **Reason:** Google OAuth is an alternative login method, not a separate auth boundary.
-- **Where enforced:** `POST /api/auth/clerk-login`.
-- **How verified:** Try logging in with an unlinked Clerk account; confirm 403.
+- **Where enforced:** `GET /api/auth/google/callback`.
+- **How verified:** `tests/api/01-auth.test.mjs` (unlinked account → `not_linked`, revoked token → `inactive`).
 - **Related business rules:** RULE-AUTH-02.
 - **Current status:** ENFORCED.
 
