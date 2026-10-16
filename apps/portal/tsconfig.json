@@ -1,0 +1,26 @@
+{
+  "extends": "./.void/tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "react-jsx",
+    "types": [
+      "void/env"
+    ],
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src",
+    "routes",
+    "middleware",
+    "crons",
+    "queues",
+    "db",
+    "env.ts",
+    "void.config.ts",
+    "vite.config.ts"
+  ]
+}
