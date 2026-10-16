@@ -47,6 +47,16 @@ const MESSAGES: Record<string, string> = {
   empty_csv: 'The CSV has no rows below the header.',
   invalid_phone: 'Use 6 to 20 digits, spaces, +, ( ) or -.',
   invalid_profile_url: 'Paste the full https:// link to the profile.',
+  rate_limited: 'Too many requests. Wait a while and try again.',
+  maintenance: 'The portal is under maintenance. Check back later.',
+  content_too_short: 'Write at least 10 visible characters.',
+  invalid_link: 'Use a full https:// link or a path starting with /.',
+  request_not_found: 'That request no longer exists.',
+  request_already_processed: 'That request has already been accepted or rejected.',
+  case_study_not_found: 'That case study no longer exists.',
+  partner_not_found: 'That client no longer exists.',
+  announcement_not_found: 'That announcement no longer exists.',
+  missing_title_or_content: 'Add a title and a message.',
 };
 
 export function friendlyIssue(message: string): string {
@@ -74,6 +84,7 @@ export function describeCode(code: string, status: number | null = null): string
   if (status === 403) return MESSAGES.forbidden;
   if (status === 404) return MESSAGES.not_found;
   if (status === 409) return 'That clashes with an existing record.';
+  if (status === 429) return MESSAGES.rate_limited;
   if (status !== null && status >= 500) return 'Something went wrong on the server. Try again in a moment.';
   return code ? friendlyIssue(code) : "The request couldn't be completed. Try again.";
 }

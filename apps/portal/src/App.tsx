@@ -9,7 +9,12 @@ import type { ApiProblem } from './lib/errors.ts';
 import { Link, matchPath, Redirect, useLocation } from './lib/router.tsx';
 import { type Session, SessionProvider } from './lib/session.tsx';
 import type { MeResponse } from './lib/types.ts';
+import { AnnouncementsPage } from './pages/AnnouncementsPage.tsx';
 import { AdminHome } from './pages/admin/AdminHome.tsx';
+import { CaseStudiesAdminPage } from './pages/admin/CaseStudiesAdminPage.tsx';
+import { ConsultingAdminPage } from './pages/admin/ConsultingAdminPage.tsx';
+import { MaintenancePage } from './pages/admin/MaintenancePage.tsx';
+import { PartnersAdminPage } from './pages/admin/PartnersAdminPage.tsx';
 import { AuditPage } from './pages/admin/AuditPage.tsx';
 import { ImportPage } from './pages/admin/ImportPage.tsx';
 import { InvitePage } from './pages/admin/InvitePage.tsx';
@@ -20,10 +25,33 @@ import { DirectoryPage } from './pages/DirectoryPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { NotFoundPage } from './pages/NotFoundPage.tsx';
 import { PersonPage } from './pages/PersonPage.tsx';
+import { CaseStudiesPage } from './pages/public/CaseStudiesPage.tsx';
+import { LandingPage } from './pages/public/LandingPage.tsx';
+import { PartnersPage } from './pages/public/PartnersPage.tsx';
+import { PublicLayout } from './pages/public/PublicLayout.tsx';
+import { TeamPage } from './pages/public/TeamPage.tsx';
+import { WorkWithUsPage } from './pages/public/WorkWithUsPage.tsx';
 
 type Boot = { state: 'loading' } | { state: 'signed-out' } | { state: 'error'; problem: ApiProblem } | { state: 'ready'; me: MeResponse };
 
+/** Public pages render without the session boot; everything else is the members portal. */
+function publicPage(path: string) {
+  if (path === '/') return <LandingPage />;
+  if (path === '/team') return <TeamPage />;
+  if (path === '/case-studies') return <CaseStudiesPage />;
+  if (path === '/partners') return <PartnersPage />;
+  if (path === '/work-with-us') return <WorkWithUsPage />;
+  return null;
+}
+
 export function App() {
+  const { path } = useLocation();
+  const page = publicPage(path);
+  if (page) return <PublicLayout key={path}>{page}</PublicLayout>;
+  return <MembersApp />;
+}
+
+function MembersApp() {
   const { path, href } = useLocation();
   const [boot, setBoot] = useState<Boot>({ state: 'loading' });
 
@@ -93,6 +121,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
   const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean }> = [
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people' },
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}` },
+    { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements' },
     { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') },
   ];
 
@@ -111,6 +140,9 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
             </span>
           </Link>
           <div className="header-actions">
+            <Link to="/" className="btn btn-ghost btn-icon" aria-label="Public site" title="Public site">
+              <Icon name="globe" size={18} />
+            </Link>
             <Link to={`/people/${me.person.id}`} className="me-chip">
               <Avatar name={me.person.fullName} photo={me.person.photoKey} size={32} />
               <span className="me-text">
@@ -173,9 +205,10 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
 }
 
 function route(path: string, home: string, next: string | null) {
-  if (path === '/' || path === '/me') return <Redirect to={home} />;
+  if (path === '/me') return <Redirect to={home} />;
   if (path === '/login') return <Redirect to={next && next.startsWith('/') && !next.startsWith('//') ? next : home} />;
   if (path === '/people') return <DirectoryPage />;
+  if (path === '/announcements') return <AnnouncementsPage />;
   const person = matchPath('/people/:id', path);
   if (person) return <PersonPage key={person.id} id={person.id} />;
   if (path === '/admin') return <AdminHome />;
@@ -185,6 +218,11 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/admin/terms') return <TermsPage />;
   if (path === '/admin/roles') return <RolesPage />;
   if (path === '/admin/audit') return <AuditPage />;
+  if (path === '/admin/case-studies') return <CaseStudiesAdminPage />;
+  if (path === '/admin/partners') return <PartnersAdminPage />;
+  if (path === '/admin/consulting') return <ConsultingAdminPage />;
+  if (path === '/admin/announcements') return <AnnouncementsPage admin />;
+  if (path === '/admin/maintenance') return <MaintenancePage />;
   return <NotFoundPage />;
 }
 

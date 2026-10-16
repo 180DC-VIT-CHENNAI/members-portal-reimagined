@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { can, resolvePermissions } from './permissions.ts';
+import { can, isPermission, resolvePermissions } from './permissions.ts';
 
 test('global role grant allows every department', () => {
   const set = resolvePermissions([{ permission: 'people.edit', scope: 'global' }], [], 'tech');
@@ -38,4 +38,21 @@ test('personal grants add departments and global overrides', () => {
 test('unknown permission keys are ignored', () => {
   const set = resolvePermissions([{ permission: 'legacy.thing', scope: 'global' }], [], null);
   assert.equal(set.size, 0);
+});
+
+test('content, consulting, announcement and maintenance keys are in the catalogue', () => {
+  for (const key of ['content.publish', 'content.manage', 'consulting.manage', 'announcements.manage', 'site.maintenance']) {
+    assert.equal(isPermission(key), true, key);
+  }
+  const director = resolvePermissions(
+    [
+      { permission: 'content.publish', scope: 'global' },
+      { permission: 'content.manage', scope: 'global' },
+    ],
+    [],
+    'marketing',
+  );
+  assert.equal(can(director, 'content.manage'), true);
+  assert.equal(can(director, 'consulting.manage'), false);
+  assert.equal(can(director, 'site.maintenance'), false);
 });

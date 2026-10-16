@@ -15,7 +15,9 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const refused = query.get('error');
-  const next = safeNext(query.get('next'));
+  // The public landing page lives at '/', so signing in without a destination goes to the members home.
+  const requested = safeNext(query.get('next'));
+  const next = requested === '/' ? '/me' : requested;
 
   const signIn = async () => {
     setBusy(true);
