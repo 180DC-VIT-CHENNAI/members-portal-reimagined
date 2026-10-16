@@ -13,7 +13,7 @@ Void's version-matched docs live in `node_modules/void/docs/`. The `void` agent 
 | `routes/api/**` | One file per URL. Named exports `GET`/`POST`/`PATCH`/`PUT` (`[id]` becomes a parameter). |
 | `src/server/guard.ts` | `requirePrincipal` / `requirePermission`: resolve the Better Auth session to the signed-in person and their permissions (once per request). There is deliberately no `middleware/` directory: global middleware makes Void run the Worker before every static asset, so the SPA would stop being served free from Workers Assets. |
 | `auth.ts` | Better Auth config: Google only, invite-only sign-up, no sessions without access. |
-| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit. |
+| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit; `content` covers case studies, partners, consulting requests, announcements, maintenance mode and rate limits. |
 | `db/migrations/` | Generated SQL (`void db generate`) plus seeded reference data. Applied by Void on deploy and at dev start. |
 | `src/server/` | Server logic shared by routes: permissions, guards, lifecycle, CSV, sign-in rules, audit. |
 | `src/` | The React SPA. |
@@ -89,3 +89,13 @@ To add a permission:
 | `POST /api/imports/people` | `people.import`; `{ csv, dryRun }` with columns `email,full_name,department,position,access_role` |
 | `GET /api/audit` | `audit.view` |
 | `GET /api/departments` | signed in |
+| `GET /api/content/case-studies`, `GET /api/content/partners`, `GET /api/content/team-members` | public (rate limited 100/min per IP). Team lists active/on-leave people with an open current-term tenure; public fields only. |
+| `POST /api/consulting-request` | public (1 per hour per IP) |
+| `GET /api/consulting-requests`, `DELETE /api/consulting-requests/:id`, `POST /api/consulting-requests/:id/accept`, `POST /api/consulting-requests/:id/reject` | `consulting.manage`. Replies are recorded; emailing them arrives with the email queue. |
+| `GET /api/case-studies`, `POST /api/case-studies`, `PUT /api/case-studies/:id` | `content.publish` |
+| `DELETE /api/case-studies/:id` | `content.manage` |
+| `POST /api/partners`, `PATCH /api/partners/:id`, `DELETE /api/partners/:id` | `content.manage` |
+| `GET /api/announcements` | signed in |
+| `POST /api/announcements`, `DELETE /api/announcements/:id` | `announcements.manage` |
+| `GET /api/admin/maintenance` | public |
+| `POST /api/admin/maintenance` | `site.maintenance`. While on, signed-in API calls return 503 `maintenance` for anyone without it; public routes stay up. |

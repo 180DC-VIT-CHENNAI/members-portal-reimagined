@@ -15,6 +15,11 @@ export const PERMISSIONS = {
   'terms.manage': 'Create terms and start a new term',
   'roles.manage': 'Edit access roles and their permissions',
   'audit.view': 'Read the audit log',
+  'content.publish': 'Write and edit case studies',
+  'content.manage': 'Delete case studies and manage partners',
+  'consulting.manage': 'Review, accept, reject and delete consulting requests',
+  'announcements.manage': 'Post and remove announcements',
+  'site.maintenance': 'Turn maintenance mode on or off (and keep access while it is on)',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

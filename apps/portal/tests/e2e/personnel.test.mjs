@@ -28,7 +28,7 @@ describe('sign-in and identity', () => {
     assert.equal(me.json.person.status, 'active');
     assert.equal(me.json.person.accessRoleId, 'admin');
     assert.equal(me.json.permissions['people.grants'], 'global');
-    assert.equal(Object.keys(me.json.permissions).length, 12);
+    assert.equal(Object.keys(me.json.permissions).length, 17);
   });
 
   test('a Better Auth user with no person record has no access', async () => {

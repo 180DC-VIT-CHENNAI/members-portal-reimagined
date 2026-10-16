@@ -12,7 +12,7 @@ export function can(perms: PermissionMap, permission: string, departmentId?: str
   return departmentId !== null && scope.includes(departmentId);
 }
 
-export type AdminToolIcon = 'userPlus' | 'upload' | 'briefcase' | 'calendar' | 'shield' | 'fileText';
+export type AdminToolIcon = 'userPlus' | 'upload' | 'briefcase' | 'calendar' | 'shield' | 'fileText' | 'bookOpen' | 'heart' | 'inbox' | 'megaphone' | 'wrench';
 
 export interface AdminTool {
   path: string;
@@ -29,6 +29,11 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
   { path: '/admin/terms', label: 'Terms', description: 'Academic years and the start of a new term.', permission: 'terms.manage', icon: 'calendar' },
   { path: '/admin/roles', label: 'Access roles', description: 'What each role is allowed to do.', permission: 'roles.manage', icon: 'shield' },
   { path: '/admin/audit', label: 'Audit log', description: 'Every administrative change, newest first.', permission: 'audit.view', icon: 'fileText' },
+  { path: '/admin/case-studies', label: 'Case studies', description: 'Write, edit and remove public case studies.', permission: 'content.publish', icon: 'bookOpen' },
+  { path: '/admin/partners', label: 'Clients', description: 'Client logos shown on the public site.', permission: 'content.manage', icon: 'heart' },
+  { path: '/admin/consulting', label: 'Consulting requests', description: 'Review "Work with us" requests and reply.', permission: 'consulting.manage', icon: 'inbox' },
+  { path: '/admin/announcements', label: 'Announcements', description: 'Post and remove notices for members.', permission: 'announcements.manage', icon: 'megaphone' },
+  { path: '/admin/maintenance', label: 'Maintenance', description: 'Pause the members portal for everyone but admins.', permission: 'site.maintenance', icon: 'wrench' },
 ];
 
 export function visibleAdminTools(perms: PermissionMap): AdminTool[] {
