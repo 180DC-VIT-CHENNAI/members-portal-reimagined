@@ -21,6 +21,12 @@ export const PERMISSIONS = {
   'announcements.manage': 'Post and remove announcements',
   'files.view': 'Browse and download the shared club files',
   'files.manage': 'Upload and delete shared club files',
+  'departments.members.view': "See a department's current members",
+  'departments.instructions.view': "Read a department's instructions",
+  'departments.workspace.view': "See a department's workspace overview (documents, instructions, projects, meets)",
+  'departments.documents.manage': "Add and remove a department's documents",
+  'departments.instructions.manage': "Post and remove a department's instructions",
+  'departments.projects.manage': "Add department projects and change their status",
   'site.maintenance': 'Turn maintenance mode on or off (and keep access while it is on)',
 } as const;
 

@@ -13,7 +13,7 @@ Void's version-matched docs live in `node_modules/void/docs/`. The `void` agent 
 | `routes/api/**` | One file per URL. Named exports `GET`/`POST`/`PATCH`/`PUT` (`[id]` becomes a parameter). |
 | `src/server/guard.ts` | `requirePrincipal` / `requirePermission`: resolve the Better Auth session to the signed-in person and their permissions (once per request). There is deliberately no `middleware/` directory: global middleware makes Void run the Worker before every static asset, so the SPA would stop being served free from Workers Assets. |
 | `auth.ts` | Better Auth config: Google only, invite-only sign-up, no sessions without access. |
-| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit; `content` covers case studies, partners, consulting requests, announcements, maintenance mode and rate limits. Files are not in D1: they live in the old Worker's R2 buckets (`CLUB_FILES`, `CASE_STUDIES`, `GALLERY_CDN`, bound in `void.config.ts`), with writes mirrored to Backblaze B2 and reads falling back to it when `B2_*` secrets are set (`src/server/buckets.ts`). |
+| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit; `content` covers case studies, partners, consulting requests, announcements, maintenance mode and rate limits; `workspace` covers department documents, instructions and department projects. Files are not in D1: they live in R2 buckets in the deploy account (`CLUB_FILES`, `CASE_STUDIES`, `GALLERY_CDN`, bound by name in `void.config.ts`; commit `void.lock.json` whenever bindings change), with writes mirrored to Backblaze B2 and reads falling back to it when `B2_*` secrets are set (`src/server/buckets.ts`). |
 | `db/migrations/` | Generated SQL (`void db generate`) plus seeded reference data. Applied by Void on deploy and at dev start. |
 | `src/server/` | Server logic shared by routes: permissions, guards, lifecycle, CSV, sign-in rules, audit. |
 | `src/` | The React SPA. |
@@ -92,7 +92,13 @@ To add a permission:
 | `GET /api/exports/people` | `people.export` (rows limited to the departments you may export) |
 | `POST /api/imports/people` | `people.import`; `{ csv, dryRun }` with columns `email,full_name,department,position,access_role` |
 | `GET /api/audit` | `audit.view` |
-| `GET /api/departments` | signed in |
+| `GET /api/departments` | public (100/min per IP): id, name, description, active |
+| `GET /api/departments/:id/members` | `departments.members.view` for that department. People whose home department it is, active or on leave, with their current-term positions. |
+| `GET /api/departments/:id/instructions` | `departments.instructions.view` for that department |
+| `POST /api/departments/:id/instructions`, `DELETE /api/departments/:id/instructions/:instructionId` | `departments.instructions.manage` for that department |
+| `GET /api/departments/:id/overview` | `departments.workspace.view` for that department: documents, instructions and department projects |
+| `POST /api/departments/:id/documents`, `DELETE /api/departments/:id/documents/:documentId` | `departments.documents.manage` for that department (links only; http(s) URLs) |
+| `POST /api/departments/:id/projects`, `PUT /api/departments/:id/projects/:projectId/status` | `departments.projects.manage` for that department. This tracker is separate from club-wide projects. |
 | `GET /api/content/case-studies`, `GET /api/content/partners`, `GET /api/content/team-members` | public (rate limited 100/min per IP). Team lists active/on-leave people with an open current-term tenure; public fields only. |
 | `POST /api/consulting-request` | public (1 per hour per IP) |
 | `GET /api/consulting-requests`, `DELETE /api/consulting-requests/:id`, `POST /api/consulting-requests/:id/accept`, `POST /api/consulting-requests/:id/reject` | `consulting.manage`. Replies are recorded; emailing them arrives with the email queue. |
@@ -107,4 +113,4 @@ To add a permission:
 | `POST /api/club-files/upload` (multipart), `DELETE /api/club-files/:id` | `files.manage` (20/hour each). 25 MB limit and an extension allow-list. |
 | `POST /api/case-studies/upload-image`, `upload-source`, `upload-document` (multipart); `DELETE /api/case-studies/delete-image` | `content.publish`. `upload-document` turns a PDF or DOCX into sanitized HTML and stores nothing. |
 | `GET /api/case-studies/images/*` | public (200/min per IP): `images/` and `source/` keys of `CASE_STUDIES` |
-| `GET /api/gallery-cdn/*` | public, cached for a year: photos in the `cdn` bucket listed by `src/data/galleryManifest.json` |
+| `GET /api/gallery-cdn/*` | public, cached for a year: photos in the `GALLERY_CDN` bucket listed by `src/data/galleryManifest.json` |

@@ -5,6 +5,7 @@ import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'void
 export const departments = sqliteTable('departments', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  description: text('description'),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 });

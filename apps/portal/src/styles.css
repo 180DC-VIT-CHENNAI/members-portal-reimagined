@@ -285,6 +285,15 @@ code,
   gap: 8px;
 }
 
+/* A list row: content on the left, a control pushed to the right. */
+.row-between {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
 /* ---------- App shell (fixed sidebar, document scroll) ---------- */
 
 .app {
