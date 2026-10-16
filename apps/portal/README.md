@@ -65,7 +65,7 @@ The awaited `crons/email.ts` job runs every minute. Campaigns send one message p
 
 For local tests, set `EMAIL_TEST_MODE=capture` to store accepted mail in `dev_outbox` without connecting to SMTP. `redirect` captures every message but sends the first occurrence of each subject to `EMAIL_TEST_RECIPIENT`; it needs SMTP credentials. Test modes are disabled in production builds and when `ENVIRONMENT=production`. The outbox and synchronous drain routes use `.dev.ts` and are excluded from production. Capture-mode simulated domains are `reject.invalid` (550), `tempfail.invalid` (450), and `timeout.invalid` (session timeout).
 
-The e2e harness awaits the real `/__void/scheduled` trigger with the startup token before reading queue/outbox state; it uses no delivery sleeps or polling. Queue attachments reference keys in `CASE_STUDIES`; missing objects are logged and omitted.
+The e2e harness awaits the real `/__void/scheduled` trigger with the startup token before reading queue/outbox state; it uses no delivery sleeps or polling. Queue attachments reference keys in `CASE_STUDIES`; missing or unreadable objects are logged and omitted. An SMTP hourly throttle pauses the campaign and saturates the shared hour counter rather than failing the recipient. Capture mode simulates that response for `hourlimit.invalid`.
 
 ## Access model
 

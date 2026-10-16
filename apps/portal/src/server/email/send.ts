@@ -60,7 +60,9 @@ export async function sendEmail(
     }).returning({ hour: emailHourCount.hour });
   if (!reserved.length) return { status: 'paused', error: 'hourly_limit' };
   let accepted = false;
+  let providerLimited = false;
   try {
+    if (mode && message.to.endsWith('@hourlimit.invalid')) throw new SmtpError('SMTP hourly limit reached', 550, 'quota');
     if ((!mode || redirectTo) && smtpUser && smtpPassword) {
       const result = await smtpSend(smtpUser, smtpPassword, {
         ...message,
@@ -88,9 +90,14 @@ export async function sendEmail(
     return { status: 'sent' };
   } catch (error) {
     if (!(error instanceof SmtpError)) throw error;
+    if (error.reason === 'quota') {
+      await db.update(emailHourCount).set({ count: quota.limit }).where(eq(emailHourCount.hour, quota.hour));
+      providerLimited = true;
+      return { status: 'paused', error: error.message };
+    }
     return { status: error.code && error.code >= 500 ? 'failed' : 'paused', error: error.message };
   } finally {
-    if (!accepted) await db.update(emailHourCount).set({ count: sql`max(0, ${emailHourCount.count} - 1)` })
+    if (!accepted && !providerLimited) await db.update(emailHourCount).set({ count: sql`max(0, ${emailHourCount.count} - 1)` })
       .where(eq(emailHourCount.hour, quota.hour));
   }
 }

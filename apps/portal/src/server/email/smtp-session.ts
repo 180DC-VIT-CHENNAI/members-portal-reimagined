@@ -2,10 +2,12 @@ import { buildMimeMessage, utf8Base64, type EmailMessage } from './mime.ts';
 
 export class SmtpError extends Error {
   readonly code: number | undefined;
-  constructor(message: string, code?: number) {
+  readonly reason: 'protocol' | 'quota';
+  constructor(message: string, code?: number, reason: 'protocol' | 'quota' = 'protocol') {
     super(message);
     this.name = 'SmtpError';
     this.code = code;
+    this.reason = reason;
   }
 }
 
@@ -49,7 +51,14 @@ export async function smtpSession(
       const match = /^(\d{3})([ -])/.exec(value);
       if (!match) throw new SmtpError('Malformed SMTP reply');
       lines.push(value);
-      if (match[2] === ' ') return { code: Number(match[1]), text: lines.join('\n') };
+      if (match[2] === ' ') {
+        const text = lines.join('\n');
+        const code = Number(match[1]);
+        if (code >= 400 && /too many messages|hourly (limit|quota)/i.test(text)) {
+          throw new SmtpError('SMTP hourly limit reached', code, 'quota');
+        }
+        return { code, text };
+      }
     }
     throw new SmtpError('SMTP multiline response exceeds limit');
   }

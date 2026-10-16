@@ -69,14 +69,19 @@ export async function drainEmailQueue(
   const settled = new Set(deliveries.filter((d) => d.status !== 'failed').map((d) => d.recipient));
   const attachments: EmailAttachment[] = [];
   for (const reference of campaign.attachments ?? []) {
-    const object = await attachmentsBucket.get(reference.key);
-    if (!object) {
-      console.warn(JSON.stringify({ event: 'email_attachment_missing', campaignId: campaign.id, key: reference.key }));
-      continue;
+    try {
+      const object = await attachmentsBucket.get(reference.key);
+      if (!object) {
+        console.warn(JSON.stringify({ event: 'email_attachment_missing', campaignId: campaign.id, key: reference.key }));
+        continue;
+      }
+      let binary = '';
+      for (const byte of new Uint8Array(await object.arrayBuffer())) binary += String.fromCharCode(byte);
+      attachments.push({ filename: reference.filename, content: btoa(binary), contentType: reference.contentType });
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      console.warn(JSON.stringify({ event: 'email_attachment_unreadable', campaignId: campaign.id, key: reference.key }));
     }
-    let binary = '';
-    for (const byte of new Uint8Array(await object.arrayBuffer())) binary += String.fromCharCode(byte);
-    attachments.push({ filename: reference.filename, content: btoa(binary), contentType: reference.contentType });
   }
   let cursor = campaign.cursor;
   let sent = 0;

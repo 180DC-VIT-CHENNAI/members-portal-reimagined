@@ -87,3 +87,17 @@ test('SMTP fails on closed connections instead of spinning on empty replies', as
     SmtpError,
   );
 });
+
+test('SMTP treats provider hourly throttles as a session quota pause rather than a recipient rejection', async () => {
+  const wire = server([
+    ['EHLO 180dcvitc.org\r\n', '250 AUTH PLAIN\r\n'],
+    ['AUTH PLAIN AHVzZXIAcGFzcw==\r\n', '235 authenticated\r\n'],
+    ['MAIL FROM:<technical@180dcvitc.org>\r\n', '250 ok\r\n'],
+    ['RCPT TO:<member@example.com>\r\n', '550 Too many messages this hour\r\n'],
+  ]);
+  await assert.rejects(
+    smtpSession(wire.readable, wire.writable, 'user', 'pass', message),
+    (error: unknown) => error instanceof SmtpError && error.reason === 'quota',
+  );
+  wire.complete();
+});

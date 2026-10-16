@@ -109,6 +109,30 @@ test('timeouts pause without advancing and five no-progress claims eventually fa
   assert.equal((await outbox()).length, 0);
 });
 
+test('provider hourly throttling pauses the cursor and saturates the shared hour counter', async () => {
+  const id = campaign(['provider@hourlimit.invalid', 'next@example.com']);
+  await portal.runCron();
+  assert.equal(row(id).status, 'pending');
+  assert.equal(row(id).cursor, 0);
+  assert.equal(row(id).failed, 0);
+  const hour = new Date().toISOString().slice(0, 13);
+  assert.equal(portal.db.prepare('SELECT count FROM email_hour_count WHERE hour=?').get(hour).count, 500);
+  assert.equal((await outbox()).length, 0);
+  assert.equal(portal.db.prepare('SELECT count(*) AS n FROM email_deliveries').get().n, 0);
+});
+
+test('missing and unreadable attachment references are omitted without aborting the campaign', async () => {
+  const id = campaign(['one@example.com']);
+  portal.db.prepare('UPDATE email_queue SET attachments=? WHERE id=?').run(JSON.stringify([
+    { filename: 'missing.pdf', key: 'not-present.pdf' },
+    { filename: 'unreadable.pdf', key: 'x'.repeat(1025) },
+  ]), id);
+  await portal.runCron();
+  assert.equal(row(id).status, 'done');
+  assert.equal(row(id).sent, 1);
+  assert.deepEqual((await outbox())[0].attachments, []);
+});
+
 test('shared hourly quota queues paused direct mail and campaign cutoff leaves the last 10 percent reserved', async () => {
   const hour = new Date().toISOString().slice(0, 13);
   portal.db.prepare('INSERT INTO email_hour_count(hour,count) VALUES (?,500)').run(hour);
