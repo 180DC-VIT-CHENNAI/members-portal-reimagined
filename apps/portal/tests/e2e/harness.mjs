@@ -53,33 +53,46 @@ export async function startPortal() {
     env: {
       ...process.env,
       PORTAL_STATE_DIR: stateDir,
+      NO_COLOR: '1',
       AUTH_GOOGLE_CLIENT_ID: 'e2e-client.apps.googleusercontent.com',
       AUTH_GOOGLE_CLIENT_SECRET: 'e2e-secret',
     },
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  await waitForOutput(child, (log) => log.includes(`localhost:${port}`), 120_000);
+  const kill = async () => {
+    try {
+      process.kill(-child.pid, 'SIGTERM');
+    } catch {}
+    await new Promise((r) => (child.exitCode !== null ? r() : child.once('exit', r)));
+  };
   const base = `http://localhost:${port}`;
-  // The first API request runs the migrations against the fresh database.
-  const health = await fetch(`${base}/api/health`);
-  if (!health.ok) throw new Error(`health ${health.status}`);
-  await fetch(`${base}/api/me`);
+  let db;
+  try {
+    // Strip ANSI codes: CI runners get coloured output with the port in bold.
+    await waitForOutput(child, (log) => log.replace(/\x1b\[[0-9;]*m/g, '').includes(`:${port}/`), 120_000);
+    // The first API request runs the migrations against the fresh database.
+    const health = await fetch(`${base}/api/health`);
+    if (!health.ok) throw new Error(`health ${health.status}`);
+    await fetch(`${base}/api/me`);
 
-  const d1Dir = join(stateDir, 'v3', 'd1', 'miniflare-D1DatabaseObject');
-  const file = readdirSync(d1Dir).find((f) => f.endsWith('.sqlite') && f !== 'metadata.sqlite');
-  const db = new DatabaseSync(join(d1Dir, file));
-  db.exec('PRAGMA busy_timeout = 5000');
+    const d1Dir = join(stateDir, 'v3', 'd1', 'miniflare-D1DatabaseObject');
+    const file = readdirSync(d1Dir).find((f) => f.endsWith('.sqlite') && f !== 'metadata.sqlite');
+    db = new DatabaseSync(join(d1Dir, file));
+    db.exec('PRAGMA busy_timeout = 5000');
+  } catch (err) {
+    // Never leave a dev server running: it would keep the test process alive.
+    await kill();
+    rmSync(stateDir, { recursive: true, force: true });
+    throw err;
+  }
 
   return {
     base,
     db,
     async stop() {
       db.close();
-      try {
-        process.kill(-child.pid, 'SIGTERM');
-      } catch {}
-      await new Promise((r) => (child.exitCode !== null ? r() : child.once('exit', r)));
+      await kill();
       rmSync(stateDir, { recursive: true, force: true });
     },
   };
