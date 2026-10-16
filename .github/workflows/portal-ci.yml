@@ -2,7 +2,9 @@ name: Portal CI
 
 # Checks every portal PR; on main it also deploys the `180dc-portal` Worker with
 # `void deploy` once the repo variable PORTAL_DEPLOY is set to `enabled`.
-# Deploy needs the secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+# Deploy needs the secrets PORTAL_CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+# void.lock.json must match what `void deploy` resolves: commit it whenever
+# bindings in void.config.ts change (`void prepare` regenerates it).
 
 on:
   pull_request:
