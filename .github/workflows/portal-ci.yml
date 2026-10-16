@@ -10,12 +10,15 @@ on:
       - 'apps/portal/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - '.github/workflows/portal-ci.yml'
   push:
     branches: [main]
     paths:
       - 'apps/portal/**'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - '.github/workflows/portal-ci.yml'
   workflow_dispatch:
 

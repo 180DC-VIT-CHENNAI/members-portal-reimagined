@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
+import { PERMISSION_KEYS } from '../../src/server/permissions.ts';
 import { anonymous, signIn, startPortal } from './harness.mjs';
 
 const ADMIN = 'srijan.guchhait@gmail.com';
@@ -28,7 +29,7 @@ describe('sign-in and identity', () => {
     assert.equal(me.json.person.status, 'active');
     assert.equal(me.json.person.accessRoleId, 'admin');
     assert.equal(me.json.permissions['people.grants'], 'global');
-    assert.equal(Object.keys(me.json.permissions).length, 17);
+    assert.deepEqual(Object.keys(me.json.permissions).sort(), [...PERMISSION_KEYS].sort());
   });
 
   test('a Better Auth user with no person record has no access', async () => {

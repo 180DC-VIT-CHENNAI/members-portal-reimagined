@@ -4,6 +4,27 @@ import { type ApiProblem, toProblem } from './errors.ts';
 
 export const api = fetch;
 
+/**
+ * Multipart POST for file uploads (the typed client only sends JSON). Errors
+ * are thrown in the typed client's `{ status, data }` shape so `problemFrom`
+ * maps them the same way.
+ */
+export async function upload<T>(path: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await globalThis.fetch(path, { method: 'POST', body: form, credentials: 'same-origin', headers: { accept: 'application/json' } });
+  } catch {
+    throw { status: null };
+  }
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = JSON.parse(text);
+  } catch {}
+  if (!res.ok) throw { status: res.status, data };
+  return data as T;
+}
+
 let handleUnauthorized = () => {};
 
 export function onUnauthorized(handler: () => void) {

@@ -15,6 +15,13 @@
       "when": 1792168026247,
       "tag": "20261016162706_lean_captain_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792169310864,
+      "tag": "20261016164830_files_permissions",
+      "breakpoints": true
     }
   ]
 }

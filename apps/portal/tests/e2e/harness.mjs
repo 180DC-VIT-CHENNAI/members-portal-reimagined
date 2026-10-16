@@ -129,10 +129,14 @@ export function anonymous(portal) {
 
 function client(base, cookie) {
   const call = async (method, path, body) => {
-    const headers = { origin: base };
+    // An explicit Accept: the Vite dev server answers GET 404s with index.html when Accept includes */*.
+    const headers = { origin: base, accept: 'application/json' };
     if (cookie) headers.cookie = cookie;
-    if (body !== undefined) headers['content-type'] = 'application/json';
-    const res = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    // FormData sets its own multipart content type (with the boundary).
+    const form = body instanceof FormData;
+    if (body !== undefined && !form) headers['content-type'] = 'application/json';
+    const payload = body === undefined ? undefined : form ? body : JSON.stringify(body);
+    const res = await fetch(base + path, { method, headers, body: payload });
     const text = await res.text();
     let json = null;
     try {
@@ -145,6 +149,15 @@ function client(base, cookie) {
     post: (p, b) => call('POST', p, b ?? {}),
     patch: (p, b) => call('PATCH', p, b),
     put: (p, b) => call('PUT', p, b),
-    del: (p) => call('DELETE', p),
+    del: (p, b) => call('DELETE', p, b),
+    /** Multipart POST: string values become fields, `{ name, type, data }` values become files. */
+    upload: (p, fields) => {
+      const form = new FormData();
+      for (const [key, value] of Object.entries(fields)) {
+        if (typeof value === 'string') form.append(key, value);
+        else form.append(key, new Blob([value.data], { type: value.type ?? '' }), value.name);
+      }
+      return call('POST', p, form);
+    },
   };
 }

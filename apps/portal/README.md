@@ -13,7 +13,7 @@ Void's version-matched docs live in `node_modules/void/docs/`. The `void` agent 
 | `routes/api/**` | One file per URL. Named exports `GET`/`POST`/`PATCH`/`PUT` (`[id]` becomes a parameter). |
 | `src/server/guard.ts` | `requirePrincipal` / `requirePermission`: resolve the Better Auth session to the signed-in person and their permissions (once per request). There is deliberately no `middleware/` directory: global middleware makes Void run the Worker before every static asset, so the SPA would stop being served free from Workers Assets. |
 | `auth.ts` | Better Auth config: Google only, invite-only sign-up, no sessions without access. |
-| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit; `content` covers case studies, partners, consulting requests, announcements, maintenance mode and rate limits. |
+| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit; `content` covers case studies, partners, consulting requests, announcements, maintenance mode and rate limits. Files are not in D1: they live in the old Worker's R2 buckets (`CLUB_FILES`, `CASE_STUDIES`, `GALLERY_CDN`, bound in `void.config.ts`), with writes mirrored to Backblaze B2 and reads falling back to it when `B2_*` secrets are set (`src/server/buckets.ts`). |
 | `db/migrations/` | Generated SQL (`void db generate`) plus seeded reference data. Applied by Void on deploy and at dev start. |
 | `src/server/` | Server logic shared by routes: permissions, guards, lifecycle, CSV, sign-in rules, audit. |
 | `src/` | The React SPA. |
@@ -34,6 +34,10 @@ For real Google sign-in locally, the OAuth client must allow `http://localhost:5
 
 The e2e harness signs people in by creating real Better Auth `user`/`session` rows in the temp database and signing the
 cookie with Void's development secret. The app has no test login of any kind.
+
+## Patched dependency
+
+`patches/void@1.1.0.patch` (repo root, applied by pnpm) stops Void's asset fallback from replacing `/api/*` GET 404s with the SPA's `index.html`. Without it an unknown API route or a missing file answered `200 text/html`, contrary to Void's documented behaviour. Drop the patch when upgrading to a Void release that fixes this, and keep the `404` assertions in `tests/e2e/files.test.mjs` passing.
 
 ## Deployment (CI/CD)
 
@@ -99,3 +103,8 @@ To add a permission:
 | `POST /api/announcements`, `DELETE /api/announcements/:id` | `announcements.manage` |
 | `GET /api/admin/maintenance` | public |
 | `POST /api/admin/maintenance` | `site.maintenance`. While on, signed-in API calls return 503 `maintenance` for anyone without it; public routes stay up. |
+| `GET /api/club-files?category&eventName&projectName&search`, `GET /api/club-files/events`, `GET /api/club-files/projects`, `GET /api/club-files/:id/download` | `files.view`. Only the `general/`, `projects/` and `events/` prefixes of `CLUB_FILES` are listed or served. |
+| `POST /api/club-files/upload` (multipart), `DELETE /api/club-files/:id` | `files.manage` (20/hour each). 25 MB limit and an extension allow-list. |
+| `POST /api/case-studies/upload-image`, `upload-source`, `upload-document` (multipart); `DELETE /api/case-studies/delete-image` | `content.publish`. `upload-document` turns a PDF or DOCX into sanitized HTML and stores nothing. |
+| `GET /api/case-studies/images/*` | public (200/min per IP): `images/` and `source/` keys of `CASE_STUDIES` |
+| `GET /api/gallery-cdn/*` | public, cached for a year: photos in the `cdn` bucket listed by `src/data/galleryManifest.json` |

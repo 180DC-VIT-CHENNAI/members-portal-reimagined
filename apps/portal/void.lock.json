@@ -3,10 +3,26 @@
   "source": {
     "name": "180dc-portal",
     "workers_dev": true,
-    "preview_urls": true
+    "preview_urls": true,
+    "r2_buckets": [
+      {
+        "binding": "CLUB_FILES",
+        "bucket_name": "180dc-club-files"
+      },
+      {
+        "binding": "CASE_STUDIES",
+        "bucket_name": "180dc-case-studies"
+      },
+      {
+        "binding": "GALLERY_CDN",
+        "bucket_name": "cdn"
+      }
+    ]
   },
   "resolved": {
     "name": "180dc-portal",
+    "workers_dev": true,
+    "preview_urls": true,
     "account_id": "ee4c08f37c3a62fedc87fbd1b8b96ff4",
     "compatibility_date": "2026-02-24",
     "d1_databases": [
@@ -17,8 +33,20 @@
         "migrations_dir": "./db/migrations"
       }
     ],
-    "workers_dev": true,
-    "preview_urls": true
+    "r2_buckets": [
+      {
+        "binding": "CLUB_FILES",
+        "bucket_name": "180dc-club-files"
+      },
+      {
+        "binding": "CASE_STUDIES",
+        "bucket_name": "180dc-case-studies"
+      },
+      {
+        "binding": "GALLERY_CDN",
+        "bucket_name": "cdn"
+      }
+    ]
   },
-  "text": "{\n  \"name\": \"180dc-portal\",\n  \"account_id\": \"ee4c08f37c3a62fedc87fbd1b8b96ff4\",\n  \"compatibility_date\": \"2026-02-24\",\n  \"d1_databases\": [\n    {\n      \"binding\": \"DB\",\n      \"database_name\": \"180dc-portal-db\",\n      \"database_id\": \"f95987df-5310-4e03-8d4c-60e6b32da67e\",\n      \"migrations_dir\": \"./db/migrations\"\n    }\n  ],\n  \"workers_dev\": true,\n  \"preview_urls\": true\n}\n"
+  "text": "{\n  \"name\": \"180dc-portal\",\n  \"workers_dev\": true,\n  \"preview_urls\": true,\n  \"account_id\": \"ee4c08f37c3a62fedc87fbd1b8b96ff4\",\n  \"compatibility_date\": \"2026-02-24\",\n  \"d1_databases\": [\n    {\n      \"binding\": \"DB\",\n      \"database_name\": \"180dc-portal-db\",\n      \"database_id\": \"f95987df-5310-4e03-8d4c-60e6b32da67e\",\n      \"migrations_dir\": \"./db/migrations\"\n    }\n  ],\n  \"r2_buckets\": [\n    {\n      \"binding\": \"CLUB_FILES\",\n      \"bucket_name\": \"180dc-club-files\"\n    },\n    {\n      \"binding\": \"CASE_STUDIES\",\n      \"bucket_name\": \"180dc-case-studies\"\n    },\n    {\n      \"binding\": \"GALLERY_CDN\",\n      \"bucket_name\": \"cdn\"\n    }\n  ]\n}\n"
 }

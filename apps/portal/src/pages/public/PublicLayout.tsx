@@ -9,6 +9,7 @@ const NAV = [
   { to: '/team', label: 'Team' },
   { to: '/case-studies', label: 'Case studies' },
   { to: '/partners', label: 'Clients' },
+  { to: '/gallery', label: 'Gallery' },
 ];
 
 /** Shell for the public site: no session, no members chrome. */
@@ -95,6 +96,9 @@ function SiteFooter() {
           </Link>
           <Link className="text-link" to="/partners">
             Clients
+          </Link>
+          <Link className="text-link" to="/gallery">
+            Gallery
           </Link>
           <Link className="text-link" to="/work-with-us">
             Work with us

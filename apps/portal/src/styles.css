@@ -2423,3 +2423,26 @@ code,
     opacity: 0;
   }
 }
+
+/* ---------- Public gallery ---------- */
+.gallery-year {
+  margin-top: 16px;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.gallery-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  background: var(--border);
+}
