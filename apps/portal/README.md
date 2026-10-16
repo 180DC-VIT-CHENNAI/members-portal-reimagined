@@ -74,7 +74,7 @@ To add a permission:
 | `GET /api/me` | signed in |
 | `GET /api/people?q&status&department&role&position&term` | `people.view` (private fields need `people.view_private` or being yourself) |
 | `POST /api/people` | `people.invite` for the department. A role other than `member` also needs `people.grants`. |
-| `GET /api/people/:id` | `people.view` or yourself; includes tenure history |
+| `GET /api/people/:id` | `people.view` or yourself; includes tenure history, and `grants` (extra permissions) only for viewers with `people.grants`, otherwise `null` |
 | `PATCH /api/people/:id` | yourself (profile fields) or `people.edit` for the department. Moving departments needs `people.edit` for both. |
 | `POST /api/people/:id/status` | `people.lifecycle` for the department; not on yourself |
 | `PUT /api/people/:id/access` | `people.grants`; not on yourself |

@@ -1,4 +1,4 @@
-import { departments, people, positions, tenures, terms } from '@schema';
+import { departments, people, personGrants, positions, tenures, terms } from '@schema';
 import * as v from 'valibot';
 import { defineHandler } from 'void';
 import { db, desc, eq } from 'void/db';
@@ -30,7 +30,14 @@ export const GET = defineHandler(async (c) => {
     .innerJoin(terms, eq(terms.id, tenures.termId))
     .where(eq(tenures.personId, person.id))
     .orderBy(desc(tenures.startedOn));
-  return { ...personView(viewer, person), tenures: history };
+  // Individual grants are shown only to people who may change them.
+  const grants = can(viewer.permissions, 'people.grants')
+    ? await db
+        .select({ permission: personGrants.permission, departmentId: personGrants.departmentId })
+        .from(personGrants)
+        .where(eq(personGrants.personId, person.id))
+    : null;
+  return { ...personView(viewer, person), tenures: history, grants };
 });
 
 const patchBody = v.object({ ...profileFields, departmentId: v.optional(v.nullable(id)) });
