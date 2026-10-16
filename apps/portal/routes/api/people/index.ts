@@ -21,7 +21,7 @@ const listQuery = v.object({
 
 /** Directory: search and filter people. */
 export const GET = defineHandler.withValidator({ query: listQuery })(async (c, { query }) => {
-  const viewer = requirePermission(c, 'people.view');
+  const viewer = await requirePermission(c, 'people.view');
   const where = [];
   if (query.q) {
     const pattern = `%${query.q.replace(/[%_]/g, '')}%`;
@@ -74,7 +74,7 @@ const inviteBody = v.object({
 /** Add a person by email. They become active on their first Google sign-in. */
 export const POST = defineHandler.withValidator({ body: inviteBody })(async (c, { body }) => {
   const departmentId = body.departmentId ?? null;
-  const actor = requirePermission(c, 'people.invite', departmentId);
+  const actor = await requirePermission(c, 'people.invite', departmentId);
   if (body.accessRoleId !== 'member' && !can(actor.permissions, 'people.grants')) {
     badRequest('only_member_role_without_people_grants');
   }

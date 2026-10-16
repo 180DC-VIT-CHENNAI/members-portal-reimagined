@@ -8,7 +8,7 @@ import { badRequest, conflict } from '../../../src/server/http';
 import { id } from '../../../src/server/validation';
 
 export const GET = defineHandler(async (c) => {
-  requirePrincipal(c);
+  await requirePrincipal(c);
   return db.select().from(positions).orderBy(asc(positions.rank), asc(positions.title));
 });
 
@@ -20,7 +20,7 @@ export const POST = defineHandler.withValidator({
     rank: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(1000)), 100),
   }),
 })(async (c, { body }) => {
-  const actor = requirePermission(c, 'positions.manage', body.departmentId);
+  const actor = await requirePermission(c, 'positions.manage', body.departmentId);
   if (body.departmentId) {
     const [dept] = await db.select().from(departments).where(eq(departments.id, body.departmentId));
     if (!dept) badRequest('unknown_department');

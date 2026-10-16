@@ -18,7 +18,7 @@ export const POST = defineHandler.withValidator({
   body: v.object({ status: v.picklist(PERSON_STATUSES), note: v.optional(v.pipe(v.string(), v.maxLength(500))) }),
 })(async (c, { body }) => {
   const person = await getPersonOr404(idParam(c));
-  const actor = requirePermission(c, 'people.lifecycle', person.departmentId);
+  const actor = await requirePermission(c, 'people.lifecycle', person.departmentId);
   if (actor.person.id === person.id) badRequest('cannot_change_own_status');
 
   const result = nextStatus(person.status, body.status, person.authUserId !== null);

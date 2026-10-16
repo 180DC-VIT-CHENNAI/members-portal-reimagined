@@ -19,7 +19,7 @@ export const POST = defineHandler.withValidator({
     alumni: v.optional(v.pipe(v.array(id), v.maxLength(2000)), []),
   }),
 })(async (c, { body }) => {
-  const actor = requirePermission(c, 'terms.manage');
+  const actor = await requirePermission(c, 'terms.manage');
   const [next] = await db.select().from(terms).where(eq(terms.id, idParam(c)));
   if (!next) notFound('term_not_found');
   if (next.isCurrent) badRequest('term_already_current');

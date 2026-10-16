@@ -6,7 +6,7 @@ import { PERMISSIONS } from '../../../src/server/permissions';
 
 /** Roles with their permissions, plus the permission catalogue. */
 export const GET = defineHandler(async (c) => {
-  requirePrincipal(c);
+  await requirePrincipal(c);
   const [roles, grants] = await Promise.all([
     db.select().from(accessRoles).orderBy(asc(accessRoles.name)),
     db.select().from(rolePermissions),

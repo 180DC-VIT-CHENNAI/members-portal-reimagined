@@ -12,7 +12,7 @@ import { can } from '../../../src/server/permissions';
  * (all people for a global grant). Private columns follow view_private.
  */
 export const GET = defineHandler(async (c) => {
-  const actor = requirePermission(c, 'people.export');
+  const actor = await requirePermission(c, 'people.export');
   const all = await db.select().from(people).orderBy(asc(people.fullName));
   const rows = all.filter((p) => can(actor.permissions, 'people.export', p.departmentId));
   const current = await db
