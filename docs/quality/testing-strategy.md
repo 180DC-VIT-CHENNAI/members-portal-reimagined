@@ -95,7 +95,7 @@ A test helper should set:
 - `DB`: in-memory D1 with schema from `ensureTables` and `runMigrations`.
 - `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`: in-memory R2-like mock.
 - `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS`: leave unset to exercise the "not configured" path, or use the real mailbox when testing delivery.
-- `CLERK_SECRET_KEY`: a fake key; mock `verifyToken`.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_TOKEN_URL`: the e2e harness points these at a fake local token endpoint (`tests/lib/server.mjs`).
 
 ### Seeded test data
 
@@ -157,9 +157,9 @@ Both existing-schema and fresh production-mode runs passed in credential-free Bo
 
 ### Google identity and link ownership
 
-Run `pnpm run test:clerk-identity` for verified subject/session requirements, missing configuration, provider errors, pending sessions, approved origins and development-only loopback handling. Run `pnpm run verify:local-clerk` for a hermetic production-mode local Worker journey. It generates an ephemeral RSA key in memory and a temporary test entry that calls the real Clerk SDK with the corresponding public key instead of network key lookup. It boots an empty isolated local D1, imports only synthetic fixtures, checks signature/expiry, explicit links, attacker email input, concurrent/conflicting links, rate limits, inactive source access, unlink and session exchange. Temporary entry/state are deleted on exit; this test configuration has no cloud routes, cron or mail bindings. Never deploy the generated entry. Live personal Clerk redirect/key configuration and browser journeys remain a separate release gate.
+Run `pnpm run test:google-oauth` for PKCE and ID-token validation (`apps/admin-api/google-oauth.test.mjs`). `pnpm test` (`tests/api/01-auth.test.mjs`) drives the real Worker through start, callback and exchange against a fake Google token endpoint: state cookie and single-use state, unlinked accounts, link then sign-in, single-use handoff codes, duplicate links, unlink and revoked registry tokens.
 
-Implementation follows Clerk's [session verification guidance](https://clerk.com/docs/guides/sessions/manual-jwt-verification), including origin and pending-session checks.
+The Clerk-based `verify:local-clerk` script below was removed with Clerk; the paragraphs that cite it are historical records. Use `pnpm test` for route coverage instead.
 
 These identity route journeys passed in credential-free Boat on 8 October 2026, including missing registry access, disabled OAuth, audit rows and repeated-request rate denial. All twelve policy/proxy/session helper tests passed, as did Turbo/frontend builds and Worker dry-run. Existing backend `tsc --noEmit` still has no usable tsconfig; type-check setup remains open.
 
@@ -187,7 +187,7 @@ Install dependencies with `pnpm install`, install the test browser using `pnpm -
 
 Ten Chromium checks passed in credential-free Boat on 8 October 2026: desktop/mobile keyboard task completion, transfer/admin shortcuts, errors and refresh recovery, denied completion/retry, delayed old-account responses, loading/empty states, unsafe meeting links and long-title overflow. Visual inspection caught low-contrast inherited button labels; Today now uses primary text and more section spacing. Screenshots are saved in ignored `test-results`; failure traces are retained. Dependency install and final Turbo/frontend builds passed.
 
-These are actual-component browser checks with mocked responses. They complement the real local Worker/D1/R2 endpoint suite but do not prove a complete portal login journey, personal Clerk redirects, CSP deployment behavior, all accessibility criteria or Android parity. Full end-to-end staging acceptance remains required.
+These are actual-component browser checks with mocked responses. They complement the real local Worker/D1/R2 endpoint suite but do not prove a complete portal login journey, real Google redirects, CSP deployment behavior, all accessibility criteria or Android parity. Full end-to-end staging acceptance remains required.
 
 ### Initial Android verification
 

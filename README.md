@@ -191,8 +191,9 @@ Each Worker may require its own environment configuration.
 For local development, create a `.dev.vars` file inside `apps/admin-api`:
 
 ```env
-CLERK_SECRET_KEY=sk_test_...
 ENVIRONMENT=development
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 SPACEMAIL_SMTP_USER=technical@180dcvitc.org
 SPACEMAIL_SMTP_PASS=
 ```
@@ -200,14 +201,13 @@ SPACEMAIL_SMTP_PASS=
 For the frontend, create `apps/frontend/.env.local`:
 
 ```env
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
 VITE_API_BASE_URL=http://127.0.0.1:8787
 ```
 
 For production, store secrets securely using Wrangler:
 
 ```bash
-wrangler secret put CLERK_SECRET_KEY
+wrangler secret put GOOGLE_CLIENT_SECRET
 wrangler secret put SPACEMAIL_SMTP_USER
 wrangler secret put SPACEMAIL_SMTP_PASS
 ```

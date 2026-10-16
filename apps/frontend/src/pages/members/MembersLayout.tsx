@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useAuth, useClerk } from "@clerk/react";
 import MembersLogin from "./MembersLogin";
 import TodaySection from "./TodaySection";
 import DepartmentPanel from "./DepartmentPanel";
@@ -22,7 +21,7 @@ import TransfersSection from "./TransfersSection";
 import AdminConsole from "./AdminConsole";
 import AdminDataLoader from "./AdminDataLoader";
 import { apiUrl } from "../../lib/api";
-import { createMemberSession } from "../../lib/member-session";
+import { exchangeGoogleCode, GOOGLE_ERROR_MESSAGES } from "../../lib/member-session";
 import { useTheme } from "../../context/ThemeContext";
 import { QUOTES } from "../../data/quotes";
 import { stripHtmlTags } from "../../lib/sanitize";
@@ -186,8 +185,6 @@ function QuoteOfTheDay() {
 
 export default function MembersLayout() {
   const { isDark, toggle: toggleTheme } = useTheme();
-  const { userId: clerkUserId, getToken, isLoaded: clerkLoaded } = useAuth();
-  const clerk = useClerk();
   const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
   const [email, setEmail] = useState<string | null>(sessionStorage.getItem("authEmail"));
   const [powerLevel, setPowerLevel] = useState<number>(() => {
@@ -360,7 +357,6 @@ export default function MembersLayout() {
     setRecentMeets([]);
     setDashboardReady(false);
     setActivePanel("dashboard");
-    clerk.signOut().catch(() => {});
   }
 
   useEffect(() => {
@@ -419,91 +415,35 @@ export default function MembersLayout() {
     };
   }, [authToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clerk callback handler — runs after OAuth redirect
-  const linkingFlag = useRef(false);
+  // Google sign-in and linking results come back from the Worker as query flags on /members.
   useEffect(() => {
-    if (!clerkLoaded) return;
-    if (!clerkUserId) return;
-
-    const pending = sessionStorage.getItem("clnk");
-
-    async function handleClerkCallback() {
-
-      if (sessionStorage.getItem("loggedOut") && !authToken) {
-        sessionStorage.removeItem("loggedOut");
-      }
-
-      // Login flow: Clerk session exists but no token session
-      if (!authToken) {
-        setOauthLoading(true);
-        try {
-          // Retry getToken() a few times — Clerk may not have the JWT ready after OAuth redirect
-          let clerkJwt: string | null = null;
-          for (let attempt = 0; attempt < 5; attempt++) {
-            clerkJwt = await getToken();
-            if (clerkJwt) break;
-            await new Promise(r => setTimeout(r, 500));
-          }
-          if (!clerkJwt) {
-            setOauthLoading(false);
-            setOauthStatusMsg("Google sign-in is taking longer than expected. Try again.");
-            return;
-          }
-          const res = await fetch(apiUrl("/api/auth/clerk-login"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clerkToken: clerkJwt }),
-          });
-          const data = await res.json();
-          setOauthLoading(false);
-          if (data.success) {
-            const session = await createMemberSession(data.token);
-            handleLogin(session.token, session.email, session.powerLevel, session.departmentId, session.roleId, session.expiresAt);
-            setOauthStatusMsg(null);
-          } else {
-            setOauthStatusMsg(data.error || "Google login failed");
-          }
-          return;
-        } catch (err) {
-          console.error("[clerk-cb] login flow exception:", err);
-          setOauthLoading(false);
-          setOauthStatusMsg("Google login failed. Try again.");
-          return;
-        }
-      }
-
-      // Linking flow: Clerk session + existing token + linking flag
-      if (authToken && pending === "link" && !linkingFlag.current) {
-        linkingFlag.current = true;
-        sessionStorage.removeItem("clnk");
-        try {
-          const clerkToken = await getToken();
-          if (!clerkToken) throw new Error("Google session is not ready");
-          const res = await fetch(apiUrl("/api/auth/link-clerk"), {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${authToken}`,
-            },
-            body: JSON.stringify({ clerkToken }),
-          });
-          const data = await res.json();
-          if (data.success) {
-            setOauthEnabled(true);
-            setOauthStatusMsg("Google login enabled! You can now sign in with Google.");
-            setTimeout(() => setOauthStatusMsg(null), 5000);
-          } else {
-            setOauthStatusMsg(data.error || "Failed to link Google account");
-          }
-        } catch (err) {
-          console.error("[clerk-cb] link-clerk exception:", err);
-          setOauthStatusMsg("Failed to link Google account. Try again.");
-        }
-      }
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("google_code");
+    const linked = params.get("google");
+    const error = params.get("google_error");
+    if (!code && !linked && !error) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (params.get("panel") === "profile") setActivePanel("profile");
+    if (error) {
+      setOauthStatusMsg(GOOGLE_ERROR_MESSAGES[error] || "Google sign-in failed. Try again.");
+      return;
     }
-
-    handleClerkCallback();
-  }, [clerkUserId, clerkLoaded, authToken, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (linked === "linked") {
+      setOauthEnabled(true);
+      setOauthStatusMsg("Google sign-in enabled. You can now sign in with Google.");
+      return;
+    }
+    if (code) {
+      setOauthLoading(true);
+      exchangeGoogleCode(code)
+        .then((session) => {
+          handleLogin(session.token, session.email, session.powerLevel, session.departmentId, session.roleId, session.expiresAt);
+          setOauthStatusMsg(null);
+        })
+        .catch((err) => setOauthStatusMsg(err instanceof Error ? err.message : "Google sign-in failed. Try again."))
+        .finally(() => setOauthLoading(false));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasDepartment = departmentId && DEPT_NAMES[departmentId];
   const deptName = hasDepartment ? DEPT_NAMES[departmentId!] : "";

@@ -58,7 +58,7 @@ This repository is documented as an agent-first knowledge system. Start with `AG
 3. `docs/domain/invariants.md` — auth invariants.
 4. `docs/contracts/api-contract.md` — auth column for all routes.
 5. `docs/architecture/system-architecture.md` — trust boundaries.
-6. `docs/compatibility/compatibility-contracts.md` — token and Clerk compatibility.
+6. `docs/compatibility/compatibility-contracts.md` — token, Google sign-in and Clerk-removal compatibility.
 
 ### Changing the frontend
 

@@ -1,51 +1,60 @@
-import { useState, useEffect } from "react";
-import { useUser, useClerk } from "@clerk/react";
+import { useState } from "react";
 import { apiUrl } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 
+async function postJson(path: string, body: unknown) {
+  const res = await fetch(apiUrl(path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok && data.success, message: data.message || data.error || "Something went wrong. Please try again." };
+}
+
 export default function SubscriberPage() {
   const { isDark, toggle: toggleTheme } = useTheme();
-  const { isSignedIn, user } = useUser();
-  const clerk = useClerk();
-  const email = user?.primaryEmailAddress?.emailAddress || "";
-
-  const [subscribing, setSubscribing] = useState(false);
-  const [subStep, setSubStep] = useState("");
-  const [subMsg, setSubMsg] = useState("");
-  const [subscribed, setSubscribed] = useState(false);
-
-  useEffect(() => {
-    if (!isSignedIn || !email) return;
-    setSubscribed(false);
-    setSubMsg("");
-  }, [isSignedIn, email]);
+  const [confirmToken] = useState(() => new URLSearchParams(window.location.search).get("confirm"));
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [msg, setMsg] = useState("");
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
-    setSubscribing(true);
-    setSubMsg("");
+    if (!email.trim()) return;
+    setBusy(true);
+    setMsg("");
     try {
-      setSubStep("Validating account...");
-      await new Promise((r) => setTimeout(r, 400));
-      setSubStep("Confirming email address...");
-      await new Promise((r) => setTimeout(r, 300));
-      setSubStep("Subscribing to newsletter...");
-      const res = await fetch(apiUrl("/api/newsletter/subscribe"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      setSubStep("Processing...");
-      const data = await res.json();
-      setSubStep("");
-      setSubMsg(data.message || (data.success ? "Subscribed!" : "Something went wrong"));
-      if (data.success) setSubscribed(true);
+      const result = await postJson("/api/newsletter/subscribe", { email: email.trim(), name: name.trim() || undefined });
+      setMsg(result.message);
+      setDone(result.ok);
     } catch {
-      setSubStep("");
-      setSubMsg("Network error. Please try again.");
+      setMsg("Network error. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    setSubscribing(false);
+  };
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    setMsg("");
+    try {
+      const result = await postJson("/api/newsletter/confirm", { token: confirmToken });
+      setMsg(result.message);
+      setDone(result.ok);
+      if (result.ok) window.history.replaceState(null, "", "/subscriber");
+    } catch {
+      setMsg("Network error. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)",
+    background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 15, boxSizing: "border-box",
   };
 
   return (
@@ -115,76 +124,31 @@ export default function SubscriberPage() {
             boxShadow: "var(--shadow-lg)",
           }}
         >
-          {!isSignedIn ? (
+          {confirmToken ? (
             <div style={{ textAlign: "center" }}>
               <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 1.25rem" }}>
-                Sign in with your Google account to subscribe.
+                {done ? "You're all set." : "One last step: confirm that you want to receive the newsletter."}
               </p>
-              <button
-                onClick={() => clerk.redirectToSignIn({ signInFallbackRedirectUrl: "/subscriber" })}
-                className="btn outline"
-                style={{ width: "100%", padding: "0.875rem", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: "15px" }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-                Sign in with Google
-              </button>
+              {!done && (
+                <button onClick={handleConfirm} disabled={busy} className="btn" style={{ width: "100%", padding: "0.875rem", borderRadius: 12, justifyContent: "center", fontSize: "15px" }}>
+                  {busy ? "Confirming..." : "Confirm subscription"}
+                </button>
+              )}
             </div>
           ) : (
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.25rem", padding: "0.75rem 1rem", background: "var(--surface-container-low, rgba(0,0,0,0.03))", borderRadius: 12 }}>
-                {user?.imageUrl && (
-                  <img src={user.imageUrl} alt="" style={{ width: 28, height: 28, borderRadius: "50%" }} />
-                )}
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {user?.fullName || email}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {email}
-                  </div>
-                </div>
-                <button
-                  onClick={() => clerk.signOut().then(() => clerk.redirectToSignIn({ signInFallbackRedirectUrl: "/subscriber" }))}
-                  style={{
-                    padding: "4px 10px", fontSize: 12, fontWeight: 600,
-                    background: "transparent", border: "1px solid var(--border-light)",
-                    color: "var(--text-secondary)", borderRadius: 8, cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Switch
-                </button>
-              </div>
+            <form onSubmit={handleSubscribe} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <input type="email" required placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy || done} aria-label="Email address" style={inputStyle} />
+              <input type="text" placeholder="Your name (optional)" value={name} onChange={(e) => setName(e.target.value)} disabled={busy || done} aria-label="Name" maxLength={120} style={inputStyle} />
+              <button type="submit" disabled={busy || done || !email.trim()} className="btn" style={{ width: "100%", padding: "0.875rem", borderRadius: 12, justifyContent: "center", fontSize: "15px" }}>
+                {done ? "Check your inbox" : busy ? "Sending..." : "Subscribe"}
+              </button>
+            </form>
+          )}
 
-              <form onSubmit={handleSubscribe}>
-                <button
-                  type="submit"
-                  disabled={subscribing || subscribed}
-                  className="btn"
-                  style={{ width: "100%", padding: "0.875rem", borderRadius: 12, justifyContent: "center", fontSize: "15px" }}
-                >
-                  {subscribed ? "Subscribed!" : subscribing ? subStep || "Processing..." : "Subscribe"}
-                </button>
-              </form>
-
-              {subscribing && subStep && (
-                <div style={{ margin: "10px 0 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  <div style={{ width: 14, height: 14, border: "2px solid var(--border-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{subStep}</span>
-                </div>
-              )}
-
-              {subMsg && (
-                <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-secondary)", textAlign: "center" }}>
-                  {subMsg}
-                </p>
-              )}
-            </div>
+          {msg && (
+            <p role="status" style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-secondary)", textAlign: "center" }}>
+              {msg}
+            </p>
           )}
         </div>
 

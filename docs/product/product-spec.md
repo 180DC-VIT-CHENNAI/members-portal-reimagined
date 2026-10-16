@@ -9,7 +9,7 @@ This is the internal admin and public website for 180 Degrees Consulting, VIT Ch
 | Actor | Description | Identifier in code |
 |-------|-------------|--------------------|
 | Public visitor | Anyone on the internet; no login. | No token / public routes only. |
-| Subscriber | Public visitor who opts in to newsletters. | Stored in `newsletter_subscribers`. |
+| Subscriber | Public visitor who opts in to newsletters by confirming an emailed link. | Stored in `newsletter_subscribers`. |
 | General member | Logged-in club member, power level 10. | `users` row with role `member` or similar. |
 | Director / lead | Member with a department assignment and power level 50. | `users.role_id` with `roles.power_level = 50`. |
 | Board member | President/VP/Secretary/Co-Secretary/Technical Director, power level 100. | `users.role_id` with `roles.power_level = 100`. |
@@ -47,9 +47,9 @@ Public visitors can request a member account. Board members approve or reject, w
 
 Members log in with a token sent to their email or with a token shown by a board member. The token is a long random UUID stored in `admin_tokens`.
 
-### CAP-AUTH-02 Google login via Clerk
+### CAP-AUTH-02 Google sign-in
 
-Members can link a Google (Clerk) account. After linking, they can sign in with Google. The backend verifies the Clerk JWT and creates or reuses an `admin_tokens` row.
+Members can link a Google account from Profile. After linking, they can sign in with Google. The Worker runs the Google OAuth flow itself and issues the same expiring session as token sign-in; Google sign-in never creates or restores a registry token.
 
 ### CAP-AUTH-03 Forgot token
 
@@ -61,7 +61,7 @@ Logged-in members can view all members, search, and filter by role. Board can ex
 
 ### CAP-MEMBER-02 Profile management
 
-Members can view their token, rotate it, link/unlink Clerk, and see their role/department.
+Members can view their token, rotate it, link/unlink Google, and see their role/department.
 
 ### CAP-ROLE-01 Role and department management
 
@@ -131,7 +131,7 @@ Directors and board can create "instances" (events, case competitions, applicati
 | Newsletter subscription | Implemented. | |
 | Consulting requests | Implemented. | |
 | Account requests | Implemented. | |
-| Token/Clerk auth | Implemented. | |
+| Token/Google auth | Implemented. | |
 | Member directory and profiles | Implemented. | |
 | Roles and departments | Implemented. | |
 | Role transfers | Implemented. | |
@@ -155,7 +155,7 @@ Directors and board can create "instances" (events, case competitions, applicati
 
 - Adding a separate recruitment system.
 - Rebuilding the frontend on Next.js or moving to Cloudflare Access (per `docs/architecture/backend-architecture-cloudflare.txt`, which is historical).
-- Replacing the custom token auth with Clerk for the members portal.
+- Replacing the custom token auth with a third-party auth provider for the members portal.
 - Implementing real-time chat or AI chatbot without an explicit new plan.
 # Reimagined incremental capabilities
 

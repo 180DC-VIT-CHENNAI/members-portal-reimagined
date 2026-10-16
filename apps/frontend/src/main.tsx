@@ -14,18 +14,12 @@ const SubscriberPage = lazy(() => import("./pages/SubscriberPage.tsx"));
 const NewsletterEditorPage = lazy(() => import("./pages/NewsletterEditorPage.tsx"));
 const LetterStudioPage = lazy(() => import("./pages/letters/LetterStudioPage.tsx"));
 const UnsubscribePage = lazy(() => import("./pages/UnsubscribePage.tsx"));
-const ClerkGate = lazy(() => import("./components/ClerkGate.tsx"));
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 window.addEventListener("vite:preloadError", (event) => {
   event.preventDefault();
   console.warn("[Vite] Chunk preload failed, reloading...", event.payload);
   window.location.reload();
 });
-
-if (!CLERK_PUBLISHABLE_KEY) {
-  console.error("[Clerk] VITE_CLERK_PUBLISHABLE_KEY is missing! Google login will not work.");
-}
 
 const PageLoader = (
   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--bg-primary)" }}>
@@ -86,9 +80,7 @@ createRoot(document.getElementById("root")!).render(
             element={
               <ErrorBoundary fallback={PageError}>
                 <Suspense fallback={PageLoader}>
-                  <ClerkGate afterSignOutUrl="/subscriber">
-                    <SubscriberPage />
-                  </ClerkGate>
+                  <SubscriberPage />
                 </Suspense>
               </ErrorBoundary>
             }
@@ -138,9 +130,7 @@ createRoot(document.getElementById("root")!).render(
             element={
               <ErrorBoundary fallback={PageError}>
                 <Suspense fallback={PageLoader}>
-                  <ClerkGate afterSignOutUrl="/members">
-                    <MembersLayout />
-                  </ClerkGate>
+                  <MembersLayout />
                 </Suspense>
               </ErrorBoundary>
             }

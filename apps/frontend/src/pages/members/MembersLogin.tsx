@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useClerk } from "@clerk/react";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
-import { createMemberSession } from "../../lib/member-session";
+import { createMemberSession, GOOGLE_SIGN_IN_URL } from "../../lib/member-session";
 
 interface MembersLoginProps {
   onLogin: (
@@ -20,7 +19,6 @@ interface MembersLoginProps {
 
 export default function MembersLogin({ onLogin, oauthLoading, oauthError }: MembersLoginProps) {
   const { isDark, toggle: toggleTheme } = useTheme();
-  const clerk = useClerk();
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -29,21 +27,8 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  const handleGoogleLogin = async () => {
-    console.log("[gauth] handleGoogleLogin called");
-    try {
-      console.log("[gauth] signing out any existing session first...");
-      await clerk.signOut().catch(() => {});
-      console.log("[gauth] calling clerk.redirectToSignIn...");
-      await clerk.redirectToSignIn({
-        signInFallbackRedirectUrl: "/members",
-        signInForceRedirectUrl: "/members",
-      });
-      console.log("[gauth] redirectToSignIn resolved successfully");
-    } catch (err) {
-      console.error("[gauth] redirectToSignIn failed:", err);
-      alert("Google sign-in failed: " + (err instanceof Error ? err.message : String(err)));
-    }
+  const handleGoogleLogin = () => {
+    window.location.href = GOOGLE_SIGN_IN_URL;
   };
 
   const handleTokenLogin = async () => {

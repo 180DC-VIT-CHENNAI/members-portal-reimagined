@@ -6,14 +6,14 @@ This document describes the system from the domain perspective. Each section cov
 
 On `reimagined`, token sign-in uses `POST /api/auth/session` in all environments. It exchanges the existing registry credential for a new device session with fixed seven-day expiry. A registry-only onboarding account may create its user row only while the source token remains active. Every device request loads current identity/role and verifies its session and source registry state; role changes take effect without reissuing the session. Source-token revoke/delete/rotate invalidates its device sessions. Individual session revocation is account-owner scoped. Member removal batches registry and identity deletion to prevent concurrent exchange from recreating the removed member.
 
-The web portal stores the session credential under the existing `authToken` key and uses the server expiry. Token and Google sign-in exchange into this session path; Google identity verification uses the proof-backed explicit-link Clerk route described below. Sign-out attempts server revocation then clears local credentials. Profile shows owner-scoped session management without displaying device credentials. Source token rotation exchanges the newly issued credential and updates parent UI state. Offline sign-out clears local access but cannot guarantee remote revocation until a server request succeeds.
+The web portal stores the session credential under the existing `authToken` key and uses the server expiry. Token and Google sign-in exchange into this session path; Google identity is verified by the Worker's own OAuth flow described below. Sign-out attempts server revocation then clears local credentials. Profile shows owner-scoped session management without displaying device credentials. Source token rotation exchanges the newly issued credential and updates parent UI state. Offline sign-out clears local access but cannot guarantee remote revocation until a server request succeeds.
 
 On `reimagined`, browser writes with an explicit `Origin` must match a legacy or configured `ALLOWED_WEB_ORIGINS` origin, including JSON requests. CORS and CSRF use the same exact-origin policy. Requests still need their existing token or editor-session authentication; this policy grants no resource permissions. Local loopback development retains its existing exception.
 
 ### Actors
 - Public visitor.
 - Member with a token.
-- Member with Clerk Google OAuth.
+- Member with a linked Google account.
 
 ### Workflows
 
@@ -27,30 +27,31 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 6. The response includes `email`, `name`, `roleId`, `roleName`, `powerLevel`, and `departmentId`.
 7. Frontend stores the token and profile in `sessionStorage` and `localStorage`.
 
-#### Clerk Google login (RULE-AUTH-02)
+#### Google sign-in (RULE-AUTH-02)
 
-1. User clicks Google sign-in; Clerk handles OAuth.
-2. Frontend gets a Clerk session JWT via `getToken()` and posts it as `clerkToken` to `/api/auth/clerk-login`.
-3. Backend uses the Clerk SDK and `CLERK_SECRET_KEY` to verify signature and expiry. It requires a user subject, session ID, approved frontend `azp` and a non-pending session. Exact configured/legacy browser origins are accepted; loopback HTTP/HTTPS origins are accepted only outside production.
-4. Backend finds exactly one member by the verified subject in `users.clerk_user_id`; caller-supplied email never links or selects an account. Conflicting historical links fail closed.
-5. `oauth_enabled` and an active existing registry credential are required. OAuth never creates a registry credential to restore revoked, expired or missing member access.
-6. The frontend exchanges the returned compatibility credential through `/api/auth/session` and stores the independent expiring session.
+1. User clicks "Sign in with Google" on `/members`; the browser navigates to `GET /api/auth/google/start`.
+2. The Worker stores a single-use state (hashed, 10-minute TTL, with a PKCE verifier) in `oauth_states`, sets the HttpOnly `g_oauth_state` cookie, and redirects to Google.
+3. Google redirects to `GET /api/auth/google/callback`. The Worker requires the cookie to match the state, deletes the state, exchanges the code with `GOOGLE_CLIENT_SECRET` and the PKCE verifier, and checks the ID token's issuer, audience, expiry and subject.
+4. The Worker finds exactly one member with that `users.google_sub` and `oauth_enabled = 1`, with an active (unrevoked, unexpired) registry token. Email never selects an account.
+5. It issues the same member session as token sign-in, stores it under a single-use 60-second handoff code in `oauth_handoffs`, and redirects to `/members?google_code=...`.
+6. The frontend posts the code to `POST /api/auth/google/exchange` and stores the returned session. Failures redirect to `/members?google_error=<code>`.
 
 #### Token rotation (RULE-AUTH-03)
 
 - Any authenticated member can rotate their own token via `POST /api/auth/rotate-token`.
 - The old token is deleted; a new token is generated and emailed.
 
-#### Link/unlink Clerk (RULE-AUTH-04)
+#### Link/unlink Google (RULE-AUTH-04)
 
-- Authenticated members link a Google account via `POST /api/auth/link-clerk` with `clerkToken`, obtained from `getToken()`. The server verifies that session and derives its subject; an arbitrary `clerkUserId` is rejected. Explicit linking proves possession of both the member credential and the provider account. Provider email equality is not required.
-- A single conditional D1 update prevents one provider identity being linked to two members, including concurrent requests. Link/unlink changes and their audit rows commit together.
-- They can unlink via `POST /api/auth/unlink-clerk`. This disables subsequent provider login; existing member device sessions are separately revoked through account session controls.
+- A signed-in member starts linking from Profile via `POST /api/auth/google/link-start`, which returns the Google URL for a state bound to that member. The callback sets `users.google_sub` and `oauth_enabled = 1` and redirects to `/members?google=linked&panel=profile`. Linking proves possession of both the member session and the Google account; email equality is not required.
+- A single conditional D1 update prevents one Google account being linked to two members (`google_error=already_linked`). Link/unlink changes are audited (`google_linked`, `google_unlinked`).
+- `POST /api/auth/google/unlink` clears the link and sets `oauth_enabled = 0`. Existing device sessions are revoked separately through account session controls.
+- Clerk was removed; former Clerk links do not carry over, so those members link Google again once.
 
 ### Business rules
 
 - RULE-AUTH-01: A token must be unrevoked and unexpired to log in.
-- RULE-AUTH-02: Google login only works if the Clerk session JWT is valid and active, its subject is explicitly linked to exactly one member, and that member has `oauth_enabled = 1` and active registry access.
+- RULE-AUTH-02: Google sign-in only works if the Worker-verified Google account is linked (`users.google_sub`) to exactly one member with `oauth_enabled = 1` and active registry access. It never creates or restores a registry token.
 - RULE-AUTH-03: Tokens are deleted and regenerated on rotation, not stored hashed.
 - RULE-AUTH-04: The `forgot-token` endpoint always returns success to prevent email enumeration.
 - RULE-AUTH-05: Maintenance mode blocks all members with `power_level < 100`.
@@ -68,7 +69,7 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 ### State
 
 - `roles(id, name, power_level, created_by)`.
-- `users(id, name, email, role_id, department_id, secondary_role_id, ex_title, clerk_user_id, oauth_enabled, created_at)`.
+- `users(id, name, email, role_id, department_id, secondary_role_id, ex_title, clerk_user_id (legacy, unused), google_sub, oauth_enabled, created_at)`.
 
 ### Business rules
 
@@ -228,7 +229,7 @@ On `reimagined`, browser writes with an explicit `Origin` must match a legacy or
 
 ### Public subscription
 
-- RULE-NEWS-01: Public visitors can subscribe via `POST /api/newsletter/subscribe`.
+- RULE-NEWS-01: Public visitors subscribe with email double opt-in: `POST /api/newsletter/subscribe` always replies `pending` with the same message (no address enumeration) and emails a 48-hour single-use link to `/subscriber?confirm=<token>`; the subscription becomes active only when the page posts that token to `POST /api/newsletter/confirm` (a POST, so mail scanners cannot confirm).
 - RULE-NEWS-02: Every subscriber has a random `unsubscribe_token`. Newsletter, event, and welcome emails link to `https://180dcvitc.org/unsubscribe/<token>` and carry `List-Unsubscribe: <https://180dcvitc.org/api/newsletter/unsubscribe/<token>>` with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Unsubscribing is a POST (`/api/newsletter/unsubscribe/:token`) so link-prefetching scanners cannot trigger it. The legacy `GET /api/newsletter/unsubscribe?email=...` stays for links in older emails.
 - RULE-NEWS-03: The system stores `active`, `subscribed_at`, and `unsubscribed_at` in `newsletter_subscribers` in `NEWSLETTER_DB`. Subscribing sends a welcome email (re-subscribing sends a welcome-back email) synchronously; delivery failures are logged.
 - RULE-NEWS-03a: `GET /api/newsletter/:id` is public, rate-limited, and serves newsletter `content` only after sanitization (`sanitizeBlogHtml`) — never raw stored HTML. The separate newsletter site (ADR-004) fetches this endpoint.

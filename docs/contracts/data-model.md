@@ -84,6 +84,28 @@ System-seeded roles:
 
 Seeded departments: `tech`, `finance`, `crm`, `operations`, `business_strategy`, `marketing`.
 
+### `oauth_states`
+
+Single-use Google OAuth states (created by `ensureTables`).
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| state_hash | TEXT | PRIMARY KEY | SHA-256 of the state |
+| verifier | TEXT | NOT NULL | PKCE code verifier |
+| intent | TEXT | NOT NULL | `login` or `link` |
+| user_id | TEXT | | Member being linked (link intent) |
+| expires_at | DATETIME | NOT NULL | 10 minutes |
+
+### `oauth_handoffs`
+
+Single-use codes that hand a Google sign-in session to the SPA.
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| code_hash | TEXT | PRIMARY KEY | SHA-256 of the code |
+| payload | TEXT | NOT NULL | Session JSON |
+| expires_at | DATETIME | NOT NULL | 60 seconds |
+
 ### `users`
 
 | Column | Type | Constraints | Notes |
@@ -95,8 +117,9 @@ Seeded departments: `tech`, `finance`, `crm`, `operations`, `business_strategy`,
 | department_id | TEXT | | FK to `departments.id` |
 | secondary_role_id | TEXT | | Added by migration; currently set to NULL |
 | ex_title | TEXT | | Added by migration; advisory/legacy title |
-| clerk_user_id | TEXT | UNIQUE (partial, non-empty) | Added by migration; Clerk user ID. Enforced by `idx_users_clerk_user_id` (`WHERE clerk_user_id IS NOT NULL AND clerk_user_id != ''`) |
-| oauth_enabled | INTEGER | DEFAULT 0 | Added by migration; 1 if Clerk login enabled |
+| clerk_user_id | TEXT | UNIQUE (partial, non-empty) | Legacy Clerk user ID; no longer read or written (Clerk removed). Index `idx_users_clerk_user_id` remains |
+| google_sub | TEXT | UNIQUE (partial) | Added by migration; linked Google account ID (ID-token `sub`). Index `idx_users_google_sub` |
+| oauth_enabled | INTEGER | DEFAULT 0 | Added by migration; 1 if Google sign-in enabled |
 | created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
 
 ### `admin_tokens`
@@ -501,6 +524,8 @@ campaign never mails the same address twice. Rows are purged with their campaign
 | unsubscribed_at | DATETIME | | |
 | name | TEXT | | Optional, from the subscribe request (migration) |
 | unsubscribe_token | TEXT | UNIQUE index | 48-hex random token for `/unsubscribe/:token`; backfilled for existing rows (migration) |
+| confirm_token_hash | TEXT | | Added by migration; SHA-256 of the pending double opt-in token, cleared on confirm |
+| confirm_expires_at | DATETIME | | Added by migration; confirmation link expiry (48 hours) |
 
 ### `newsletters`
 
@@ -599,7 +624,8 @@ campaign never mails the same address twice. Rows are purged with their campaign
 - Adds `email_subject` to `newsletters`.
 - Adds `min_members` to `instance_teams`.
 - Adds `secondary_role_id`, `ex_title`, `clerk_user_id`, `oauth_enabled` to `users`.
-- Creates partial unique index `idx_users_clerk_user_id` on `users(clerk_user_id)` where non-empty.
+- Creates partial unique index `idx_users_clerk_user_id` on `users(clerk_user_id)` where non-empty (legacy).
+- Adds `google_sub` to `users` with partial unique index `idx_users_google_sub`; adds `confirm_token_hash`, `confirm_expires_at` to `newsletter_subscribers`.
 - Deletes old seed case studies that lack content.
 - Clears stale rate-limit rows for removed endpoints.
 - Drops recruitment tables if they still exist.

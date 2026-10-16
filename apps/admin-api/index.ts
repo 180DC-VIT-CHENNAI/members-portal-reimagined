@@ -7,8 +7,7 @@ import { consumeRateLimit } from "./rate-limit";
 import { withStorageFailover } from "./storage-failover";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
-import { verifyToken } from "@clerk/backend";
-import { ClerkIdentityError, verifiedClerkIdentity } from "./clerk-identity";
+import { exchangeGoogleCode, googleAuthorizeUrl, pkceChallenge, randomUrlToken, GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL } from "./google-oauth";
 import { connect } from "cloudflare:sockets";
 import { isAllowedWebOrigin } from "./origin-policy";
 import { activeRegistryToken, credentialHash, newSessionCredential, SESSION_PREFIX, SESSION_DURATION_MS } from "./session-security";
@@ -21,7 +20,10 @@ type Bindings = {
   CASE_STUDIES: R2Bucket;
   GALLERY_CDN: R2Bucket;
   ENVIRONMENT?: string;
-  CLERK_SECRET_KEY?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_AUTH_URL?: string;
+  GOOGLE_TOKEN_URL?: string;
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;
   SPACEMAIL_SMTP_USER?: string;
@@ -48,14 +50,15 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STR_LEN = 255;
-const MAX_CLERK_TOKEN_LEN = 8192;
 const MAX_MSG_LEN = 2000;
 const MAX_PROJECT_DESC_LEN = 5000;
 
 function isPublicRoute(pathname: string, method: string): boolean {
   const LOGIN_ROUTES = [
     "/api/dev-login",
-    "/api/auth/clerk-login",
+    "/api/auth/google/start",
+    "/api/auth/google/callback",
+    "/api/auth/google/exchange",
   ];
   if (LOGIN_ROUTES.includes(pathname)) return true;
 
@@ -67,6 +70,7 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/departments"],
     ["/api/projects/completed"],
     ["/api/newsletter/subscribe", "POST"],
+    ["/api/newsletter/confirm", "POST"],
     ["/api/newsletter/unsubscribe", "GET"],
     ["/api/newsletter/subscribers/count", "GET"],
     ["/api/newsletter-editor/otp/send", "POST"],
@@ -1998,6 +2002,13 @@ async function ensureNewsletterTables(db: any) {
       "Migration: newsletter_subscribers.unsubscribe_token may already exist",
     );
   }
+  for (const col of ["confirm_token_hash TEXT", "confirm_expires_at TEXT"]) {
+    try {
+      await db.exec(`ALTER TABLE newsletter_subscribers ADD COLUMN ${col}`);
+    } catch {
+      console.warn(`Migration: newsletter_subscribers.${col.split(" ")[0]} may already exist`);
+    }
+  }
   await db.exec(
     "UPDATE newsletter_subscribers SET unsubscribe_token = lower(hex(randomblob(24))) WHERE unsubscribe_token IS NULL",
   );
@@ -2072,6 +2083,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS letters_sent (id TEXT PRIMARY KEY, docnum TEXT, doc_type TEXT, member_name TEXT, recipient_email TEXT NOT NULL, file_key TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS member_sessions (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, user_id TEXT NOT NULL, source_token_hash TEXT NOT NULL, device_label TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, expires_at TEXT NOT NULL, revoked_at TEXT, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
     CREATE INDEX IF NOT EXISTS member_sessions_user ON member_sessions(user_id, revoked_at, expires_at);
+    CREATE TABLE IF NOT EXISTS oauth_states (state_hash TEXT PRIMARY KEY, verifier TEXT NOT NULL, intent TEXT NOT NULL, user_id TEXT, expires_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS oauth_handoffs (code_hash TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at TEXT NOT NULL);
     `);
   await runMigrations(db);
 }
@@ -2205,6 +2218,18 @@ async function runMigrations(db: any) {
     console.warn(
       "Migration: could not create unique index on users.clerk_user_id; duplicate Clerk links may exist and need manual cleanup",
     );
+  }
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN google_sub TEXT");
+  } catch {
+    console.warn("Migration: google_sub may already exist");
+  }
+  try {
+    await db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL AND google_sub != ''",
+    );
+  } catch {
+    console.warn("Migration: could not create unique index on users.google_sub");
   }
   try {
     await db.exec("ALTER TABLE newsletters ADD COLUMN email_subject TEXT");
@@ -2756,7 +2781,7 @@ async function seedData(db: any, env?: any) {
 
 /**
  * Middleware: Verify Authentication & Inject User Context
- * (In production, this decodes the Google/Clerk JWT token mapped to the VIT email)
+ * (Bearer member session or registry token; Google sign-in issues the same sessions)
  */
 // CORS @ runs first, handles preflight OPTIONS automatically
 app.use("*", async (c, next) => {
@@ -3674,8 +3699,31 @@ async function sendWelcomeBackEmail(c: any, email: string, token: string) {
   }
 }
 
-// Public: Subscribe to newsletter (called from /subscriber after the email is
-// verified through Clerk Google sign-in, so the address is trusted)
+// Public: Subscribe to newsletter (double opt-in). Nothing is activated until the
+// address owner opens the emailed link and confirms, so a third party cannot
+// subscribe someone else. The response never reveals whether the address exists.
+const NEWSLETTER_CONFIRM_TTL_MS = 48 * 60 * 60 * 1000;
+
+function newsletterConfirmBase(c: any): string {
+  const origin = c.req.header("Origin");
+  if (origin && (origin === new URL(c.req.url).origin || isAllowedWebOrigin(origin, c.env.ALLOWED_WEB_ORIGINS, ALLOWED_ORIGINS))) return origin;
+  return new URL(c.req.url).origin;
+}
+
+function confirmEmailHtml(confirmUrl: string): string {
+  return `<!DOCTYPE html><html><body style="margin:0;padding:24px;background:#f4f2ed;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:3px solid #1a1a1a;border-radius:16px">
+<tr><td style="padding:28px 32px">
+<p style="font-size:20px;font-weight:800;margin:0 0 12px">Confirm your subscription</p>
+<p style="font-size:14px;line-height:1.6;margin:0 0 20px">Someone (hopefully you) asked to receive the 180 Degrees Consulting VIT Chennai newsletter at this address. Confirm to start receiving it.</p>
+<table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:10px;padding:12px 22px">
+<a href="${confirmUrl}" style="color:#ffffff;text-decoration:none;font-weight:700;font-size:14px">Confirm subscription</a>
+</td></tr></table>
+<p style="font-size:12px;line-height:1.6;color:#777777;margin:20px 0 0">This link expires in 48 hours. If you did not ask for this, ignore this email and you will not be subscribed.</p>
+</td></tr></table></td></tr></table></body></html>`;
+}
+
 app.post("/api/newsletter/subscribe", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
@@ -3692,44 +3740,80 @@ app.post("/api/newsletter/subscribe", async (c) => {
     const email = validateEmail(body?.email);
     if (!email) return c.json({ error: "Valid email address required" }, 400);
     const name = sanitizeStr(body?.name, 120);
+    const pendingReply = {
+      success: true,
+      pending: true,
+      message: "Check your inbox and click the link to confirm your subscription.",
+    };
 
-    const existing = await newsletterDb(c).prepare(
-      "SELECT id, active, unsubscribe_token FROM newsletter_subscribers WHERE email = ?",
+    const existing: any = await newsletterDb(c).prepare(
+      "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
     )
       .bind(email)
       .first();
+    if (existing?.active === 1) return c.json(pendingReply);
+
+    const confirmToken = randomUrlToken();
+    const confirmHash = await credentialHash(confirmToken);
+    const confirmExpires = new Date(Date.now() + NEWSLETTER_CONFIRM_TTL_MS).toISOString();
     if (existing) {
-      if (existing.active === 1)
-        return c.json({
-          success: true,
-          message: "You are already subscribed!",
-        });
-      const token = existing.unsubscribe_token || newUnsubscribeToken();
       await newsletterDb(c).prepare(
-        "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL, unsubscribe_token = ?, name = COALESCE(?, name) WHERE id = ?",
+        "UPDATE newsletter_subscribers SET confirm_token_hash = ?, confirm_expires_at = ?, name = COALESCE(?, name) WHERE id = ?",
       )
-        .bind(token, name, existing.id)
+        .bind(confirmHash, confirmExpires, name, existing.id)
         .run();
-      await sendWelcomeBackEmail(c, email, token);
-      return c.json({
-        success: true,
-        message: "Welcome back! You have been re-subscribed.",
-      });
+    } else {
+      await newsletterDb(c).prepare(
+        "INSERT INTO newsletter_subscribers (id, email, name, active, unsubscribe_token, confirm_token_hash, confirm_expires_at) VALUES (?, ?, ?, 0, ?, ?, ?)",
+      )
+        .bind(crypto.randomUUID(), email, name, newUnsubscribeToken(), confirmHash, confirmExpires)
+        .run();
     }
 
-    const token = newUnsubscribeToken();
-    await newsletterDb(c).prepare(
-      "INSERT INTO newsletter_subscribers (id, email, name, active, unsubscribe_token) VALUES (?, ?, ?, 1, ?)",
-    )
-      .bind(crypto.randomUUID(), email, name, token)
-      .run();
-
-    await sendWelcomeEmail(c, email, token);
-
-    return c.json({
-      success: true,
-      message: "Successfully subscribed to the newsletter!",
+    const confirmUrl = `${newsletterConfirmBase(c)}/subscriber?confirm=${confirmToken}`;
+    const result = await sendEmail(c, {
+      from: "180DC Newsletter <technical@180dcvitc.org>",
+      to: email,
+      subject: "Confirm your 180DC newsletter subscription",
+      html: confirmEmailHtml(confirmUrl),
     });
+    if (result.sent <= 0) console.error("[newsletter] Confirmation email FAILED to=" + email);
+    return c.json(pendingReply);
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Public: confirm a subscription from the emailed link. POST (not GET) so mail
+// scanners that prefetch links cannot confirm on the recipient's behalf.
+app.post("/api/newsletter/confirm", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "newsletter_confirm", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+    const token = sanitizeStr(body?.token, 128);
+    if (!token) return c.json({ error: "Missing confirmation token" }, 400);
+    const confirmHash = await credentialHash(token);
+    const row: any = await newsletterDb(c).prepare(
+      "SELECT id, email, unsubscribe_token, unsubscribed_at FROM newsletter_subscribers WHERE confirm_token_hash = ? AND julianday(confirm_expires_at) > julianday('now')",
+    )
+      .bind(confirmHash)
+      .first();
+    if (!row) return c.json({ error: "This confirmation link is invalid or has expired. Subscribe again to get a new one." }, 400);
+    const unsubscribeToken = row.unsubscribe_token || newUnsubscribeToken();
+    await newsletterDb(c).prepare(
+      "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL, unsubscribe_token = ?, confirm_token_hash = NULL, confirm_expires_at = NULL WHERE id = ? AND confirm_token_hash = ?",
+    )
+      .bind(unsubscribeToken, row.id, confirmHash)
+      .run();
+    if (row.unsubscribed_at) {
+      await sendWelcomeBackEmail(c, row.email, unsubscribeToken);
+      return c.json({ success: true, message: "Welcome back! You have been re-subscribed." });
+    }
+    await sendWelcomeEmail(c, row.email, unsubscribeToken);
+    return c.json({ success: true, message: "Subscription confirmed. Welcome to the 180DC newsletter!" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -5295,6 +5379,44 @@ app.post("/api/members", async (c) => {
   }
 });
 
+// Issues an independent, revocable member session backed by a registry token.
+// Shared by token sign-in and Google sign-in so both enforce the same rules.
+async function issueMemberSession(c: any, token: string, label: string): Promise<{ status: number; body: any }> {
+  const source = await c.env.DB.prepare(
+    "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
+  ).bind(token).first();
+  if (!activeRegistryToken(source)) return { status: 401, body: { error: "Invalid or expired token" } };
+  // Preserve onboarding for registry accounts that have not signed in yet.
+  await c.env.DB.prepare(
+    "INSERT OR IGNORE INTO users (id, name, email, role_id) SELECT ?, ?, t.email, t.role_id FROM admin_tokens t WHERE t.token = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR julianday(t.expires_at) > julianday('now'))",
+  ).bind(crypto.randomUUID(), source.name || source.email.split("@")[0], token).run();
+  const user = await c.env.DB.prepare(
+    "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+  ).bind(source.email).first();
+  if (!user) return { status: 401, body: { error: "Member account is unavailable" } };
+  const maintenance = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+  if (maintenance?.enabled && user.power_level < 100) return { status: 503, body: { error: maintenance.message || "Portal under maintenance" } };
+  const sourceHash = await credentialHash(token);
+  const count = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM member_sessions WHERE user_id = ? AND source_token_hash = ? AND revoked_at IS NULL AND julianday(expires_at) > julianday('now')",
+  ).bind(user.id, sourceHash).first();
+  if (count.count >= 20) return { status: 429, body: { error: "Too many active sessions. Revoke a session before signing in again." } };
+  const credential = newSessionCredential();
+  const id = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
+  const insert = c.env.DB.prepare(
+    "INSERT INTO member_sessions (id, token_hash, user_id, source_token_hash, device_label, expires_at) SELECT ?, ?, ?, ?, ?, ? FROM admin_tokens t JOIN users u ON u.email = t.email WHERE t.token = ? AND u.id = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR julianday(t.expires_at) > julianday('now')) AND (SELECT COUNT(*) FROM member_sessions WHERE user_id = ? AND source_token_hash = ? AND revoked_at IS NULL AND julianday(expires_at) > julianday('now')) < 20",
+  ).bind(id, await credentialHash(credential), user.id, sourceHash, label, expiresAt, token, user.id, user.id, sourceHash);
+  const audit = c.env.DB.prepare(
+    "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, 'session_created', ?, 'member_session', ?, ? WHERE changes() > 0",
+  ).bind(crypto.randomUUID(), user.email, id, JSON.stringify({ deviceLabel: label, expiresAt }));
+  const [created] = await c.env.DB.batch([insert, audit]);
+  if (!created.meta.changes) return { status: 401, body: { error: "Session could not be issued; try signing in again" } };
+  return { status: 200, body: { success: true, token: credential, sessionId: id, expiresAt,
+    email: user.email, name: user.name, roleId: user.role_id, roleName: user.role_name,
+    powerLevel: user.power_level, departmentId: user.department_id || null } };
+}
+
 // ---------------------------------------------------------
 // Production-capable token exchange. The source credential is never persisted
 // in member_sessions; every subsequent request checks its current registry row.
@@ -5308,39 +5430,8 @@ app.post("/api/auth/session", async (c) => {
     const token = sanitizeStr(body?.token, 512);
     const label = body?.deviceLabel === undefined ? "Web browser" : sanitizeStr(body.deviceLabel, 80);
     if (!token || !label) return c.json({ error: "Token and a valid device label are required" }, 400);
-    const source = await c.env.DB.prepare(
-      "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
-    ).bind(token).first();
-    if (!activeRegistryToken(source)) return c.json({ error: "Invalid or expired token" }, 401);
-    // Preserve onboarding for registry accounts that have not signed in yet.
-    await c.env.DB.prepare(
-      "INSERT OR IGNORE INTO users (id, name, email, role_id) SELECT ?, ?, t.email, t.role_id FROM admin_tokens t WHERE t.token = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR julianday(t.expires_at) > julianday('now'))",
-    ).bind(crypto.randomUUID(), source.name || source.email.split("@")[0], token).run();
-    const user = await c.env.DB.prepare(
-      "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
-    ).bind(source.email).first();
-    if (!user) return c.json({ error: "Member account is unavailable" }, 401);
-    const maintenance = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
-    if (maintenance?.enabled && user.power_level < 100) return c.json({ error: maintenance.message || "Portal under maintenance" }, 503);
-    const sourceHash = await credentialHash(token);
-    const count = await c.env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM member_sessions WHERE user_id = ? AND source_token_hash = ? AND revoked_at IS NULL AND julianday(expires_at) > julianday('now')",
-    ).bind(user.id, sourceHash).first();
-    if (count.count >= 20) return c.json({ error: "Too many active sessions. Revoke a session before signing in again." }, 429);
-    const credential = newSessionCredential();
-    const id = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
-    const insert = c.env.DB.prepare(
-      "INSERT INTO member_sessions (id, token_hash, user_id, source_token_hash, device_label, expires_at) SELECT ?, ?, ?, ?, ?, ? FROM admin_tokens t JOIN users u ON u.email = t.email WHERE t.token = ? AND u.id = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR julianday(t.expires_at) > julianday('now')) AND (SELECT COUNT(*) FROM member_sessions WHERE user_id = ? AND source_token_hash = ? AND revoked_at IS NULL AND julianday(expires_at) > julianday('now')) < 20",
-    ).bind(id, await credentialHash(credential), user.id, sourceHash, label, expiresAt, token, user.id, user.id, sourceHash);
-    const audit = c.env.DB.prepare(
-      "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) SELECT ?, 'session_created', ?, 'member_session', ?, ? WHERE changes() > 0",
-    ).bind(crypto.randomUUID(), user.email, id, JSON.stringify({ deviceLabel: label, expiresAt }));
-    const [created] = await c.env.DB.batch([insert, audit]);
-    if (!created.meta.changes) return c.json({ error: "Session could not be issued; try signing in again" }, 401);
-    return c.json({ success: true, token: credential, sessionId: id, expiresAt,
-      email: user.email, name: user.name, roleId: user.role_id, roleName: user.role_name,
-      powerLevel: user.power_level, departmentId: user.department_id || null });
+    const issued = await issueMemberSession(c, token, label);
+    return c.json(issued.body, issued.status as any);
   } catch {
     return c.json({ error: "Unable to create session" }, 500);
   }
@@ -5521,180 +5612,179 @@ app.post("/api/auth/forgot-token", async (c) => {
 });
 
 // ---------------------------------------------------------
-// CLERK LOGIN (public @ verifies Clerk JWT, returns session)
+// GOOGLE SIGN-IN (Worker OAuth 2.0 authorization code + PKCE, no SDK)
+// Members sign in with their token first and link Google in Profile; Google
+// sign-in then issues the same revocable session as /api/auth/session. The
+// state is single-use, stored hashed, and bound to the browser by an HttpOnly
+// cookie so a callback URL cannot be replayed into another browser.
 // ---------------------------------------------------------
-app.post("/api/auth/clerk-login", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    const rl = await checkLoginRateLimit(c, "clerk_login", 20, 60);
-    if (!rl.allowed) {
-      return c.json(
-        {
-          error: "Too many login attempts. Try again later.",
-          retryAfter: rl.retryAfter,
-        },
-        429,
-      );
-    }
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const clerkToken = sanitizeStr(body.clerkToken, MAX_CLERK_TOKEN_LEN);
-    if (!clerkToken) {
-      return c.json({ error: "Missing clerkToken" }, 400);
-    }
+const GOOGLE_STATE_COOKIE = "g_oauth_state";
+const GOOGLE_STATE_TTL_MS = 10 * 60 * 1000;
+const GOOGLE_HANDOFF_TTL_MS = 60 * 1000;
 
-    c.header("Cache-Control", "private, no-store");
-    const clerkUserId = await verifiedClerkIdentity(clerkToken, c.env.CLERK_SECRET_KEY, {
-      configured: c.env.ALLOWED_WEB_ORIGINS,
-      defaults: ALLOWED_ORIGINS,
-      development: c.env.ENVIRONMENT !== "production",
-    }, verifyToken);
+function googleConfig(c: any) {
+  const clientId = c.env.GOOGLE_CLIENT_ID;
+  const clientSecret = c.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  // Endpoint overrides exist only for the local test suite's fake Google.
+  const dev = c.env.ENVIRONMENT !== "production";
+  return {
+    clientId,
+    clientSecret,
+    redirectUri: `${new URL(c.req.url).origin}/api/auth/google/callback`,
+    authUrl: dev && c.env.GOOGLE_AUTH_URL ? c.env.GOOGLE_AUTH_URL : GOOGLE_AUTH_URL,
+    tokenUrl: dev && c.env.GOOGLE_TOKEN_URL ? c.env.GOOGLE_TOKEN_URL : GOOGLE_TOKEN_URL,
+  };
+}
 
-    // Email supplied by a client never proves ownership. Links require member auth + Clerk proof.
-    const matches = await c.env.DB.prepare(
-      "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.clerk_user_id = ? LIMIT 2",
-    ).bind(clerkUserId).all();
-    if (matches.results?.length > 1) {
-      return c.json({ error: "Google account has conflicting member links. Contact an administrator." }, 403);
-    }
-    const user: any = matches.results?.[0];
+function googleStateCookie(c: any, value: string, maxAge: number): string {
+  const secure = new URL(c.req.url).protocol === "https:" ? "; Secure" : "";
+  return `${GOOGLE_STATE_COOKIE}=${value}; Path=/api/auth/google; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+}
 
-    if (!user) {
-      return c.json(
-        {
-          error:
-            "Google login not linked to any 180DC member. Log in with a token first and enable Google login in your profile settings.",
-        },
-        401,
-      );
-    }
+async function beginGoogleFlow(c: any, cfg: any, intent: "login" | "link", userId: string | null): Promise<string> {
+  const state = randomUrlToken();
+  const verifier = randomUrlToken(48);
+  const expiresAt = new Date(Date.now() + GOOGLE_STATE_TTL_MS).toISOString();
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM oauth_states WHERE julianday(expires_at) < julianday('now')"),
+    c.env.DB.prepare("INSERT INTO oauth_states (state_hash, verifier, intent, user_id, expires_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(await credentialHash(state), verifier, intent, userId, expiresAt),
+  ]);
+  c.header("Set-Cookie", googleStateCookie(c, state, GOOGLE_STATE_TTL_MS / 1000));
+  c.header("Cache-Control", "private, no-store");
+  return googleAuthorizeUrl({
+    clientId: cfg.clientId,
+    redirectUri: cfg.redirectUri,
+    state,
+    challenge: await pkceChallenge(verifier),
+    authUrl: cfg.authUrl,
+  });
+}
 
-    if (!user.oauth_enabled) {
-      return c.json(
-        {
-          error:
-            "Google login is disabled for this account. Enable it in your profile settings.",
-        },
-        401,
-      );
-    }
-
-    // Google identity cannot restore revoked/expired member access.
-    const existingToken: any = await c.env.DB.prepare(
-      "SELECT token, expires_at, revoked_at FROM admin_tokens WHERE email = ?",
-    ).bind(user.email).first();
-    if (!activeRegistryToken(existingToken)) {
-      return c.json({ error: "Member access is inactive. Contact an administrator." }, 403);
-    }
-    const sessionToken = existingToken.token;
-
-    return c.json({
-      success: true,
-      token: sessionToken,
-      email: user.email,
-      name: user.name,
-      roleId: user.role_id || "member",
-      roleName: user.role_name || null,
-      powerLevel: user.power_level ?? 10,
-      departmentId: user.department_id || null,
-    });
-  } catch (e: any) {
-    if (e instanceof ClerkIdentityError) return c.json({ error: e.message }, e.status);
-    if (e.message?.includes("JWT") || e.message?.includes("token")) {
-      return c.json({ error: "Invalid or expired Clerk token" }, 401);
-    }
-    return errorResponse(c, e.message, 500);
-  }
+app.get("/api/auth/google/start", async (c) => {
+  await ensureDbReady(c.env.DB, c.env);
+  const rl = await checkRateLimit(c, "google_start", 20, 60);
+  if (!rl.allowed) return c.redirect("/members?google_error=rate_limited", 302);
+  const cfg = googleConfig(c);
+  if (!cfg) return c.redirect("/members?google_error=not_configured", 302);
+  return c.redirect(await beginGoogleFlow(c, cfg, "login", null), 302);
 });
 
-// ---------------------------------------------------------
-// LINK CLERK (authenticated @ links Clerk user ID to member)
-// ---------------------------------------------------------
-app.post("/api/auth/link-clerk", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    const rl = await checkRateLimit(c, "link_clerk", 5, 3600);
-    if (!rl.allowed) {
-      return c.json(
-        {
-          error: "Too many requests. Try again later.",
-          retryAfter: rl.retryAfter,
-        },
-        429,
-      );
-    }
-    const user: any = c.get("user");
-    if (!user) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    c.header("Cache-Control", "private, no-store");
-    const clerkToken = sanitizeStr(body.clerkToken, MAX_CLERK_TOKEN_LEN);
-    if (!clerkToken) return c.json({ error: "Missing clerkToken" }, 400);
-    const clerkUserId = await verifiedClerkIdentity(clerkToken, c.env.CLERK_SECRET_KEY, {
-      configured: c.env.ALLOWED_WEB_ORIGINS,
-      defaults: ALLOWED_ORIGINS,
-      development: c.env.ENVIRONMENT !== "production",
-    }, verifyToken);
-
-    // The single conditional write prevents concurrent links of one identity to two members.
-    const linked = await c.env.DB.batch([
-      c.env.DB.prepare(
-        "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ? AND NOT EXISTS (SELECT 1 FROM users other WHERE other.clerk_user_id = ? AND other.id != ?)",
-      ).bind(clerkUserId, user.id, clerkUserId, user.id),
-      c.env.DB.prepare(
-        "INSERT INTO audit_log (id, action, actor_email, target_type, target_id) SELECT ?, 'clerk_linked', ?, 'user', ? WHERE changes() > 0",
-      ).bind(crypto.randomUUID(), user.email, user.id),
-    ]);
-    if (!linked[0].meta?.changes) {
-      return c.json({ error: "Google account is already linked to another member" }, 409);
-    }
-
-    return c.json({
-      success: true,
-      message: "Google login enabled successfully",
-    });
-  } catch (e: any) {
-    if (e instanceof ClerkIdentityError) return c.json({ error: e.message }, e.status);
-    return errorResponse(c, e.message, 500);
-  }
+app.post("/api/auth/google/link-start", async (c) => {
+  const user: any = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+  const rl = await checkRateLimit(c, "google_link", 10, 3600);
+  if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+  const cfg = googleConfig(c);
+  if (!cfg) return c.json({ error: "Google sign-in is not configured" }, 503);
+  return c.json({ success: true, url: await beginGoogleFlow(c, cfg, "link", user.id) });
 });
 
-// ---------------------------------------------------------
-// UNLINK CLERK (authenticated @ disconnects Google login)
-// ---------------------------------------------------------
-app.post("/api/auth/unlink-clerk", async (c) => {
+app.get("/api/auth/google/callback", async (c) => {
+  await ensureDbReady(c.env.DB, c.env);
+  c.header("Cache-Control", "private, no-store");
+  c.header("Set-Cookie", googleStateCookie(c, "", 0));
+  const url = new URL(c.req.url);
+  const state = url.searchParams.get("state") || "";
+  const code = url.searchParams.get("code") || "";
+  const fail = (error: string, panel?: string) =>
+    c.redirect(`/members?${new URLSearchParams({ google_error: error, ...(panel ? { panel } : {}) })}`, 302);
+  const cookieState = (c.req.header("Cookie") || "")
+    .split(/;\s*/)
+    .find((part) => part.startsWith(GOOGLE_STATE_COOKIE + "="))
+    ?.slice(GOOGLE_STATE_COOKIE.length + 1);
+  if (!state || !cookieState || cookieState !== state) return fail("invalid_state");
+  const pending: any = await c.env.DB.prepare(
+    "DELETE FROM oauth_states WHERE state_hash = ? AND julianday(expires_at) > julianday('now') RETURNING verifier, intent, user_id",
+  ).bind(await credentialHash(state)).first();
+  if (!pending) return fail("expired");
+  const panel = pending.intent === "link" ? "profile" : undefined;
+  if (url.searchParams.get("error") || !code) return fail("cancelled", panel);
+  const cfg = googleConfig(c);
+  if (!cfg) return fail("not_configured", panel);
+
+  let identity;
   try {
-    await ensureDbReady(c.env.DB, c.env);
-    const rl = await checkRateLimit(c, "unlink_clerk", 5, 3600);
-    if (!rl.allowed) {
-      return c.json(
-        {
-          error: "Too many requests. Try again later.",
-          retryAfter: rl.retryAfter,
-        },
-        429,
-      );
-    }
-    const user: any = c.get("user");
-    if (!user) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    await c.env.DB.batch([
-      c.env.DB.prepare("UPDATE users SET clerk_user_id = NULL, oauth_enabled = 0 WHERE id = ? AND (clerk_user_id IS NOT NULL OR oauth_enabled != 0)").bind(user.id),
-      c.env.DB.prepare("INSERT INTO audit_log (id, action, actor_email, target_type, target_id) SELECT ?, 'clerk_unlinked', ?, 'user', ? WHERE changes() > 0").bind(crypto.randomUUID(), user.email, user.id),
-    ]);
-
-    return c.json({ success: true, message: "Google login disabled" });
+    identity = await exchangeGoogleCode({
+      code,
+      verifier: pending.verifier,
+      clientId: cfg.clientId,
+      clientSecret: cfg.clientSecret,
+      redirectUri: cfg.redirectUri,
+      tokenUrl: cfg.tokenUrl,
+    });
   } catch (e: any) {
-    return errorResponse(c, e.message, 500);
+    console.error("[google] code exchange failed:", e?.message || e);
+    return fail("exchange_failed", panel);
   }
+
+  if (pending.intent === "link") {
+    // One conditional write: a Google account can never end up linked to two members.
+    const [linked] = await c.env.DB.batch([
+      c.env.DB.prepare(
+        "UPDATE users SET google_sub = ?, oauth_enabled = 1 WHERE id = ? AND NOT EXISTS (SELECT 1 FROM users other WHERE other.google_sub = ? AND other.id != ?)",
+      ).bind(identity.sub, pending.user_id, identity.sub, pending.user_id),
+      c.env.DB.prepare(
+        "INSERT INTO audit_log (id, action, actor_email, target_type, target_id) SELECT ?, 'google_linked', email, 'user', id FROM users WHERE id = ? AND changes() > 0",
+      ).bind(crypto.randomUUID(), pending.user_id),
+    ]);
+    if (!linked.meta?.changes) return fail("already_linked", "profile");
+    return c.redirect("/members?google=linked&panel=profile", 302);
+  }
+
+  const matches = await c.env.DB.prepare(
+    "SELECT email FROM users WHERE google_sub = ? AND oauth_enabled = 1 LIMIT 2",
+  ).bind(identity.sub).all();
+  if ((matches.results?.length || 0) !== 1) return fail("not_linked");
+  // Google identity cannot restore revoked or expired member access.
+  const registry: any = await c.env.DB.prepare(
+    "SELECT token, expires_at, revoked_at FROM admin_tokens WHERE email = ?",
+  ).bind((matches.results[0] as any).email).first();
+  if (!activeRegistryToken(registry)) return fail("inactive");
+  const issued = await issueMemberSession(c, registry.token, "Google sign-in");
+  if (issued.status !== 200) return fail(issued.status === 503 ? "maintenance" : "session_failed");
+
+  const handoff = randomUrlToken();
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM oauth_handoffs WHERE julianday(expires_at) < julianday('now')"),
+    c.env.DB.prepare("INSERT INTO oauth_handoffs (code_hash, payload, expires_at) VALUES (?, ?, ?)")
+      .bind(await credentialHash(handoff), JSON.stringify(issued.body), new Date(Date.now() + GOOGLE_HANDOFF_TTL_MS).toISOString()),
+  ]);
+  return c.redirect(`/members?google_code=${handoff}`, 302);
+});
+
+// Single-use, 60-second handoff so the session credential never appears in a URL.
+app.post("/api/auth/google/exchange", async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  await ensureDbReady(c.env.DB, c.env);
+  const rl = await checkRateLimit(c, "google_exchange", 10, 60);
+  if (!rl.allowed) return c.json({ error: "Too many sign-in attempts", retryAfter: rl.retryAfter }, 429);
+  let body: any;
+  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+  const code = sanitizeStr(body?.code, 128);
+  if (!code) return c.json({ error: "Missing code" }, 400);
+  const row: any = await c.env.DB.prepare(
+    "DELETE FROM oauth_handoffs WHERE code_hash = ? AND julianday(expires_at) > julianday('now') RETURNING payload",
+  ).bind(await credentialHash(code)).first();
+  if (!row) return c.json({ error: "Sign-in link expired. Try Google sign-in again." }, 401);
+  return c.json(JSON.parse(row.payload));
+});
+
+app.post("/api/auth/google/unlink", async (c) => {
+  const user: any = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+  const rl = await checkRateLimit(c, "google_unlink", 5, 3600);
+  if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      "UPDATE users SET google_sub = NULL, clerk_user_id = NULL, oauth_enabled = 0 WHERE id = ? AND (google_sub IS NOT NULL OR clerk_user_id IS NOT NULL OR oauth_enabled != 0)",
+    ).bind(user.id),
+    c.env.DB.prepare(
+      "INSERT INTO audit_log (id, action, actor_email, target_type, target_id) SELECT ?, 'google_unlinked', ?, 'user', ? WHERE changes() > 0",
+    ).bind(crypto.randomUUID(), user.email, user.id),
+  ]);
+  return c.json({ success: true, message: "Google sign-in disabled" });
 });
 
 // ---------------------------------------------------------
@@ -5901,7 +5991,7 @@ app.get("/api/dashboard", async (c) => {
         powerLevel: user.power_level,
         departmentId: user.department_id || null,
         oauthEnabled: !!user.oauth_enabled,
-        clerkUserId: user.clerk_user_id || null,
+        googleLinked: !!user.google_sub,
       },
       stats: {
         membersCount,

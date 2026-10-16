@@ -58,7 +58,7 @@ special domains simulate Spacemail failures in both modes:
 | File | Feature |
 |------|---------|
 | `00-harness` | Setup sanity, outbox, per-IP rate-limit isolation |
-| `01-auth` | Token login, dev login, forgot token, rotate token, admin tokens, Google (Clerk) login guards |
+| `01-auth` | Token login, dev login, forgot token, rotate token, admin tokens, Google sign-in (Worker OAuth against a fake token endpoint) |
 | `02-members-roles` | Adding members/directors/advisory, roles, role changes, user lists by role, directory, CSV export, removing members, dashboard per role |
 | `03-role-transfers` | Board-approved and two-party role handovers |
 | `04-signup-requests` | Public account request form and board approval |

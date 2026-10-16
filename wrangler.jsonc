@@ -37,6 +37,7 @@
     "ENVIRONMENT": "production",
     "ALLOWED_WEB_ORIGINS": "https://180dc.vitcc.org",
     "NEWSLETTER_SITE_URL": "",
+    "GOOGLE_CLIENT_ID": "79558531530-f32je33pig45b1t0beg4kji3nkgl224f.apps.googleusercontent.com",
     "B2_S3_ENDPOINT": "https://s3.eu-central-003.backblazeb2.com",
     "B2_BUCKET": "180dc-vitc"
   },
@@ -59,7 +60,7 @@
       "NEWSLETTER_SITE_URL": ""
     }
   }
-  // Secrets (set in the dashboard or `wrangler secret put`): CLERK_SECRET_KEY,
+  // Secrets (set in the dashboard or `wrangler secret put`): GOOGLE_CLIENT_SECRET,
   // SPACEMAIL_SMTP_USER, SPACEMAIL_SMTP_PASS, RESEND_API_KEY, GEMINI_API_KEY, GROQ_API_KEY,
   // B2_KEY_ID, B2_APPLICATION_KEY, B2_READ_KEY_ID, B2_READ_APPLICATION_KEY (docs/operations/BACKUP_B2.md).
 }

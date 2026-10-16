@@ -2,7 +2,7 @@
 // one-click header, legacy ?email= link), archive and single issue.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { get, post, api, tokens, expectOk, expectStatus, subscribe, outboxMark, waitForMail, uniqueEmail } from "../lib/api.mjs";
+import { get, post, api, tokens, expectOk, expectStatus, subscribe, requestSubscription, outboxMark, waitForMail, uniqueEmail } from "../lib/api.mjs";
 
 const count = async () => expectOk(await get("/api/newsletter/subscribers/count")).count;
 
@@ -15,7 +15,23 @@ describe("subscribing", () => {
     assert.equal(welcome.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
     assert.equal(await count(), before + 1);
     const again = expectOk(await post("/api/newsletter/subscribe", { email }));
-    assert.match(again.message, /already subscribed/i);
+    assert.equal(again.pending, true, "same reply whether or not the address is subscribed");
+    assert.match(again.message, /check your inbox/i);
+  });
+
+  test("a subscription stays inactive until the emailed link is confirmed (double opt-in)", async () => {
+    const before = await count();
+    const { confirmToken, json } = await requestSubscription();
+    assert.equal(json.pending, true);
+    assert.equal(await count(), before, "not counted before confirmation");
+    expectOk(await post("/api/newsletter/confirm", { token: confirmToken }));
+    assert.equal(await count(), before + 1);
+    expectStatus(await post("/api/newsletter/confirm", { token: confirmToken }), 400, "link is single-use");
+  });
+
+  test("unknown or missing confirmation tokens are refused", async () => {
+    expectStatus(await post("/api/newsletter/confirm", { token: "not-a-real-token" }), 400);
+    expectStatus(await post("/api/newsletter/confirm", {}), 400);
   });
 
   test("an invalid email is refused", async () => {
@@ -82,9 +98,10 @@ describe("unsubscribing", () => {
   test("re-subscribing sends a welcome-back email and keeps the same link", async () => {
     const { email, token } = await subscribe();
     expectOk(await post(`/api/newsletter/unsubscribe/${token}`, {}));
+    const { confirmToken, json } = await requestSubscription(email);
+    assert.equal(json.pending, true, "re-subscribing needs confirmation too");
     const mark = await outboxMark();
-    const json = expectOk(await post("/api/newsletter/subscribe", { email }));
-    assert.match(json.message, /welcome back/i);
+    expectOk(await post("/api/newsletter/confirm", { token: confirmToken }));
     const [mail] = await waitForMail(email, mark);
     assert.equal(mail.subject, "Welcome back to the 180DC Newsletter!");
     assert.ok(mail.headers["List-Unsubscribe"].includes(token));

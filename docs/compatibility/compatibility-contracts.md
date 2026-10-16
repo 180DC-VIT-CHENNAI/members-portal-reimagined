@@ -21,7 +21,7 @@ The following routes are called by the public website without authentication. Th
 - `POST /api/signup-requests`
 - `POST /api/consulting-request`
 - `POST /api/dev-login`
-- `POST /api/auth/clerk-login`
+- `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/google/exchange`
 - `POST /api/auth/forgot-token`
 - `POST /api/newsletter-editor/otp/send`
 - `POST /api/newsletter-editor/otp/verify`
@@ -84,9 +84,9 @@ The frontend stores the following keys. Do not change key names or value shapes 
 The public and members portal routes are defined by `react-router-dom`. The following path semantics must be preserved:
 
 - `/` — public landing.
-- `/members` — members portal (Clerk gate).
+- `/members` — members portal.
 - `/members/*` — members portal sub-pages.
-- `/subscriber` — newsletter subscriber page with Clerk.
+- `/subscriber` — newsletter subscriber page (email double opt-in; `?confirm=<token>`).
 - `/subscriber/newsletter` — newsletter editor (OTP).
 - `/unsubscribe` — unsubscribe.
 - `/request-account` — account request.
@@ -108,7 +108,7 @@ The following binding names are referenced in code. Changing them requires updat
 - `QUEUE`
 - `SPACEMAIL_SMTP_USER`
 - `SPACEMAIL_SMTP_PASS`
-- `CLERK_SECRET_KEY`
+- `GOOGLE_CLIENT_SECRET` (secret) and `GOOGLE_CLIENT_ID` (var)
 - `ENVIRONMENT`
 
 ## COMP-DATA-01 Table and column names
@@ -146,23 +146,24 @@ The following key patterns are used in R2. Do not change them without a data mig
 - `CLUB_FILES`: `<category>/<uuid>.<ext>`
 - `CASE_STUDIES`: `images/<uuid>.<ext>`, `source/<uuid>.<ext>`
 
-## COMP-CLERK-01 Frontend public key
+## COMP-GOOGLE-01 Google OAuth client
 
-The frontend relies on `VITE_CLERK_PUBLISHABLE_KEY`. The backend relies on `CLERK_SECRET_KEY`. Clerk JWTs issued by `@clerk/react` must continue to be verifiable by `@clerk/backend` in `admin-api`.
+The Worker needs `GOOGLE_CLIENT_ID` (var in `wrangler.jsonc`) and `GOOGLE_CLIENT_SECRET` (Worker secret). Every deployed origin's `<origin>/api/auth/google/callback` must be registered as an authorized redirect URI on the OAuth client; production uses `https://180dc.vitcc.org/api/auth/google/callback`.
 
-## COMP-CLERK-02 Linked account contract
+## COMP-GOOGLE-02 Linked account contract
 
-A Clerk login is valid only when:
+A Google sign-in is valid only when exactly one `users.google_sub` matches the verified ID-token subject, `users.oauth_enabled = 1`, and the member has active registry access. Client email is never identity proof.
 
-1. The Clerk JWT is valid.
-2. Exactly one `users.clerk_user_id` matches the verified session subject; client email is never identity proof.
-3. `users.oauth_enabled = 1` and the member has active registry access.
-4. The session has an approved frontend origin and is not pending.
+## COMP-CLERK-REMOVED Clerk removal
 
-The reimagined frontend linking flow supplies a Clerk JWT as `clerkToken`. Earlier clients supplying only `clerkUserId` must refresh before linking; existing explicit links continue to work. Deploy backend first, then frontend, and ask an already-open old client to refresh if linking returns 400. Removed email auto-linking is an intentional security correction; first-time Google users sign in with a member token and explicitly link in Profile. Audit historical links before importing live records into personal staging.
+Clerk was removed from the frontend and Worker. `/api/auth/clerk-login`, `/api/auth/link-clerk` and `/api/auth/unlink-clerk` no longer exist, `VITE_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are unused, and the Clerk hosts were dropped from the CSP in `apps/frontend/public/_headers` and `apps/frontend/functions/_middleware.ts`. Clerk user IDs are not Google account IDs, so former links do not carry over: those members sign in with their token once and click "Link Google Account" in Profile. `users.clerk_user_id` stays as an unused legacy column.
+
+## COMP-NEWS-SUBSCRIBE Double opt-in
+
+`POST /api/newsletter/subscribe` no longer activates the address or says "already subscribed"/"welcome back"; it always returns `{ success, pending: true, message }` and emails a confirmation link. Clients must call `POST /api/newsletter/confirm` with the link's token. Existing active subscribers are unaffected.
 # Reimagined project access change
 
-Device sessions are additive: existing registry Bearer tokens remain accepted, and `/api/dev-login` retains its development-only contract. New web sign-in uses production-capable `/api/auth/session`, retaining existing storage keys but storing an expiring session instead of the source token. Backend must be deployed before the updated frontend; old frontend/backends cannot consume the new session credential format. Roll back the frontend first or require users to sign in again before reverting a backend without session support. Leave the additive table intact during rollback. The Google exchange uses verified explicit linking. A synthetic real-SDK route test covers identity and database enforcement; live personal Clerk OAuth and browser acceptance remain required.
+Device sessions are additive: existing registry Bearer tokens remain accepted, and `/api/dev-login` retains its development-only contract. New web sign-in uses production-capable `/api/auth/session`, retaining existing storage keys but storing an expiring session instead of the source token. Backend must be deployed before the updated frontend; old frontend/backends cannot consume the new session credential format. Roll back the frontend first or require users to sign in again before reverting a backend without session support. Leave the additive table intact during rollback. Google sign-in uses the Worker OAuth flow in COMP-GOOGLE-02 and is covered by `tests/api/01-auth.test.mjs`; a real Google sign-in must still be checked on each release that touches auth.
 
 Internal project lists/counts no longer expose every project to members without a department. Such users need an explicit project role; board access and assigned-department access remain. Cross-department explicitly assigned members gain project visibility. Direct task reads enforce this scope and return 404 for inaccessible/missing projects. Task responses add `can_update`; assignees may update their own task status. Public completed-project endpoints are unchanged. Existing clients must handle denied reads and missing tasks rather than rely on unrestricted ID access.
 
