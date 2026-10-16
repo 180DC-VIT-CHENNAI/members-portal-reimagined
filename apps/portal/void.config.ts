@@ -16,13 +16,15 @@ export default defineConfig({
     // adds the 180dc.vitcc.org custom domain; preview URLs back the readiness check.
     workers_dev: true,
     preview_urls: true,
-    // The old Worker's buckets, bound by name so the portal reads the same
-    // objects (same account). BLOG_IMAGES arrives with the projects slice.
-    // Locally these are simulated under the dev state directory.
+    // The buckets the current deployment (repo-root wrangler.jsonc) uses in
+    // this account, bound by name so the portal reads the same objects. The
+    // club account's names (180dc-club-files, cdn, ...) do not exist here.
+    // BLOG_IMAGES arrives with the projects slice. Locally these are simulated
+    // under the dev state directory.
     r2_buckets: [
-      { binding: 'CLUB_FILES', bucket_name: '180dc-club-files' },
-      { binding: 'CASE_STUDIES', bucket_name: '180dc-case-studies' },
-      { binding: 'GALLERY_CDN', bucket_name: 'cdn' },
+      { binding: 'CLUB_FILES', bucket_name: 'members-portal-reimagined-club-files' },
+      { binding: 'CASE_STUDIES', bucket_name: 'members-portal-reimagined-case-studies' },
+      { binding: 'GALLERY_CDN', bucket_name: 'members-portal-reimagined-gallery' },
     ],
   },
 });
