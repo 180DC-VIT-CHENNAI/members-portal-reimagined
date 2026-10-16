@@ -21,6 +21,7 @@ import { InvitePage } from './pages/admin/InvitePage.tsx';
 import { PositionsPage } from './pages/admin/PositionsPage.tsx';
 import { RolesPage } from './pages/admin/RolesPage.tsx';
 import { TermsPage } from './pages/admin/TermsPage.tsx';
+import { DepartmentPage } from './pages/DepartmentPage.tsx';
 import { DirectoryPage } from './pages/DirectoryPage.tsx';
 import { FilesPage } from './pages/FilesPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
@@ -125,6 +126,13 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people' },
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}` },
     { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements' },
+    {
+      to: `/departments/${me.person.departmentId ?? ''}`,
+      label: 'My department',
+      icon: 'briefcase',
+      show: Boolean(me.person.departmentId) && can(permissions, 'departments.members.view', me.person.departmentId),
+      active: path.startsWith('/departments/'),
+    },
     { to: '/files', label: 'Files', icon: 'fileText', show: can(permissions, 'files.view'), active: path === '/files' },
     { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') },
   ];
@@ -214,6 +222,8 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/people') return <DirectoryPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/files') return <FilesPage />;
+  const department = matchPath('/departments/:id', path);
+  if (department) return <DepartmentPage key={department.id} id={department.id} />;
   const person = matchPath('/people/:id', path);
   if (person) return <PersonPage key={person.id} id={person.id} />;
   if (path === '/admin') return <AdminHome />;
