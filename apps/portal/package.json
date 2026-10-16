@@ -9,12 +9,16 @@
     "preview": "vite preview",
     "typecheck": "void prepare && tsc --noEmit",
     "deploy": "void deploy",
-    "test:unit": "node --test 'src/**/*.test.ts'"
+    "test:unit": "node --test 'src/**/*.test.ts'",
+    "test:e2e": "node --test --test-concurrency=1 'tests/e2e/**/*.test.mjs'"
   },
   "dependencies": {
+    "better-auth": "1.7.9",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.13",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "better-auth": "1.7.9"
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
