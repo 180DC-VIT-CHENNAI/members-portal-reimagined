@@ -43,7 +43,7 @@ cookie with Void's development secret. The app has no test login of any kind.
 - uploads the `180dc-portal` Worker and verifies the version before sending it traffic, rolling back if that check fails.
 
 Setup (once):
-- Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The token is account-owned and needs Workers Scripts Edit and D1 Edit.
+- Repository secrets `PORTAL_CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The token needs Workers Scripts Edit and D1 Edit on the account. It is separate from `CLOUDFLARE_API_TOKEN`, which the backup workflow uses.
 - Worker secrets `AUTH_GOOGLE_CLIENT_ID` and `AUTH_GOOGLE_CLIENT_SECRET`, set with `void secret put`. Void creates `BETTER_AUTH_SECRET` itself.
 - The Google OAuth client must allow `https://<portal host>/api/auth/callback/google`.
 - The first deploy runs from one machine. Commit the `void.lock.json` it writes, then set the repo variable `PORTAL_DEPLOY=enabled`. The deploy job fails if a deploy changes `void.lock.json` without the change being committed.
