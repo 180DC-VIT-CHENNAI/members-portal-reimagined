@@ -32,15 +32,26 @@ The old Worker's 165 routes and 52 tables map onto the slices like this.
 7. **Email infrastructure.** `email_queue`, `email_deliveries`, `email_hour_count`, `daily_email_count`, `rate_limits`, and the `* * * * *` cron sending over Spacemail SMTP (at most 15 per minute and 500 per hour). It includes `/api/admin/email-queue*`, `/api/send-email` and the dev outbox.
 8. **Newsletter.** Uses the separate `NEWSLETTER_DB`: `newsletters`, `newsletter_subscribers` with double opt-in, editor OTP sessions and authorized emails, subscriber and unsubscribe pages, and the newsletter editor.
 9. **Letter studio.** `letter_*`, `letters_sent`, and `/api/letter-studio/*`.
-10. **Data migration and cutover.** This slice:
-    - copies production data from `180dc-db` into `180dc-portal-db`;
-    - turns `users` into `people`, mapping roles to access roles and positions;
-    - keeps `srijan.guchhait@gmail.com` as an active admin;
+10. **Blank-data launch and cutover.** This slice:
+    - launches with fresh portal databases and empty portal R2 buckets; no records or objects are copied from the old Worker;
+    - verifies the reference data and initial admin seeded by the portal migrations, including `srijan.guchhait@gmail.com` with full admin access and the title "Technical Lead - DevOps & Cloud";
+    - verifies that new people can be invited or bulk imported and then sign in through Google;
     - moves the `180dc.vitcc.org` custom domain to `180dc-portal`;
     - retires the old Worker after checks.
 
+The user explicitly chose a new deployment with blank data rather than a data migration. Existing records and files stay in the old deployment; empty portal buckets are expected. Do not import old sessions, registry tokens, personnel records or R2 objects as part of this launch.
+
+## Delivery status
+
+- Personnel foundation: PRs #14–#18, merged.
+- Public site/content (slice 1): PR #22, merged.
+- Files (slice 2): PR #23, with deployment fixes in #24–#25, merged and deployed.
+- Department workspace (slice 4): PR #26, merged and deployed. The live public `/api/departments` returns all six seeded departments.
+- Next implementation order: email infrastructure (7), meets (3), projects/tasks (5), team instances (6), newsletter (8), letter studio (9), then cutover (10). Meets must enqueue real notifications through slice 7.
+
 ## Rules carried over (see docs/domain/invariants.md)
 
-- The email caps, the meet-link visibility window and newsletter double opt-in behave as they do today.
+- Email uses the shared 500/hour allowance by default, with the campaign queue using at most 90% and attempting at most 15 recipients per minute. The old implementation counts daily sends but does not enforce a 100/day limit; this port does not introduce one.
+- The meet-link visibility window and newsletter double opt-in behave as they do today.
 - People are deactivated, never deleted. Access ends on the next request.
 - Schema changes go through Drizzle migrations only. Migrations are additive, and destructive changes need an explicit decision.
