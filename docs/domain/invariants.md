@@ -2,6 +2,13 @@
 
 Invariants are properties that must never become false while the system is running.
 
+## Void portal email invariants
+
+- **PORTAL-EMAIL-01:** Each SMTP attempt reserves a shared hourly slot atomically in D1. Direct mail cannot reserve above the configured limit (500 by default), and campaigns cannot reserve above 90% of it. Failed sends release the slot; a crash may leave conservative usage until the hour changes. Enforced by `apps/portal/src/server/email/send.ts`; concurrent last-slot behavior is covered in `tests/e2e/email.test.mjs`.
+- **PORTAL-EMAIL-02:** Campaign inspection and retries require global `email.view` and `email.manage` respectively. A department-scoped grant cannot reveal global campaigns. Arbitrary sends with department-scoped `email.send` reach only active/on-leave people in those departments. API tests cover both boundaries.
+- **PORTAL-EMAIL-03:** Production builds never capture or redirect messages through test mode, and never include the `.dev.ts` outbox/drain routes. Capture tests make no SMTP connection.
+- **PORTAL-EMAIL-04:** Recorded SMTP acceptance settles a recipient across retries; it is not proof of inbox delivery or exactly-once delivery. SMTP acceptance and D1 persistence are separate operations.
+
 ## Auth invariants
 
 ### INV-AUTH-04: Explicit browser write origins are authorised

@@ -7,7 +7,7 @@ import { badRequest, idParam, notFound } from '../../../../../src/server/http';
 import { rateLimit } from '../../../../../src/server/rate-limit';
 
 export const POST = defineHandler(async (c) => {
-  const actor = await requirePermission(c, 'email.manage');
+  const actor = await requirePermission(c, 'email.manage', null);
   await rateLimit(c, 'email_retry', 30, 3600);
   const id = idParam(c);
   const result = await retryFailedCampaign(id);

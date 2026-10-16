@@ -5,7 +5,7 @@ import { requirePermission } from '../../../../src/server/guard';
 import { emailQuota } from '../../../../src/server/email/send';
 
 export const GET = defineHandler(async (c) => {
-  await requirePermission(c, 'email.view');
+  await requirePermission(c, 'email.view', null);
   const quota = await emailQuota();
   const counts = await db.select({ status: emailQueue.status, count: sql<number>`count(*)` })
     .from(emailQueue).groupBy(emailQueue.status);

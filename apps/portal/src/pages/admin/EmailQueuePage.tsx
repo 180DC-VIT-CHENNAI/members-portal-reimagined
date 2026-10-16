@@ -8,7 +8,7 @@ import { Forbidden } from './Forbidden.tsx';
 
 export function EmailQueuePage() {
   const { can } = useSession();
-  if (!can('email.view')) return <Forbidden title="Email queue" />;
+  if (!can('email.view', null)) return <Forbidden title="Email queue" />;
   return <Queue />;
 }
 
@@ -77,7 +77,7 @@ function Deliveries({ id, onClose, onRetried }: { id: string; onClose: () => voi
       {load.problem ? <ErrorState problem={load.problem} onRetry={load.reload} /> : !load.data ? <LoadingBlock /> : (
         <>
           {campaign?.lastError && <p className="pre-wrap">{campaign.lastError}</p>}
-          {can('email.manage') && campaign && (campaign.status === 'done' || campaign.status === 'failed') &&
+          {can('email.manage', null) && campaign && (campaign.status === 'done' || campaign.status === 'failed') &&
             (campaign.failed > 0 || campaign.status === 'failed') && (
               <Button busy={busy} onClick={retry}>Retry failed recipients</Button>
             )}

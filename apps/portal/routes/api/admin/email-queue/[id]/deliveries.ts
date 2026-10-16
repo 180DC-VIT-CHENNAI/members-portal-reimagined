@@ -5,7 +5,7 @@ import { requirePermission } from '../../../../../src/server/guard';
 import { idParam, notFound } from '../../../../../src/server/http';
 
 export const GET = defineHandler(async (c) => {
-  await requirePermission(c, 'email.view');
+  await requirePermission(c, 'email.view', null);
   const id = idParam(c);
   const [campaign] = await db.select().from(emailQueue).where(eq(emailQueue.id, id));
   if (!campaign) notFound('campaign_not_found');

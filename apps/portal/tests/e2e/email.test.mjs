@@ -164,6 +164,18 @@ test('queue operations reject missing, active and settled campaigns appropriatel
   assert.equal(status.json.recent[0].id, id);
 });
 
+test('department-scoped queue grants cannot inspect or retry global campaigns', async () => {
+  const person = portal.db.prepare('SELECT id FROM people WHERE email=?').get('director@example.com');
+  const grants = ['email.view', 'email.manage'].map((permission) => ({ permission, departmentId: 'finance' }));
+  const granted = await admin.put(`/api/people/${person.id}/access`, { accessRoleId: 'director', grants });
+  assert.equal(granted.status, 200, granted.text);
+  const id = campaign(['one@example.com']);
+  assert.equal((await director.get('/api/admin/email-queue')).status, 403);
+  assert.equal((await director.get(`/api/admin/email-queue/${id}/deliveries`)).status, 403);
+  assert.equal((await director.post(`/api/admin/email-queue/${id}/retry-failed`, {})).status, 403);
+  assert.equal((await admin.put(`/api/people/${person.id}/access`, { accessRoleId: 'director', grants: [] })).status, 200);
+});
+
 test('consulting replies report SMTP acceptance and appear in the capture outbox', async () => {
   const created = await anonymous(portal).post('/api/consulting-request', {
     name: 'Client', email: 'client@example.com', phone: '1234567890', organization: 'Client Org', requirement: 'Help',

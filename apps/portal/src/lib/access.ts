@@ -39,5 +39,5 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
 ];
 
 export function visibleAdminTools(perms: PermissionMap): AdminTool[] {
-  return ADMIN_TOOLS.filter((tool) => can(perms, tool.permission));
+  return ADMIN_TOOLS.filter((tool) => can(perms, tool.permission, tool.permission === 'email.view' ? null : undefined));
 }

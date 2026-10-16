@@ -1,5 +1,19 @@
 # Data Model — 180DC VIT Chennai Platform
 
+## Void portal email schema
+
+The separate `apps/portal` deployment uses generated, additive Drizzle migrations, not `ensureTables`. Email tables are defined in `apps/portal/db/schema/email.ts`; migration `20261016192957_lazy_captain_flint.sql` also grants global email administration to `admin` and department-scoped sending to `director`.
+
+| Table | Key | Purpose |
+|---|---|---|
+| `email_queue` | `id` | Campaign template, JSON recipient and attachment-reference arrays, cursor, sent/failed/attempt counters, status, metadata and timestamps. Indexed by status/created time and status/updated time. |
+| `email_deliveries` | `(campaign_id, recipient)` | Per-recipient SMTP acceptance, failure or skip, error, attempt count and timestamps. Retained across campaign retries. |
+| `email_hour_count` | `hour` (UTC ISO hour) | Shared capacity reservations, incremented atomically before SMTP; failed attempts release capacity. |
+| `daily_email_count` | `date` (UTC date) | Successful-recipient reporting, not a daily cap. |
+| `dev_outbox` | auto-increment `id` | Development captures: recipient, sender, subject, HTML, JSON headers and attachment filenames, optional redirected destination. Production routes never expose it. |
+
+Finished campaigns older than 30 days and orphaned delivery rows are removed by the minute drain. The portal starts without legacy `pending_emails` or imported campaigns.
+
 ## Important: canonical schema location
 
 The canonical schema and migrations are in `apps/admin-api/index.ts`:
