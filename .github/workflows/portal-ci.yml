@@ -77,5 +77,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Readiness is checked on the new version's preview URL before activation.
+          CLOUDFLARE_WORKERS_SUBDOMAIN: srijan-guchhait
       - name: Resource IDs must already be committed
         run: git diff --exit-code -- void.lock.json

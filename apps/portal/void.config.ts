@@ -12,5 +12,9 @@ export default defineConfig({
   },
   cloudflare: {
     name: '180dc-portal',
+    // Reachable at 180dc-portal.srijan-guchhait.workers.dev until the cutover
+    // adds the 180dc.vitcc.org custom domain; preview URLs back the readiness check.
+    workers_dev: true,
+    preview_urls: true,
   },
 });

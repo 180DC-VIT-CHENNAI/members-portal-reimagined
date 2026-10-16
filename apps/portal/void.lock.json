@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "source": {
+    "name": "180dc-portal",
+    "workers_dev": true,
+    "preview_urls": true
+  },
+  "resolved": {
+    "name": "180dc-portal",
+    "account_id": "ee4c08f37c3a62fedc87fbd1b8b96ff4",
+    "compatibility_date": "2026-02-24",
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "180dc-portal-db",
+        "database_id": "f95987df-5310-4e03-8d4c-60e6b32da67e",
+        "migrations_dir": "./db/migrations"
+      }
+    ],
+    "workers_dev": true,
+    "preview_urls": true
+  },
+  "text": "{\n  \"name\": \"180dc-portal\",\n  \"account_id\": \"ee4c08f37c3a62fedc87fbd1b8b96ff4\",\n  \"compatibility_date\": \"2026-02-24\",\n  \"d1_databases\": [\n    {\n      \"binding\": \"DB\",\n      \"database_name\": \"180dc-portal-db\",\n      \"database_id\": \"f95987df-5310-4e03-8d4c-60e6b32da67e\",\n      \"migrations_dir\": \"./db/migrations\"\n    }\n  ],\n  \"workers_dev\": true,\n  \"preview_urls\": true\n}\n"
+}
