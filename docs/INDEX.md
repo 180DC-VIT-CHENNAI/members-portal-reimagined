@@ -17,6 +17,7 @@ This repository is documented as an agent-first knowledge system. Start with `AG
 | `docs/contracts/api-contract.md` | API route inventory by domain, with auth and behavior notes. |
 | `docs/execution/current-state.md` | What is implemented today, what is a placeholder, and known discrepancies. |
 | `docs/execution/implementation-plan.md` | How to safely evolve the system, phase dependencies, and exit criteria. |
+| `docs/execution/portal-port-plan.md` | Slice-by-slice plan for porting every admin-api feature into the Void portal (`apps/portal`), what the personnel system replaces, and the cutover. |
 | `docs/execution/unified-platform-plan.md` | Active reimagined web/Android roadmap, personal Cloudflare ownership, database evaluation, acceptance gates and progress ledger. |
 | `docs/execution/unified-baseline-audit.md` | Initial source permission/resource matrix, verified portability increment and gaps to resolve before guests/mobile. |
 | `docs/compatibility/compatibility-contracts.md` | Public API, auth, and data compatibility surfaces. |
