@@ -204,6 +204,9 @@ describe('access control', () => {
       grants: [{ permission: 'people.export', departmentId: 'finance' }],
     });
     assert.equal(put.status, 200, put.text);
+    const id = personId('fin.member@example.com');
+    assert.deepEqual((await admin.get(`/api/people/${id}`)).json.grants, [{ permission: 'people.export', departmentId: 'finance' }]);
+    assert.equal((await member.get(`/api/people/${id}`)).json.grants, null, 'grants are shown only to people who may change them');
     const csv = await member.get('/api/exports/people');
     assert.equal(csv.status, 200);
     assert.match(csv.headers.get('content-type'), /text\/csv/);
