@@ -16,6 +16,9 @@ overrides:
   brace-expansion: '>=5.0.9'
   browserslist: '>=4.28.7'
 
+patchedDependencies:
+  void@1.1.0: c513ed3386f655ee54d19b2aaef04197ad34edd9f661290f2a1939b70cd79a0f
+
 importers:
 
   .:
@@ -185,6 +188,9 @@ importers:
 
   apps/portal:
     dependencies:
+      aws4fetch:
+        specifier: 1.0.20
+        version: 1.0.20
       better-auth:
         specifier: 1.7.9
         version: 1.7.9(drizzle-kit@0.31.11)(drizzle-orm@0.45.4(@cloudflare/workers-types@5.20261015.1)(better-sqlite3@13.0.3)(kysely@0.29.6)(mysql2@3.24.6(@types/node@24.12.4))(pg@8.23.1))(mysql2@3.24.6(@types/node@24.12.4))(pg@8.23.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -194,6 +200,9 @@ importers:
       hono:
         specifier: 4.13.13
         version: 4.13.13
+      mammoth:
+        specifier: 1.12.1
+        version: 1.12.1
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -221,7 +230,7 @@ importers:
         version: 8.3.0(@types/node@24.12.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
       void:
         specifier: 1.1.0
-        version: 1.1.0(@types/node@24.12.4)(arktype@2.2.8)(kysely@0.29.6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(valibot@1.5.0(typescript@6.0.3))(vite@8.3.0(@types/node@24.12.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.151.0(@cloudflare/workers-types@5.20261015.1)(@types/node@24.12.4))(zod@4.6.7)
+        version: 1.1.0(patch_hash=c513ed3386f655ee54d19b2aaef04197ad34edd9f661290f2a1939b70cd79a0f)(@types/node@24.12.4)(arktype@2.2.8)(kysely@0.29.6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(valibot@1.5.0(typescript@6.0.3))(vite@8.3.0(@types/node@24.12.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.151.0(@cloudflare/workers-types@5.20261015.1)(@types/node@24.12.4))(zod@4.6.7)
 
 packages:
 
@@ -8817,7 +8826,7 @@ snapshots:
 
   vlq@1.0.1: {}
 
-  void@1.1.0(@types/node@24.12.4)(arktype@2.2.8)(kysely@0.29.6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(valibot@1.5.0(typescript@6.0.3))(vite@8.3.0(@types/node@24.12.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.151.0(@cloudflare/workers-types@5.20261015.1)(@types/node@24.12.4))(zod@4.6.7):
+  void@1.1.0(patch_hash=c513ed3386f655ee54d19b2aaef04197ad34edd9f661290f2a1939b70cd79a0f)(@types/node@24.12.4)(arktype@2.2.8)(kysely@0.29.6)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(valibot@1.5.0(typescript@6.0.3))(vite@8.3.0(@types/node@24.12.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))(wrangler@4.151.0(@cloudflare/workers-types@5.20261015.1)(@types/node@24.12.4))(zod@4.6.7):
     dependencies:
       '@cloudflare/build-output-utils': 0.9.2
       '@cloudflare/codemods': 0.5.0

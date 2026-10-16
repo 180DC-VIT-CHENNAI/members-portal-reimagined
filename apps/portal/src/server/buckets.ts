@@ -1,0 +1,34 @@
+import type { Context } from 'hono';
+import { env } from 'void/env';
+import { withStorageFailover } from './storage-failover.ts';
+
+// R2 buckets shared with the old Worker, bound by name in void.config.ts.
+declare global {
+  namespace Cloudflare {
+    interface Env {
+      CLUB_FILES: R2Bucket;
+      CASE_STUDIES: R2Bucket;
+      GALLERY_CDN: R2Bucket;
+    }
+  }
+}
+
+export type BucketBinding = 'CLUB_FILES' | 'CASE_STUDIES' | 'GALLERY_CDN';
+
+/**
+ * One of the R2 buckets. When the B2_* secrets are set, writes are mirrored
+ * to Backblaze B2 and reads fall back to it during an R2 outage, exactly as
+ * in the old Worker (storage-failover.ts). Without them this is plain R2.
+ */
+export function bucket(c: Context, binding: BucketBinding): R2Bucket {
+  const b2 = {
+    B2_S3_ENDPOINT: env.B2_S3_ENDPOINT,
+    B2_BUCKET: env.B2_BUCKET,
+    B2_KEY_ID: env.B2_KEY_ID,
+    B2_APPLICATION_KEY: env.B2_APPLICATION_KEY,
+    B2_READ_KEY_ID: env.B2_READ_KEY_ID,
+    B2_READ_APPLICATION_KEY: env.B2_READ_APPLICATION_KEY,
+  };
+  const raw = (c.env as Cloudflare.Env)[binding];
+  return withStorageFailover({ ...b2, [binding]: raw }, (task: Promise<unknown>) => c.executionCtx.waitUntil(task))[binding];
+}

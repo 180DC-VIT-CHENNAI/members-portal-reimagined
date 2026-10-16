@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   'content.manage': 'Delete case studies and manage partners',
   'consulting.manage': 'Review, accept, reject and delete consulting requests',
   'announcements.manage': 'Post and remove announcements',
+  'files.view': 'Browse and download the shared club files',
+  'files.manage': 'Upload and delete shared club files',
   'site.maintenance': 'Turn maintenance mode on or off (and keep access while it is on)',
 } as const;
 

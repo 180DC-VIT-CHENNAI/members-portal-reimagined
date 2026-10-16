@@ -57,6 +57,16 @@ const MESSAGES: Record<string, string> = {
   partner_not_found: 'That client no longer exists.',
   announcement_not_found: 'That announcement no longer exists.',
   missing_title_or_content: 'Add a title and a message.',
+  file_required: 'Choose a file to upload.',
+  empty_file: 'That file is empty.',
+  file_too_large: 'That file is too large.',
+  unsupported_file_type: "That file type isn't allowed.",
+  invalid_category: 'Choose a category from the list.',
+  file_not_found: 'That file no longer exists.',
+  image_required: 'Choose an image to upload.',
+  unsupported_image_type: 'Use a JPEG, PNG, GIF or WebP image.',
+  document_required: 'Choose a PDF or Word document.',
+  document_empty: "No text could be read from that document.",
 };
 
 export function friendlyIssue(message: string): string {

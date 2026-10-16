@@ -13,9 +13,11 @@
     "test:e2e": "node --test --test-concurrency=1 'tests/e2e/**/*.test.mjs'"
   },
   "dependencies": {
+    "aws4fetch": "1.0.20",
     "better-auth": "1.7.9",
     "drizzle-orm": "0.45.4",
     "hono": "4.13.13",
+    "mammoth": "1.12.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "valibot": "^1.5.0"

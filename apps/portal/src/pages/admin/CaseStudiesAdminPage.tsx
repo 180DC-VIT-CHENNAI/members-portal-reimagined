@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { BackLink, Button, Card, ConfirmDialog, EmptyState, ErrorState, LoadingBlock, PageHeader, ProblemAlert, TextAreaField, TextField } from '../../components/ui.tsx';
-import { api, problemFrom, useLoad } from '../../lib/api.ts';
+import { Icon } from '../../components/icons.tsx';
+import { api, problemFrom, upload, useLoad } from '../../lib/api.ts';
 import type { ApiProblem } from '../../lib/errors.ts';
 import { formatDate } from '../../lib/format.ts';
 import { useSession } from '../../lib/session.tsx';
@@ -37,7 +38,7 @@ export function CaseStudiesAdminPage() {
       <PageHeader
         overline="Public site"
         title="Case studies"
-        lede="Published straight to the public site. Uploading images and documents comes with file storage; link to a document for now."
+        lede="Published straight to the public site. Import a PDF or Word document to start from its text."
         actions={
           editing === null && (
             <Button variant="primary" icon="plus" onClick={() => setEditing('new')}>
@@ -134,6 +135,34 @@ function CaseStudyForm({ existing, onDone }: { existing: CaseStudy | null; onDon
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | null>(null);
   const set = (key: keyof CaseStudyBody) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value });
+  const [uploading, setUploading] = useState<'image' | 'source' | 'import' | null>(null);
+
+  const send = async (kind: 'image' | 'source' | 'import', file: File | undefined) => {
+    if (!file) return;
+    setUploading(kind);
+    setProblem(null);
+    const data = new FormData();
+    try {
+      if (kind === 'import') {
+        data.append('document', file);
+        const doc = await upload<{ content: string; suggestedTitle: string; suggestedDescription: string }>('/api/case-studies/upload-document', data);
+        setForm((prev) => ({
+          ...prev,
+          content: doc.content,
+          title: prev.title || doc.suggestedTitle,
+          description: prev.description || doc.suggestedDescription,
+        }));
+      } else {
+        data.append(kind === 'image' ? 'image' : 'file', file);
+        const { url } = await upload<{ url: string }>(kind === 'image' ? '/api/case-studies/upload-image' : '/api/case-studies/upload-source', data);
+        setForm((prev) => ({ ...prev, [kind === 'image' ? 'imageUrl' : 'sourceFileUrl']: url }));
+      }
+    } catch (err) {
+      setProblem(problemFrom(err));
+    } finally {
+      setUploading(null);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -154,6 +183,9 @@ function CaseStudyForm({ existing, onDone }: { existing: CaseStudy | null; onDon
   return (
     <Card title={existing ? 'Edit case study' : 'New case study'}>
       <form className="form" onSubmit={submit}>
+        <div className="cluster">
+          <FilePick label="Import from PDF or Word" accept=".pdf,.docx" busy={uploading === 'import'} onPick={(f) => send('import', f)} />
+        </div>
         <div className="form-grid">
           <TextField label="Title" value={form.title ?? ''} onChange={set('title')} error={problem?.fields.title} required maxLength={255} />
           <TextField label="Tag" value={form.tag ?? ''} onChange={set('tag')} error={problem?.fields.tag} placeholder="e.g. Strategy" maxLength={255} />
@@ -172,16 +204,39 @@ function CaseStudyForm({ existing, onDone }: { existing: CaseStudy | null; onDon
           <TextField label="Source document link" optional value={form.sourceFileUrl ?? ''} onChange={set('sourceFileUrl')} error={problem?.fields.sourceFileUrl} placeholder="https://" />
           <TextField label="Cover image link" optional value={form.imageUrl ?? ''} onChange={set('imageUrl')} error={problem?.fields.imageUrl} placeholder="https://" />
         </div>
+        <div className="cluster">
+          <FilePick label="Upload source document" accept=".pdf,.docx" busy={uploading === 'source'} onPick={(f) => send('source', f)} />
+          <FilePick label="Upload cover image" accept="image/jpeg,image/png,image/webp,image/gif" busy={uploading === 'image'} onPick={(f) => send('image', f)} />
+        </div>
         <ProblemAlert problem={problem} fieldsShown={['title', 'tag', 'description', 'content', 'sourceFileUrl', 'imageUrl']} />
         <div className="form-actions">
           <Button variant="ghost" onClick={() => onDone(false)} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" busy={busy}>
+          <Button type="submit" variant="primary" busy={busy} disabled={uploading !== null}>
             {existing ? 'Save changes' : 'Publish'}
           </Button>
         </div>
       </form>
     </Card>
+  );
+}
+
+function FilePick({ label, accept, busy, onPick }: { label: string; accept: string; busy: boolean; onPick: (file: File | undefined) => void }) {
+  return (
+    <label className={`btn btn-secondary btn-sm${busy ? ' is-busy' : ''}`} aria-busy={busy || undefined}>
+      <Icon name="upload" size={16} />
+      {busy ? 'Uploading…' : label}
+      <input
+        type="file"
+        className="visually-hidden"
+        accept={accept}
+        disabled={busy}
+        onChange={(e) => {
+          onPick(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+    </label>
   );
 }

@@ -1,0 +1,102 @@
+{
+  "cdnBase": "/api/gallery-cdn",
+  "years": [
+    {
+      "id": "26-27",
+      "label": "2026–27",
+      "events": [
+        {
+          "id": "expo",
+          "title": "Club Expo 2026",
+          "description": "Introducing 180DC VIT Chennai to the next cohort of aspiring consultants.",
+          "images": [
+            "expo-001.webp", "expo-002.webp", "expo-003.webp", "expo-004.webp",
+            "expo-005.webp", "expo-006.webp", "expo-007.webp", "expo-008.webp",
+            "expo-009.webp", "expo-010.webp", "expo-011.webp", "expo-012.webp",
+            "expo-013.webp", "expo-014.webp", "expo-015.webp", "expo-016.webp",
+            "expo-017.webp", "expo-018.webp"
+          ]
+        },
+        {
+          "id": "otr",
+          "title": "Off-theRecord 2026",
+          "description": "Informal team bonding and networking session for members.",
+          "images": [
+            "otr-001.webp", "otr-002.webp", "otr-003.webp", "otr-004.webp",
+            "otr-005.webp", "otr-006.webp", "otr-007.webp"
+          ]
+        },
+        {
+          "id": "ztfc",
+          "title": "Zero to First Commit",
+          "description": "Workshop covering Git, Figma, prompting, AI, security, and MCP for freshers.",
+          "images": [
+            "ztfc-001.webp", "ztfc-002.webp", "ztfc-003.webp", "ztfc-004.webp",
+            "ztfc-005.webp", "ztfc-006.webp", "ztfc-007.webp", "ztfc-008.webp",
+            "ztfc-009.webp", "ztfc-010.webp", "ztfc-011.webp", "ztfc-012.webp",
+            "ztfc-013.webp", "ztfc-014.webp", "ztfc-015.webp", "ztfc-016.webp",
+            "ztfc-017.webp", "ztfc-018.webp", "ztfc-019.webp", "ztfc-020.webp",
+            "ztfc-021.webp", "ztfc-022.webp", "ztfc-023.webp", "ztfc-024.webp",
+            "ztfc-025.webp", "ztfc-026.webp", "ztfc-027.webp", "ztfc-028.webp",
+            "ztfc-029.webp", "ztfc-030.webp", "ztfc-031.webp", "ztfc-032.webp",
+            "ztfc-033.webp", "ztfc-034.webp", "ztfc-035.webp", "ztfc-036.webp",
+            "ztfc-037.webp"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "25-26",
+      "label": "2025–26",
+      "events": [
+        {
+          "id": "expo",
+          "title": "Club Expo 2025",
+          "description": "Introducing 180DC VIT Chennai to the next cohort of aspiring consultants.",
+          "images": [
+            "expo-002.webp", "expo-003.webp", "expo-004.webp", "expo-005.webp",
+            "expo-006.webp", "expo-007.webp", "expo-008.webp", "expo-009.webp",
+            "expo-010.webp", "expo-011.webp", "expo-012.webp"
+          ]
+        },
+        {
+          "id": "team",
+          "title": "Our Team",
+          "description": "The passionate team behind 180 Degrees Consulting VIT Chennai.",
+          "images": [
+            "team-002.webp", "team-003.webp", "team-004.webp", "team-005.webp",
+            "team-006.webp", "team-007.webp"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "24-25",
+      "label": "2024–25",
+      "events": [
+        {
+          "id": "sopact",
+          "title": "SoPact 2024",
+          "description": "180DC VIT Chennai delegates at South India's premier social impact conclave.",
+          "images": ["sopact-001.webp"]
+        },
+        {
+          "id": "vistas",
+          "title": "IIM-B Vistas Summit",
+          "description": "Young Leaders Summit at IIM Bangalore, sharpening high-impact advisory frameworks.",
+          "images": ["vistas-001.webp", "vistas-002.webp"]
+        },
+        {
+          "id": "case",
+          "title": "Case Competition 2024",
+          "description": "Student consulting teams tackling real-world business challenges with industry mentors.",
+          "images": [
+            "case-001.webp", "case-002.webp", "case-003.webp", "case-004.webp",
+            "case-005.webp", "case-006.webp", "case-007.webp", "case-008.webp",
+            "case-009.webp", "case-010.webp", "case-011.webp"
+          ]
+        }
+      ]
+    }
+  ]
+}

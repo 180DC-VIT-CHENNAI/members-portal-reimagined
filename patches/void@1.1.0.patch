@@ -1,0 +1,13 @@
+diff --git a/dist/runtime/routing.mjs b/dist/runtime/routing.mjs
+index 976e60753639868a6f280c4d5c3c32051e6d8077..c84d5e9a9af088e27cfdba58ffef246c68bc7024 100644
+--- a/dist/runtime/routing.mjs
++++ b/dist/runtime/routing.mjs
+@@ -624,6 +624,8 @@ function createAssetFallback(options = {}) {
+ 	const cachePolicy = createAssetCachePolicy(options.assetsDir);
+ 	return async (request, env, response) => {
+ 		if (response.status !== 404 || !env.ASSETS || request.method !== "GET" && request.method !== "HEAD") return response;
++		const apiPath = new URL(request.url).pathname;
++		if (apiPath === "/api" || apiPath.startsWith("/api/")) return response;
+ 		const asset = await env.ASSETS.fetch(new Request(request.url, {
+ 			method: request.method,
+ 			headers: request.headers
