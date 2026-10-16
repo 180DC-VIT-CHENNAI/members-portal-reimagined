@@ -1,4 +1,4 @@
-import { sql } from 'void/db';
+import { sql } from 'drizzle-orm';
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'void/schema-d1';
 
 /**

@@ -1,0 +1,45 @@
+name: Portal CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/portal/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/portal-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/portal/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Placeholder values; no real Google sign-in happens in CI.
+      AUTH_GOOGLE_CLIENT_ID: ci-client.apps.googleusercontent.com
+      AUTH_GOOGLE_CLIENT_SECRET: ci-secret
+    defaults:
+      run:
+        working-directory: apps/portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm typecheck
+      - run: pnpm test:unit
+      - run: pnpm build
+      - run: pnpm test:e2e
