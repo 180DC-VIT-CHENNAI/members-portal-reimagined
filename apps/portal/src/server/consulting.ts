@@ -6,10 +6,12 @@ import { requirePermission } from './guard';
 import { badRequest, idParam, notFound } from './http';
 import { rateLimit } from './rate-limit';
 import { sendEmail } from './email/send';
+import { sender } from './email/sender';
 import { escapeHtml } from './html';
 
 /**
- * Record a decision even if SMTP is unavailable, and report acceptance honestly.
+ * Record a decision even if the reply cannot be sent, and report provider
+ * acceptance honestly. The client's replies go to the person who decided.
  */
 export async function decideRequest(c: Context, decision: 'accepted' | 'rejected', reply: { emailSubject: string; emailBody: string }) {
   const actor = await requirePermission(c, 'consulting.manage');
@@ -27,7 +29,8 @@ export async function decideRequest(c: Context, decision: 'accepted' | 'rejected
   await db.insert(consultingResponses).values({ id: crypto.randomUUID(), requestId: id, ...reply, sentBy: actor.person.id });
   await audit(actor.person.id, `consulting.${decision === 'accepted' ? 'accept' : 'reject'}`, 'consulting_request', id, { subject: reply.emailSubject });
   const delivery = await sendEmail({
-    from: '180DC Consulting <technical@180dcvitc.org>',
+    from: sender('180DC Consulting'),
+    replyTo: actor.person.email,
     to: request.email,
     subject: reply.emailSubject,
     html: '<p>' + escapeHtml(reply.emailBody).replace(/\n/g, '<br>') + '</p>',

@@ -29,7 +29,7 @@ export function SendEmailPage() {
   return (
     <div className="page page-narrow">
       <BackLink to="/admin">Admin</BackLink>
-      <PageHeader overline="Communications" title="Send email" lede="Send a plain-text message. Department access limits recipients to active members in your permitted departments." />
+      <PageHeader overline="Communications" title="Send email" lede="Send a plain-text message; replies come to your email address. Department access limits recipients to active members in your permitted departments." />
       <Card title="New message" description="Separate addresses with commas, spaces or semicolons. More than ten recipients are queued.">
         <form className="form" onSubmit={submit}>
           <TextAreaField label="Recipients" value={to} onChange={(e) => setTo(e.target.value)} required maxLength={20000} rows={3} error={problem?.fields.to} />

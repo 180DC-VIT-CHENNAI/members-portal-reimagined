@@ -18,7 +18,7 @@ function Queue() {
   return (
     <div className="page">
       <BackLink to="/admin">Admin</BackLink>
-      <PageHeader overline="Communications" title="Email queue" lede="Campaign progress and SMTP acceptance. Acceptance does not guarantee inbox delivery." />
+      <PageHeader overline="Communications" title="Email queue" lede="Campaign progress and acceptance by Cloudflare Email Sending. Acceptance does not guarantee inbox delivery." />
       {list.problem ? <ErrorState problem={list.problem} onRetry={list.reload} /> : !list.data ? <LoadingBlock /> : (
         <>
           <Card title="Hourly allowance" actions={<Button onClick={list.reload}>Refresh</Button>}>

@@ -6,11 +6,11 @@ This document describes the system from the domain perspective. Each section cov
 
 These rules apply to the separate `apps/portal` deployment while the legacy deployment remains live.
 
-- Mail uses Spacemail SMTP only. Campaigns send one message per recipient, never BCC batches; the minute cron awaits one claimed campaign.
+- Mail goes through Cloudflare Email Sending (`sendEmail` from `void/email`) from `noreply@180dc.vitcc.org`, the only sender the binding allows (ADR-008). Mail a person writes carries Reply-To set to that person. Campaigns send one message per recipient, never BCC batches; the minute cron awaits one claimed campaign.
 - Hourly capacity is reserved atomically in D1 before sending, shared by direct and queued mail. Failed sends release reservations; a crash may conservatively retain a reservation until the hour changes. The default allowance is 500/hour; campaigns stop at 90% of that allowance and attempt at most 15 recipients per invocation, paced 1.5 seconds apart.
 - Daily counts are reporting, not a 100/day cap. This follows the legacy implementation rather than the obsolete cap description.
-- Recipient rejection, including SMTP 450, is recorded as failed and does not block subsequent recipients. Session failure pauses without advancing the cursor. Five no-progress claims make a campaign eligible for failure on the next drain.
-- Settled recipients are skipped on explicit retry. SMTP acceptance and the delivery record are not transactional, so crash recovery can resend a message; acceptance is not a guarantee of inbox delivery.
+- A recipient-level error (`INVALID_TO`, `UNVERIFIED_DESTINATION`, `MIME_ERROR`, `OUTCOME_UNKNOWN`) is recorded as failed and does not block subsequent recipients. A missing binding, an unready sender or a provider outage pauses without advancing the cursor, and Cloudflare's quota errors also mark the hour as used. Five no-progress claims make a campaign eligible for failure on the next drain.
+- Settled recipients are skipped on explicit retry. An `OUTCOME_UNKNOWN` failure may already have been accepted, so it is never resent automatically; retrying it is a deliberate choice. Acceptance and the delivery record are not transactional, so crash recovery can resend a message; acceptance is not a guarantee of inbox delivery.
 - Campaign inspection and retries are global administrative permissions (`email.view`, `email.manage`). Department-scoped `email.send` restricts recipients server-side to active/on-leave people in those departments. Titles never grant mail access.
 
 ## Authentication and sessions

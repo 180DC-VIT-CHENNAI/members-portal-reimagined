@@ -6,11 +6,11 @@ The separate `apps/portal` deployment uses generated, additive Drizzle migration
 
 | Table | Key | Purpose |
 |---|---|---|
-| `email_queue` | `id` | Campaign template, JSON recipient and attachment-reference arrays, cursor, sent/failed/attempt counters, status, metadata and timestamps. Indexed by status/created time and status/updated time. |
-| `email_deliveries` | `(campaign_id, recipient)` | Per-recipient SMTP acceptance, failure or skip, error, attempt count and timestamps. Retained across campaign retries. |
-| `email_hour_count` | `hour` (UTC ISO hour) | Shared capacity reservations, incremented atomically before SMTP; failed attempts release capacity. |
+| `email_queue` | `id` | Campaign template, JSON recipient and attachment-reference arrays, cursor, sent/failed/attempt counters, status, metadata (`meta.replyTo` is the campaign's Reply-To) and timestamps. Indexed by status/created time and status/updated time. |
+| `email_deliveries` | `(campaign_id, recipient)` | Per-recipient acceptance by Cloudflare Email Sending, failure or skip, error, attempt count and timestamps. Retained across campaign retries. |
+| `email_hour_count` | `hour` (UTC ISO hour) | Shared capacity reservations, incremented atomically before sending; failed attempts release capacity unless Cloudflare may have accepted the message (`OUTCOME_UNKNOWN`). |
 | `daily_email_count` | `date` (UTC date) | Successful-recipient reporting, not a daily cap. |
-| `dev_outbox` | auto-increment `id` | Development captures: recipient, sender, subject, HTML, JSON headers and attachment filenames, optional redirected destination. Production routes never expose it. |
+| `dev_outbox` | auto-increment `id` | Capture-mode test records: recipient, sender, subject, HTML, JSON headers (Reply-To) and attachment filenames. `delivered_to` is no longer written since redirect mode was removed. Production routes never expose it. |
 
 Finished campaigns older than 30 days and orphaned delivery rows are removed by the minute drain. The portal starts without legacy `pending_emails` or imported campaigns.
 

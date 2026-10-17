@@ -183,3 +183,11 @@ External: Spacemail SMTP, Google OAuth, Google Fonts/CDN
 Database development choice and PlanetScale migration gates: [ADR-005](decisions/005-personal-database-evaluation.md). Two D1 databases remain in use; hosted capacity comparison and the personal production plan are not yet verified.
 
 The initial Android member client lives in `apps/mobile` and consumes the same custom-session/work-queue/task APIs over an explicitly configured personal HTTPS origin. Native runtime/storage is on Android; API/data infrastructure remains on Cloudflare. See ADR-006 and the mobile capability matrix for implementation and acceptance boundaries.
+
+## Void portal (`apps/portal`)
+
+The rewrite (ADR-007) is a separate Void app on the `180dc-portal` Worker, deployed by `.github/workflows/portal-ci.yml` when PRs merge to `main`. Static assets are served by Workers Assets; only `/api/*` and `/__void/*` run the Worker.
+
+- Bindings: D1 `DB` (`180dc-portal-db`); R2 `CLUB_FILES`, `CASE_STUDIES` and `GALLERY_CDN`; `SEND_EMAIL` for Cloudflare Email Sending, restricted to `noreply@180dc.vitcc.org` (ADR-008). No KV and no Queue.
+- Cron: `* * * * *` (`crons/email.ts`) drains the D1 email queue: at most 15 recipients per minute, under a self-imposed 500/hour cap.
+- Auth: Better Auth with Google only, invite-gated; permissions are resolved per request in route guards.

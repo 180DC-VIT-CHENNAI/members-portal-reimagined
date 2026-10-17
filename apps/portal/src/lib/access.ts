@@ -23,7 +23,7 @@ export interface AdminTool {
 }
 
 export const ADMIN_TOOLS: readonly AdminTool[] = [
-  { path: '/admin/email-queue', label: 'Email queue', description: 'Campaign progress, SMTP acceptance and retries.', permission: 'email.view', icon: 'inbox' },
+  { path: '/admin/email-queue', label: 'Email queue', description: 'Campaign progress, provider acceptance and retries.', permission: 'email.view', icon: 'inbox' },
   { path: '/admin/send-email', label: 'Send email', description: 'Send a plain-text message to permitted recipients.', permission: 'email.send', icon: 'inbox' },
   { path: '/admin/invite', label: 'Invite', description: 'Add one person by email.', permission: 'people.invite', icon: 'userPlus' },
   { path: '/admin/import', label: 'Import', description: 'Invite many people from a CSV file.', permission: 'people.import', icon: 'upload' },

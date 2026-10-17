@@ -17,6 +17,8 @@ This directory records decisions that future agents should understand before cha
 
 | ADR-006 | `006-android-client-foundation.md` | DECIDED FOR INITIAL CLIENT | Expo Android member client on shared custom sessions/APIs; native storage, device acceptance and complete capability parity remain release work. |
 
+| ADR-008 | `008-portal-cloudflare-email-sending.md` | DECIDED | Portal email goes through Cloudflare Email Sending (`sendEmail` from `void/email`; `SEND_EMAIL` binding restricted to `noreply@180dc.vitcc.org`), replacing the slice 7 Spacemail SMTP client. |
+
 ## How to add a new ADR
 
 Create a new file under `docs/architecture/decisions/` named `NNN-short-title.md` with:

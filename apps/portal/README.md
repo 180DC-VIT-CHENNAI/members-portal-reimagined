@@ -59,13 +59,25 @@ Static files are served by Workers Assets and do not invoke the Worker. Only `/a
 
 ## Email
 
-Spacemail SMTP is the only transport (`mail.spacemail.com:465`, TLS). Configure `SPACEMAIL_SMTP_USER` and `SPACEMAIL_SMTP_PASS` as Worker secrets. `SPACEMAIL_HOURLY_LIMIT` optionally overrides the default 500/hour allowance. `daily_email_count` is reporting only, not a daily cap.
+Mail goes through [Cloudflare Email Sending](https://developers.cloudflare.com/email-service/) using `sendEmail` from `void/email` and the `SEND_EMAIL` binding declared in `void.config.ts` (ADR-008). The sender is `noreply@180dc.vitcc.org`, set in `src/server/email/sender.ts`, and the binding accepts no other address. `180dc.vitcc.org` is onboarded for sending in the deploy account (`cf-bounce` MX, SPF and DKIM records, plus DMARC). The account is on Workers Paid, so any recipient can be reached: 3,000 messages a month are included, then $0.35 per 1,000. Nothing receives mail at the sending address, so mail a person writes (custom mail, consulting replies) sets Reply-To to that person. `email.from` is deliberately unset: it would make Void manage Email Routing as well, which the portal does not use.
 
-The awaited `crons/email.ts` job runs every minute. Campaigns send one message per recipient, pace attempts 1.5 seconds apart, use at most 90% of the hourly allowance, and attempt at most 15 recipients per invocation. Direct mail shares the hourly counter. Each send atomically reserves capacity before SMTP and releases it on failure; a crash can conservatively retain that reservation until the next hour. SMTP acceptance and its tracking write are separate operations: a crash between them can resend a message. Delivery records mean SMTP acceptance, not inbox delivery.
+`EMAIL_HOURLY_LIMIT` optionally overrides the self-imposed 500/hour cap. `daily_email_count` is reporting only, not a daily cap.
 
-For local tests, set `EMAIL_TEST_MODE=capture` to store accepted mail in `dev_outbox` without connecting to SMTP. `redirect` captures every message but sends the first occurrence of each subject to `EMAIL_TEST_RECIPIENT`; it needs SMTP credentials. Test modes are disabled in production builds and when `ENVIRONMENT=production`. The outbox and synchronous drain routes use `.dev.ts` and are excluded from production. Capture-mode simulated domains are `reject.invalid` (550), `tempfail.invalid` (450), and `timeout.invalid` (session timeout).
+The awaited `crons/email.ts` job runs every minute. Campaigns send one message per recipient, pace attempts 1.5 seconds apart, use at most 90% of the hourly allowance, and attempt at most 15 recipients per invocation. Direct mail shares the hourly counter. Each send atomically reserves capacity first and releases it unless the message was, or may have been, accepted; a crash can conservatively retain a reservation until the next hour. Acceptance and its tracking write are separate operations, so a crash between them can resend a message. Delivery records mean acceptance by Cloudflare, not inbox delivery.
 
-The e2e harness awaits the real `/__void/scheduled` trigger with the startup token before reading queue/outbox state; it uses no delivery sleeps or polling. Queue attachments reference keys in `CASE_STUDIES`; missing or unreadable objects are logged and omitted. An SMTP hourly throttle pauses the campaign and saturates the shared hour counter rather than failing the recipient. Capture mode simulates that response for `hourlimit.invalid`.
+`src/server/email/outcome.ts` maps each `sendEmail` result:
+
+| Result | Effect |
+|---|---|
+| accepted | `sent` |
+| `QUOTA_EXCEEDED` (Cloudflare's rate or daily limit) | pause; the rest of the hour is marked as used |
+| `BINDING_MISSING`, `INVALID_FROM`, `UPSTREAM_ERROR` | pause without failing anyone; a campaign fails after five claims without progress |
+| `INVALID_TO`, `UNVERIFIED_DESTINATION`, `MIME_ERROR`, `IDEMPOTENCY_CONFLICT` | that recipient fails |
+| `OUTCOME_UNKNOWN` | that recipient fails but keeps its hourly reservation, since Cloudflare may have accepted it; only an explicit retry resends it |
+
+Under `pnpm dev`, Void captures every message in its dev inbox (the URL and token are printed at startup); nothing is delivered. Real delivery is checked on the deployed Worker. For tests, `EMAIL_TEST_MODE=capture` records accepted mail in `dev_outbox` instead, and answers for the reserved domains `unverified.invalid`, `unknown.invalid`, `upstream.invalid` and `quota.invalid` with the matching error. Capture is disabled in production builds and when `ENVIRONMENT=production`; the `.dev.ts` outbox and drain routes are excluded from production.
+
+The e2e harness awaits the real `/__void/scheduled` trigger with the startup token before reading queue or outbox state; it uses no delivery sleeps or polling. `tests/e2e/email-transport.test.mjs` runs without capture and reads the raw messages from Void's dev inbox. Queue attachments reference keys in `CASE_STUDIES`; missing or unreadable objects are logged and omitted.
 
 ## Access model
 
@@ -103,9 +115,9 @@ To add a permission:
 | `POST /api/imports/people` | `people.import`; `{ csv, dryRun }` with columns `email,full_name,department,position,access_role` |
 | `GET /api/audit` | `audit.view` |
 | `GET /api/departments` | public (100/min per IP): id, name, description, active |
-| `GET /api/admin/email-queue`, `GET /api/admin/email-queue/:id/deliveries` | `email.view` (global campaign visibility). Includes shared hourly usage and SMTP acceptance records. |
+| `GET /api/admin/email-queue`, `GET /api/admin/email-queue/:id/deliveries` | `email.view` (global campaign visibility). Includes shared hourly usage and acceptance records. |
 | `POST /api/admin/email-queue/:id/retry-failed` | `email.manage`; 409 while sending, 400 with no failures, 404 if missing. Settled recipients are not resent. |
-| `POST /api/send-email` | `email.send`; `{to,subject,body}`, with comma/space/semicolon-separated email addresses in `to`. Department-scoped senders can only reach active/on-leave people in permitted departments. Up to 10 recipients send directly; larger sets and quota-paused direct sends queue and return `campaignId`. |
+| `POST /api/send-email` | `email.send`; `{to,subject,body}`, with comma/space/semicolon-separated email addresses in `to`. Department-scoped senders can only reach active/on-leave people in permitted departments. Up to 10 recipients send directly; larger sets and quota-paused direct sends queue and return `campaignId`. Replies go to the sender (Reply-To). |
 | `GET /api/dev/outbox`, `DELETE /api/dev/outbox`, `POST /api/dev/drain-email` | Development test mode only; production routes are absent. Drain is capture-only and awaited. |
 | `GET /api/departments/:id/members` | `departments.members.view` for that department. People whose home department it is, active or on leave, with their current-term positions. |
 | `GET /api/departments/:id/instructions` | `departments.instructions.view` for that department |
@@ -115,7 +127,7 @@ To add a permission:
 | `POST /api/departments/:id/projects`, `PUT /api/departments/:id/projects/:projectId/status` | `departments.projects.manage` for that department. This tracker is separate from club-wide projects. |
 | `GET /api/content/case-studies`, `GET /api/content/partners`, `GET /api/content/team-members` | public (rate limited 100/min per IP). Team lists active/on-leave people with an open current-term tenure; public fields only. |
 | `POST /api/consulting-request` | public (1 per hour per IP) |
-| `GET /api/consulting-requests`, `DELETE /api/consulting-requests/:id`, `POST /api/consulting-requests/:id/accept`, `POST /api/consulting-requests/:id/reject` | `consulting.manage`. Decisions and replies are recorded even if SMTP is unavailable; `emailSent` reports actual SMTP acceptance. |
+| `GET /api/consulting-requests`, `DELETE /api/consulting-requests/:id`, `POST /api/consulting-requests/:id/accept`, `POST /api/consulting-requests/:id/reject` | `consulting.manage`. Decisions and replies are recorded even if mail cannot be sent; `emailSent` reports acceptance by Cloudflare. Client replies go to the deciding admin (Reply-To). |
 | `GET /api/case-studies`, `POST /api/case-studies`, `PUT /api/case-studies/:id` | `content.publish` |
 | `DELETE /api/case-studies/:id` | `content.manage` |
 | `POST /api/partners`, `PATCH /api/partners/:id`, `DELETE /api/partners/:id` | `content.manage` |

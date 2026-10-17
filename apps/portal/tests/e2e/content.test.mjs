@@ -132,7 +132,8 @@ describe('consulting requests', () => {
     const accepted = await admin.post(`/api/consulting-requests/${first.id}/accept`, { emailSubject: 'Welcome aboard', emailBody: 'We would love to help.' });
     assert.equal(accepted.status, 200, accepted.text);
     assert.equal(accepted.json.status, 'accepted');
-    assert.equal(accepted.json.emailSent, false);
+    // No capture mode here: Void's dev inbox accepts the reply, as Cloudflare would.
+    assert.equal(accepted.json.emailSent, true);
     assert.equal((await admin.post(`/api/consulting-requests/${first.id}/reject`, { emailSubject: 'No', emailBody: 'No' })).status, 400);
     const rejected = await admin.post('/api/consulting-requests/req_second/reject', { emailSubject: 'Sorry', emailBody: 'Not this term.' });
     assert.equal(rejected.status, 200, rejected.text);
