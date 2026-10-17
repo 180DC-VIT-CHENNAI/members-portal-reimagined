@@ -33,6 +33,9 @@ import { TodayPage } from './pages/TodayPage.tsx';
 import { ProjectFormPage } from './pages/ProjectFormPage.tsx';
 import { ProjectPage } from './pages/ProjectPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
+import { TeamInstanceFormPage } from './pages/TeamInstanceFormPage.tsx';
+import { TeamInstancePage } from './pages/TeamInstancePage.tsx';
+import { TeamInstancesPage } from './pages/TeamInstancesPage.tsx';
 import { NotFoundPage } from './pages/NotFoundPage.tsx';
 import { PersonPage } from './pages/PersonPage.tsx';
 import { CaseStudiesPage } from './pages/public/CaseStudiesPage.tsx';
@@ -138,6 +141,14 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements', tab: false },
     { to: '/meets', label: 'Meets', icon: 'calendar', show: can(permissions, 'meets.view'), active: path === '/meets' },
     { to: '/projects', label: 'Projects', icon: 'clipboard', show: true, active: path.startsWith('/projects') },
+    {
+      to: '/teams',
+      label: 'Team instances',
+      icon: 'trophy',
+      show: can(permissions, 'team_instances.view') || can(permissions, 'team_instances.manage'),
+      active: path.startsWith('/teams'),
+      tab: false,
+    },
     {
       to: `/departments/${me.person.departmentId ?? ''}`,
       label: 'My department',
@@ -249,6 +260,12 @@ function route(path: string, home: string, next: string | null) {
   if (projectEdit) return <ProjectFormPage key={projectEdit.id} id={projectEdit.id} />;
   const project = matchPath('/projects/:id', path);
   if (project) return <ProjectPage key={project.id} id={project.id} />;
+  if (path === '/teams') return <TeamInstancesPage />;
+  if (path === '/teams/new') return <TeamInstanceFormPage />;
+  const instanceEdit = matchPath('/teams/:id/edit', path);
+  if (instanceEdit) return <TeamInstanceFormPage key={instanceEdit.id} id={instanceEdit.id} />;
+  const instance = matchPath('/teams/:id', path);
+  if (instance) return <TeamInstancePage key={instance.id} id={instance.id} />;
   if (path === '/files') return <FilesPage />;
   const department = matchPath('/departments/:id', path);
   if (department) return <DepartmentPage key={department.id} id={department.id} />;

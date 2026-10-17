@@ -30,6 +30,8 @@ export const PERMISSIONS = {
   'projects.manage': 'Create, edit, complete, reopen and delete projects',
   'projects.members.manage': "Add and remove people on a department's projects",
   'projects.tasks.manage': "Create, edit, reassign, complete and delete tasks on a department's projects",
+  'team_instances.view': 'See team instances: their teams, people, progression and activity',
+  'team_instances.manage': "Run a department's team instances: settings, groups, teams, outside people and staffing",
   'email.view': 'Inspect the global email queue and delivery records',
   'email.manage': 'Retry failed email campaigns',
   'email.send': 'Send email globally or to permitted departments',

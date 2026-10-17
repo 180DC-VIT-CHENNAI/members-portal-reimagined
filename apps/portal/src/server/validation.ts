@@ -1,6 +1,9 @@
 import * as v from 'valibot';
 
 export const id = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(64));
+/** A required single line: trimmed, inner whitespace collapsed, 1..max characters. */
+export const singleLine = (max: number) =>
+  v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(max), v.transform((value) => value.replace(/\s+/g, ' ')));
 export const optionalText = (max: number) => v.optional(v.nullable(v.pipe(v.string(), v.trim(), v.maxLength(max))));
 export const emailAddress = v.pipe(v.string(), v.trim(), v.toLowerCase(), v.email(), v.maxLength(254));
 export const fullName = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(120));

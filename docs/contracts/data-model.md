@@ -30,6 +30,23 @@ Slice 5b adds `task_comments` in `20261017081155_cheerful_mach_iv.sql`:
 
 Task history uses the existing `audit_log` integer id for cursor ordering. Comment writes and their audit entries share a D1 batch transaction. Deleting a task or project deletes its comments; retained audit history is not exposed once the parent is inaccessible.
 
+## Void portal team instances schema
+
+Defined in `apps/portal/db/schema/team-instances.ts` (migration `20261017211432_fancy_arclight.sql`, which also grants the `team_instances.*` permissions). These replace the legacy `team_instances`, `instance_*` and `instance_team_*` tables; the legacy `level_count` column is gone because the level rows are the ladder.
+
+| Table | Key | Purpose |
+|---|---|---|
+| `team_instances` | `id` | Name, description, `group_label` (default `Company`), creator and creation time. |
+| `instance_departments` | `(instance_id, department_id)` | The departments that run an instance; they decide who can see, run and configure it. |
+| `instance_levels` | `(instance_id, position)` | The level ladder, positions from 1, each named. |
+| `instance_groups` | `id` | Groups of teams, named by the instance's group label: name, organization, description, sort order. |
+| `instance_teams` | `id` | Name, description, optional group (set null when the group is deleted), optional `min_members` and `max_members`, sort order, `current_level`, `status` (`active`, `eliminated`, `winner`). |
+| `instance_team_members` | `(team_id, person_id)` | People on a team; one person may be on several teams of an instance. |
+| `instance_externals` | `id`, unique `(instance_id, email)` | The instance's register of outside people: name, optional lowercased email, organization. |
+| `instance_team_externals` | `(team_id, external_id)` | Outside people on a team. |
+
+Deleting an instance deletes everything in it in one batch; its audit entries stay. Level bounds, sizes and status are validated by the API, and the size cap is enforced inside the writes that could exceed it.
+
 ## Void portal email schema
 
 The separate `apps/portal` deployment uses generated, additive Drizzle migrations, not `ensureTables`. Email tables are defined in `apps/portal/db/schema/email.ts`; migration `20261016192957_lazy_captain_flint.sql` also grants global email administration to `admin` and department-scoped sending to `director`.

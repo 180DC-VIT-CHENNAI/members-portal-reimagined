@@ -6,3 +6,4 @@ export * from './schema/workspace';
 export * from './schema/email';
 export * from './schema/meets';
 export * from './schema/projects';
+export * from './schema/team-instances';

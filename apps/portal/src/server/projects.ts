@@ -8,10 +8,7 @@ import { can } from './permissions';
 import { loadActivePrincipals, loadPersonPrincipal, type Person, type Principal } from './principal';
 import { projectCreatedHtml, projectMemberHtml } from './project-email';
 import { compareTasks, type ProjectAccess, projectAccess } from './project-rules';
-import { calendarDate, id, optionalText } from './validation';
-
-const singleLine = (max: number) =>
-  v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(max), v.transform((value) => value.replace(/\s+/g, ' ')));
+import { calendarDate, id, optionalText, singleLine } from './validation';
 
 export const projectFields = {
   name: singleLine(255),
