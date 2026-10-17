@@ -8,6 +8,7 @@ export type QueueAttachment = {
   readonly filename: string;
   readonly key: string;
   readonly contentType?: string;
+  readonly required?: boolean;
 };
 
 /** One campaign, sent as one message per recipient; never a BCC batch. */

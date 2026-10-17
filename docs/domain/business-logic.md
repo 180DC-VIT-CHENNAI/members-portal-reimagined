@@ -1,5 +1,15 @@
 # Business Logic — 180DC VIT Chennai Platform
 
+## Void portal newsletter rules
+
+- Subscribers confirm email ownership; they are not personnel and do not need Google. Pending or unsubscribed addresses never enter a real broadcast. Subscribe responses do not reveal whether an address is active.
+- Confirmation credentials are hashed, expire after 48 hours and are claimed once atomically. Resubscribing requires confirming again and retains the original unsubscribe capability.
+- An unsubscribe link requires a button or email-provider one-click POST. Entering an address requests a personal link, not removal of someone else's subscription. An explicit unrelated browser Origin is rejected.
+- Newsletter editors use Google and current global grants. Admins edit/send/manage, directors edit/send, members edit, advisory members none. Drafts are owned or explicitly shared; tests only go to self. Positions never grant access.
+- Issue numbering and concurrent broadcast claims are atomic. Queued mail is an immutable snapshot; editing/deletion is blocked during sending. Completed real broadcasts with at least one accepted recipient publish the issue; tests and zero-acceptance sends do not. No public draft route exists.
+- Every broadcast delivery rechecks the current subscriber and skips inactive or erased addresses. Footer links and RFC 8058 headers are personalized one recipient at a time. Accepted mail is not proof of inbox delivery or exactly-once delivery.
+- Uploaded sources up to 20 MiB are downloadable; sources up to 3 MiB may also be attached. Missing required attachments fail without sending an incomplete issue. Subscription erasure and its audit commit together without retaining the email in audit details.
+
 This document describes the system from the domain perspective. Each section covers a capability, its actors, rules, and state changes.
 
 ## Void portal email rules

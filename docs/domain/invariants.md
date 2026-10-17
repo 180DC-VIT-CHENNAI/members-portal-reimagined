@@ -1,5 +1,13 @@
 # Invariants — 180DC VIT Chennai Platform
 
+## Void portal newsletter invariants
+
+- **PORTAL-NEWS-01:** A pending/unsubscribed/missing subscriber never receives a real newsletter or event broadcast. Audience state is rechecked before each send; each message carries only that recipient's unsubscribe capability.
+- **PORTAL-NEWS-02:** Only one concurrent confirmation claims a live hash, and only one broadcast claims an unsent issue. No self-test or zero-acceptance broadcast publishes an issue; public detail never exposes drafts.
+- **PORTAL-NEWS-03:** Editing, testing and sending all enforce current Google permissions and issue ownership/shared status. A test cannot become a broadcast or select an arbitrary target. Erasing a subscriber and its audit are transactional.
+
+Covered by `apps/portal/tests/e2e/newsletter-subscriptions.test.mjs` and `newsletter-issues.test.mjs`.
+
 Invariants are properties that must never become false while the system is running.
 
 ## Void portal email invariants

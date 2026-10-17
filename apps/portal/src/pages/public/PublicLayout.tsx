@@ -10,6 +10,7 @@ const NAV = [
   { to: '/case-studies', label: 'Case studies' },
   { to: '/partners', label: 'Clients' },
   { to: '/gallery', label: 'Gallery' },
+  { to: '/newsletter', label: 'Newsletter' },
 ];
 
 /** Shell for the public site: no session, no members chrome. */
@@ -88,6 +89,7 @@ function SiteFooter() {
         </div>
         <nav className="stack-sm" aria-label="Footer">
           <h3>Quick links</h3>
+          <Link className="text-link" to="/newsletter">Newsletter</Link>
           <Link className="text-link" to="/team">
             Team
           </Link>

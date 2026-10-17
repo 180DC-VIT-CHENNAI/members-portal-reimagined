@@ -19,6 +19,8 @@ This directory records decisions that future agents should understand before cha
 
 | ADR-008 | `008-portal-cloudflare-email-sending.md` | DECIDED | Portal email goes through Cloudflare Email Sending (`sendEmail` from `void/email`; `SEND_EMAIL` binding restricted to `noreply@180dc.vitcc.org`), replacing the slice 7 Spacemail SMTP client. |
 
+| ADR-009 | `009-portal-newsletter.md` | DECIDED FOR FRESH PORTAL | Newsletter content/subscribers share the Void D1 and transactional queue; Google permissioned editing, email double opt-in, portal archive and safe test/broadcast separation. |
+
 ## How to add a new ADR
 
 Create a new file under `docs/architecture/decisions/` named `NNN-short-title.md` with:

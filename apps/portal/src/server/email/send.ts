@@ -14,6 +14,7 @@ export type OutgoingEmail = {
   /** Where replies go; the sending address receives nothing. */
   readonly replyTo?: string;
   readonly attachments?: readonly Attachment[];
+  readonly headers?: Readonly<Record<string, string>>;
 };
 
 export type SendResult =
@@ -62,6 +63,7 @@ export async function sendEmail(message: OutgoingEmail, campaign = false): Promi
       html: message.html,
       text: htmlToPlainText(message.html),
       ...(message.replyTo ? { replyTo: message.replyTo } : {}),
+      ...(message.headers ? { headers: { ...message.headers } } : {}),
       ...(message.attachments?.length ? { attachments: [...message.attachments] } : {}),
     }));
     switch (outcome.status) {
@@ -73,7 +75,7 @@ export async function sendEmail(message: OutgoingEmail, campaign = false): Promi
             fromAddress: message.from,
             subject: message.subject,
             html: message.html,
-            headers: message.replyTo ? { 'Reply-To': message.replyTo } : {},
+            headers: { ...message.headers, ...(message.replyTo ? { 'Reply-To': message.replyTo } : {}) },
             attachments: message.attachments?.map((a) => a.filename) ?? [],
           });
         }
