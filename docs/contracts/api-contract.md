@@ -12,6 +12,13 @@ The new `apps/portal` deployment uses Google sessions and named permissions, not
 - Consulting accept/reject routes record the decision even when mail cannot send; `emailSent` is true only after Cloudflare accepts the reply, which carries Reply-To set to the deciding admin.
 - `/api/dev/outbox` (GET/DELETE) and `/api/dev/drain-email` (POST) are absent from production builds and require a development test mode. Drain is capture-only and awaited.
 
+## Void portal meets contract (separate deployment)
+
+- `GET /api/meets`: `meets.view`. Club-wide and inter-department meets, plus department meets within the caller's `meets.department.view` scope, earliest first. Each item: `{id, kind, title, description, meetLink, scheduledAt, createdAt, createdBy, authorName, departments: [{id, name}]}`. `meetLink` is null once the meet is more than 24 hours past.
+- `POST /api/meets`: `{kind: 'club' | 'department' | 'inter_department', title (1–255), scheduledAt (ISO timestamp), meetLink? (http/https URL, ≤500), description? (≤2000), departmentIds?}`. Club-wide meets take no departments and need global `meets.club.manage`; department meets take exactly one department and need `meets.department.manage` for it; inter-department meets take one or more departments and need global `meets.inter_department.manage`. Unknown departments are 400. Returns 201 `{id, campaignId, queued}` after queueing the announcement. 60 writes/hour per client.
+- `DELETE /api/meets/:id`: the manage permission for that meet; 404 when missing. Queued announcements are not cancelled.
+- `POST /api/meets/:id/notify`: the manage permission for that meet; queues a new campaign and returns `{campaignId, queued}`. 10/hour per client, counted before the meet is loaded.
+
 ## Conventions
 
 - **Auth:**

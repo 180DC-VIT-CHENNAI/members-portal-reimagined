@@ -1,5 +1,14 @@
 # Data Model — 180DC VIT Chennai Platform
 
+## Void portal meets schema
+
+Defined in `apps/portal/db/schema/meets.ts` (migration `20261017072508_vengeful_spencer_smythe.sql`, which also grants the `meets.*` permissions).
+
+| Table | Key | Purpose |
+|---|---|---|
+| `meets` | `id` | `kind` (`club`, `department`, `inter_department`), title, optional description and link, `scheduled_at` (ISO UTC), creator and creation time. Indexed by kind and schedule. |
+| `meet_departments` | `(meet_id, department_id)` | The department of a department meet (exactly one) or the departments of an inter-department meet (one or more). Rows go with their meet. |
+
 ## Void portal email schema
 
 The separate `apps/portal` deployment uses generated, additive Drizzle migrations, not `ensureTables`. Email tables are defined in `apps/portal/db/schema/email.ts`; migration `20261016192957_lazy_captain_flint.sql` also grants global email administration to `admin` and department-scoped sending to `director`.

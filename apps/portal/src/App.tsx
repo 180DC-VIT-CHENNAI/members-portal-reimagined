@@ -27,6 +27,7 @@ import { DepartmentPage } from './pages/DepartmentPage.tsx';
 import { DirectoryPage } from './pages/DirectoryPage.tsx';
 import { FilesPage } from './pages/FilesPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
+import { MeetsPage } from './pages/MeetsPage.tsx';
 import { NotFoundPage } from './pages/NotFoundPage.tsx';
 import { PersonPage } from './pages/PersonPage.tsx';
 import { CaseStudiesPage } from './pages/public/CaseStudiesPage.tsx';
@@ -124,10 +125,13 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
   const page = route(path, home, query.get('next'));
   const tools = visibleAdminTools(permissions);
 
-  const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean }> = [
+  // `tab: false` keeps an entry out of the phone tab bar, which fits six.
+  const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean; tab?: boolean }> = [
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people' },
-    { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}` },
+    // On phones the header avatar links to the profile.
+    { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}`, tab: false },
     { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements' },
+    { to: '/meets', label: 'Meets', icon: 'calendar', show: can(permissions, 'meets.view'), active: path === '/meets' },
     {
       to: `/departments/${me.person.departmentId ?? ''}`,
       label: 'My department',
@@ -205,7 +209,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
         </main>
         <nav className="tabbar" aria-label="Main">
           {nav
-            .filter((item) => item.show)
+            .filter((item) => item.show && item.tab !== false)
             .map((item) => (
               <Link key={item.to} to={item.to} className="tab" aria-current={item.active ? 'page' : undefined}>
                 <Icon name={item.icon} size={20} />
@@ -223,6 +227,7 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/login') return <Redirect to={next && next.startsWith('/') && !next.startsWith('//') ? next : home} />;
   if (path === '/people') return <DirectoryPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
+  if (path === '/meets') return <MeetsPage />;
   if (path === '/files') return <FilesPage />;
   const department = matchPath('/departments/:id', path);
   if (department) return <DepartmentPage key={department.id} id={department.id} />;

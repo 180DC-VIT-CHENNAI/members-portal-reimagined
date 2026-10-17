@@ -48,7 +48,8 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Files (slice 2): PR #23, with deployment fixes in #24–#25, merged and deployed.
 - Department workspace (slice 4): PR #26, merged and deployed. The live public `/api/departments` returns all six seeded departments.
 - Email infrastructure (slice 7): PR #28, merged and deployed; its Spacemail SMTP transport was then replaced with Cloudflare Email Sending at the user's request (ADR-008).
-- Next implementation order: meets (3), projects/tasks (5), team instances (6), newsletter (8), letter studio (9), then cutover (10). Meets must enqueue real notifications through slice 7.
+- Meets (slice 3): one `meets` table with `meet_departments` replaces the three legacy tables; announcements are real queued campaigns through slice 7.
+- Next implementation order: projects/tasks (5), team instances (6), newsletter (8), letter studio (9), then cutover (10).
 
 ## Rules carried over (see docs/domain/invariants.md)
 
