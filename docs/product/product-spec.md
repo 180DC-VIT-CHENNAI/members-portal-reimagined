@@ -178,3 +178,7 @@ Project tasks support task-specific due dates and low/normal/high/urgent priorit
 The web task-details editor now edits owner, due date and priority in a single save, including unassignment. It detects stale edits and offers reload. Web and Android Today consume the updated owner-scoped task record; native lead editing is still pending.
 
 Task rows now expose a scoped, paginated history view for recorded creation, completion/reopening, owner and scheduling changes, showing actors and before/after values. Earlier unrecorded actions are not reconstructed. Native history, comments and broader collaboration remain pending.
+
+## Void portal (`apps/portal`)
+
+The Void rewrite (ADR-007) runs as a separate deployment until the cutover. Shipped so far: Google-only invite sign-in and the personnel system (directory, profiles, lifecycle, positions and terms, access roles, CSV import and export, audit log); the public site and content administration; club files and the gallery; department workspaces; the email queue sending through Cloudflare Email Sending (ADR-008); and Meets, where club-wide, department and inter-department meetings are scheduled with emailed announcements and each link disappears a day after the meet.

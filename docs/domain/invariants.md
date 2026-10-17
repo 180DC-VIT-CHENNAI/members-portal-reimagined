@@ -10,6 +10,11 @@ Invariants are properties that must never become false while the system is runni
 - **PORTAL-EMAIL-04:** Recorded acceptance by Cloudflare settles a recipient across retries; it is not proof of inbox delivery or exactly-once delivery. Acceptance and D1 persistence are separate operations.
 - **PORTAL-EMAIL-05:** The `SEND_EMAIL` binding allows only `noreply@180dc.vitcc.org` (`allowed_sender_addresses` in `apps/portal/void.config.ts`), so no code path can send as another address on the domain.
 
+## Void portal meets invariants
+
+- **PORTAL-MEETS-01:** No portal read returns a meet link once the meet is more than 24 hours past (`julianday(scheduled_at) >= julianday('now', '-1 day')` keeps it), and re-announcements of such meets carry no link. Enforced in `apps/portal/src/server/meets.ts`; covered by `tests/e2e/meets.test.mjs`.
+- **PORTAL-MEETS-02:** A meet announcement reaches only active and on-leave people: everyone except advisory members without a department for club-wide meets, otherwise exactly the people whose home department is one of the meet's departments.
+
 ## Auth invariants
 
 ### INV-AUTH-04: Explicit browser write origins are authorised

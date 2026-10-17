@@ -13,6 +13,16 @@ These rules apply to the separate `apps/portal` deployment while the legacy depl
 - Settled recipients are skipped on explicit retry. An `OUTCOME_UNKNOWN` failure may already have been accepted, so it is never resent automatically; retrying it is a deliberate choice. Acceptance and the delivery record are not transactional, so crash recovery can resend a message; acceptance is not a guarantee of inbox delivery.
 - Campaign inspection and retries are global administrative permissions (`email.view`, `email.manage`). Department-scoped `email.send` restricts recipients server-side to active/on-leave people in those departments. Titles never grant mail access.
 
+## Void portal meets rules
+
+These rules apply to the separate `apps/portal` deployment.
+
+- A meet is club-wide, for one department, or inter-department (one or more departments). Meets are stored in `meets`, and their departments in `meet_departments`.
+- Directors schedule club-wide and inter-department meets for any departments, and department meets for their own department; admins manage every meet; members and advisory members only view. Titles never grant these rights.
+- Everyone with access sees club-wide and inter-department meets. Department meets are visible to that department (admins see all).
+- Scheduling queues one announcement campaign, one message per recipient, from `180DC Admin` with Reply-To set to the scheduler. The audience is active and on-leave people: everyone for club-wide meets except advisory members without a department, otherwise exactly the people whose home department is selected. Re-announcing queues a new campaign; removing a meet does not cancel queued ones.
+- A meet's link is hidden from every read once the meet is more than 24 hours past, and re-announcements of such meets omit it. The stored link is unchanged.
+
 ## Authentication and sessions
 
 On `reimagined`, token sign-in uses `POST /api/auth/session` in all environments. It exchanges the existing registry credential for a new device session with fixed seven-day expiry. A registry-only onboarding account may create its user row only while the source token remains active. Every device request loads current identity/role and verifies its session and source registry state; role changes take effect without reissuing the session. Source-token revoke/delete/rotate invalidates its device sessions. Individual session revocation is account-owner scoped. Member removal batches registry and identity deletion to prevent concurrent exchange from recreating the removed member.

@@ -4,3 +4,4 @@ export * from './schema/people';
 export * from './schema/content';
 export * from './schema/workspace';
 export * from './schema/email';
+export * from './schema/meets';

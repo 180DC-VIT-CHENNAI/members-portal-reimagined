@@ -13,7 +13,7 @@ Void's version-matched docs live in `node_modules/void/docs/`. The `void` agent 
 | `routes/api/**` | One file per URL. Named exports `GET`/`POST`/`PATCH`/`PUT` (`[id]` becomes a parameter). |
 | `src/server/guard.ts` | `requirePrincipal` / `requirePermission`: resolve the Better Auth session to the signed-in person and their permissions (once per request). There is deliberately no `middleware/` directory: global middleware makes Void run the Worker before every static asset, so the SPA would stop being served free from Workers Assets. |
 | `auth.ts` | Better Auth config: Google only, invite-only sign-up, no sessions without access. |
-| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit; `content` covers case studies, partners, consulting requests, announcements, maintenance mode and rate limits; `workspace` covers department documents, instructions and department projects. Files are not in D1: they live in R2 buckets in the deploy account (`CLUB_FILES`, `CASE_STUDIES`, `GALLERY_CDN`, bound by name in `void.config.ts`; commit `void.lock.json` whenever bindings change), with writes mirrored to Backblaze B2 and reads falling back to it when `B2_*` secrets are set (`src/server/buckets.ts`). |
+| `db/schema/*.ts` | Drizzle tables. `org` covers departments, terms and positions; `access` covers roles; `people` covers people, grants, tenures and audit; `content` covers case studies, partners, consulting requests, announcements, maintenance mode and rate limits; `workspace` covers department documents, instructions and department projects; `email` covers the email queue, deliveries, counters and the dev outbox; `meets` covers meets and the departments they are for. Files are not in D1: they live in R2 buckets in the deploy account (`CLUB_FILES`, `CASE_STUDIES`, `GALLERY_CDN`, bound by name in `void.config.ts`; commit `void.lock.json` whenever bindings change), with writes mirrored to Backblaze B2 and reads falling back to it when `B2_*` secrets are set (`src/server/buckets.ts`). |
 | `db/migrations/` | Generated SQL (`void db generate`) plus seeded reference data. Applied by Void on deploy and at dev start. |
 | `src/server/` | Server logic shared by routes: permissions, guards, lifecycle, CSV, sign-in rules, audit. |
 | `src/` | The React SPA. |
@@ -131,6 +131,10 @@ To add a permission:
 | `GET /api/case-studies`, `POST /api/case-studies`, `PUT /api/case-studies/:id` | `content.publish` |
 | `DELETE /api/case-studies/:id` | `content.manage` |
 | `POST /api/partners`, `PATCH /api/partners/:id`, `DELETE /api/partners/:id` | `content.manage` |
+| `GET /api/meets` | `meets.view`. Club-wide and inter-department meets, plus department meets within the caller's `meets.department.view` scope; earliest first, each with its departments. `meetLink` is null once a meet is more than a day past. |
+| `POST /api/meets` | `{kind, title, scheduledAt, meetLink?, description?, departmentIds?}`. `club` needs global `meets.club.manage` and no departments; `department` needs `meets.department.manage` for exactly one department; `inter_department` needs global `meets.inter_department.manage` and one or more departments. Queues an announcement to the audience (active and on-leave people; club-wide mail leaves out advisory members without a department) and returns 201 `{id, campaignId, queued}`. 60/hour. |
+| `DELETE /api/meets/:id` | the manage permission for that meet; 404 if missing. Announcements already queued still go out. 60/hour. |
+| `POST /api/meets/:id/notify` | the manage permission for that meet; queues a new announcement, without the link once the meet is a day past. 10/hour per client. |
 | `GET /api/announcements` | signed in |
 | `POST /api/announcements`, `DELETE /api/announcements/:id` | `announcements.manage` |
 | `GET /api/admin/maintenance` | public |
