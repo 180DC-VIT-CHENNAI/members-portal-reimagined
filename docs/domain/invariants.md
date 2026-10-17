@@ -25,6 +25,12 @@ Invariants are properties that must never become false while the system is runni
 - **PORTAL-PROJECTS-05:** Task comments/history require current project access and correct task parentage. History exposes only allow-listed values, never comment text, raw descriptions or raw audit details. Cursor ordering remains stable for entries with identical timestamps.
 - **PORTAL-TODAY-01:** Today never returns an assigned task without current project visibility, or a completed task/project. Its inter-department meeting previews match the reader's department-view scope. Attention counts are omitted without the relevant permission.
 
+## Void portal team instances invariants
+
+- **PORTAL-TEAMS-01:** A department-scoped `team_instances.manage` grant runs an instance only when it covers one of its departments, and changes its settings, departments or ladder, or deletes it, only when it covers all of them. Enforced in `apps/portal/src/server/team-instance-rules.ts`; covered by `team-instance-rules.test.ts` and `tests/e2e/team-instances.test.mjs`.
+- **PORTAL-TEAMS-02:** A team never holds more people than its maximum (members and outside people together) or anyone twice: placements and moves check the cap inside their insert, and a new cap is checked inside its update. A refused or failed move leaves the person on their original team. Covered by simultaneous-placement and D1-trigger failure tests in `tests/e2e/team-instances.test.mjs`.
+- **PORTAL-TEAMS-03:** Outside people's emails reach only those who run the instance: other viewers get null emails, and the activity feed never contains emails.
+
 ## Auth invariants
 
 ### INV-AUTH-04: Explicit browser write origins are authorised

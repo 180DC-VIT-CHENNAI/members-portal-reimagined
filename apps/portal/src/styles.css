@@ -2553,3 +2553,120 @@ code,
   border-radius: var(--radius-md);
   background: var(--border);
 }
+
+/* Team instances: team cards on the staffing board, and level columns for progression.
+   Prefixed so they never collide with the public team page's .team-card. */
+.instance-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 12px;
+}
+
+.instance-team,
+.level-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-soft);
+}
+
+.instance-team-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.instance-team h3,
+.level-column h3 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.placement-list,
+.level-teams {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A placement keeps its two icon actions on its row; long names wrap instead. */
+.instance-team .placement-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.instance-team .placement-list .person-cell {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.instance-team .placement-list .cluster {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.instance-team-add {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.instance-team-add .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.instance-team-add .btn {
+  min-height: 44px;
+}
+
+.level-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.level-team {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-subtle);
+}
+
+.level-team-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.level-team[data-status='eliminated'] .level-team-name {
+  color: var(--text-secondary);
+}
+
+.level-editor {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.level-editor legend {
+  margin-bottom: 4px;
+  padding: 0;
+  font-weight: 600;
+}

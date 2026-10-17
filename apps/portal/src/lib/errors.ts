@@ -80,6 +80,20 @@ const MESSAGES: Record<string, string> = {
   comment_not_found: 'That comment no longer exists.',
   request_reused: 'This request was already used for another comment. Edit your draft and post again.',
   invalid_cursor: 'That page link is invalid. Refresh to load the latest entries.',
+  instance_not_found: "This team instance doesn't exist, or you can't see it.",
+  team_not_found: 'That team no longer exists. Refresh to see the latest teams.',
+  group_not_found: 'That group no longer exists.',
+  external_not_found: 'That outside person is no longer in the register.',
+  unknown_group: 'Choose a group from this instance.',
+  min_above_max: "The minimum can't be more than the maximum.",
+  cap_below_members: 'More people are on this team than that maximum. Take some off first.',
+  level_out_of_range: "That level isn't on this instance's ladder.",
+  team_full: 'This team is full. Raise its maximum or choose another team.',
+  already_on_team: 'They are already on that team.',
+  not_on_team: 'They are no longer on that team. Refresh to see the latest teams.',
+  person_not_eligible: 'Only active members who can see this instance can be placed on its teams.',
+  outside_your_departments: 'You can only place people from your own departments.',
+  external_email_taken: 'Someone in the register already has that email.',
 };
 
 export function friendlyIssue(message: string): string {

@@ -57,6 +57,13 @@
       "when": 1792224715025,
       "tag": "20261017081155_cheerful_mach_iv",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792271672457,
+      "tag": "20261017211432_fancy_arclight",
+      "breakpoints": true
     }
   ]
 }

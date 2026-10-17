@@ -43,6 +43,18 @@ These rules apply to the separate `apps/portal` deployment.
 - `/today` is the default signed-in home. It shows open assigned tasks on active projects the person can still see, relevant meetings in the next seven days, three latest announcements and permission-scoped invite/email attention counts. Assignment alone never preserves project access. Refresh runs on demand and when the page becomes visible again.
 - The project page opens Comments/History lazily per task. A failed access refresh clears the private feed. Comment count excludes removed comments. The Today done box uses the same assignee/manager status endpoint as the project page.
 
+
+## Void portal team instances rules
+
+These rules apply to the separate `apps/portal` deployment.
+
+- A team instance is the staffing and progression board for one competition, event or exercise. It belongs to one or more departments and has a ladder of named levels (one by default), optional groups of teams named by the instance's group label (such as "Client" or "Company"), teams, and a register of outside people such as client staff.
+- Anyone holding `team_instances.view` or `team_instances.manage` over one of its departments sees an instance: its teams, who is on them, progression, the roster and the latest 30 changes. Members and directors see every instance; advisory members see none.
+- Running an instance (groups, teams, outside people, placements, team levels and status) needs `team_instances.manage` over any one of its departments. Changing its settings, departments or ladder, or deleting it, needs that grant over all of them, so one department cannot reshape or remove a joint instance. Admins hold the grant globally and directors for their own department. Titles never grant these rights.
+- Only people with portal access that includes viewing the instance can be placed, so never advisory members, invited people or alumni. A department-scoped manager places only people from their own departments. Outside people belong to one instance; an email, when given, is unique within it ignoring case and is shown only to the people who run the instance.
+- Someone may be on several teams of the same instance. A team's minimum only flags it as short. Its maximum counts members and outside people together, refuses placements once reached even when they arrive at the same moment, and cannot be lowered below who is on the team. A move adds someone to the new team and removes them from the old one together.
+- Staff move teams through the ladder one level at a time and can eliminate, crown or reinstate them; nothing advances automatically. Shortening the ladder moves teams above it to the new last level. Deleting a group keeps its teams, deleting a team keeps its outside people in the register, and deleting an instance removes everything in it except its audit trail.
+- Every change is audited under the instance (`team_instance.*`) with names and values but never emails, so all viewers can read the activity feed.
 ## Authentication and sessions
 
 On `reimagined`, token sign-in uses `POST /api/auth/session` in all environments. It exchanges the existing registry credential for a new device session with fixed seven-day expiry. A registry-only onboarding account may create its user row only while the source token remains active. Every device request loads current identity/role and verifies its session and source registry state; role changes take effect without reissuing the session. Source-token revoke/delete/rotate invalidates its device sessions. Individual session revocation is account-owner scoped. Member removal batches registry and identity deletion to prevent concurrent exchange from recreating the removed member.
