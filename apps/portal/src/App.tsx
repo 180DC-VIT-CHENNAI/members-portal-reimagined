@@ -28,6 +28,10 @@ import { DirectoryPage } from './pages/DirectoryPage.tsx';
 import { FilesPage } from './pages/FilesPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { MeetsPage } from './pages/MeetsPage.tsx';
+import { MorePage } from './pages/MorePage.tsx';
+import { ProjectFormPage } from './pages/ProjectFormPage.tsx';
+import { ProjectPage } from './pages/ProjectPage.tsx';
+import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { NotFoundPage } from './pages/NotFoundPage.tsx';
 import { PersonPage } from './pages/PersonPage.tsx';
 import { CaseStudiesPage } from './pages/public/CaseStudiesPage.tsx';
@@ -122,16 +126,16 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
   );
 
   const home = can(permissions, 'people.view') ? '/people' : `/people/${me.person.id}`;
-  const page = route(path, home, query.get('next'));
   const tools = visibleAdminTools(permissions);
 
-  // `tab: false` keeps an entry out of the phone tab bar, which fits six.
+  // Phones show the first four entries as tabs and the rest under More; `tab: false` sends an entry straight to More.
   const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean; tab?: boolean }> = [
-    { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people' },
+    { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people', tab: false },
     // On phones the header avatar links to the profile.
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}`, tab: false },
     { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements' },
     { to: '/meets', label: 'Meets', icon: 'calendar', show: can(permissions, 'meets.view'), active: path === '/meets' },
+    { to: '/projects', label: 'Projects', icon: 'clipboard', show: true, active: path.startsWith('/projects') },
     {
       to: `/departments/${me.person.departmentId ?? ''}`,
       label: 'My department',
@@ -142,6 +146,10 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     { to: '/files', label: 'Files', icon: 'fileText', show: can(permissions, 'files.view'), active: path === '/files' },
     { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') },
   ];
+  const visible = nav.filter((item) => item.show);
+  const tabs = visible.filter((item) => item.tab !== false).slice(0, 4);
+  const overflow = visible.filter((item) => !tabs.includes(item));
+  const page = path === '/more' ? <MorePage items={overflow} /> : route(path, home, query.get('next'));
 
   return (
     <SessionProvider value={session}>
@@ -208,14 +216,18 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
           {page}
         </main>
         <nav className="tabbar" aria-label="Main">
-          {nav
-            .filter((item) => item.show && item.tab !== false)
-            .map((item) => (
-              <Link key={item.to} to={item.to} className="tab" aria-current={item.active ? 'page' : undefined}>
-                <Icon name={item.icon} size={20} />
-                {item.label}
-              </Link>
-            ))}
+          {tabs.map((item) => (
+            <Link key={item.to} to={item.to} className="tab" aria-current={item.active ? 'page' : undefined}>
+              <Icon name={item.icon} size={20} />
+              {item.label}
+            </Link>
+          ))}
+          {overflow.length > 0 && (
+            <Link to="/more" className="tab" aria-current={path === '/more' || overflow.some((item) => item.active) ? 'page' : undefined}>
+              <Icon name="more" size={20} />
+              More
+            </Link>
+          )}
         </nav>
       </div>
     </SessionProvider>
@@ -228,6 +240,12 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/people') return <DirectoryPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/meets') return <MeetsPage />;
+  if (path === '/projects') return <ProjectsPage />;
+  if (path === '/projects/new') return <ProjectFormPage />;
+  const projectEdit = matchPath('/projects/:id/edit', path);
+  if (projectEdit) return <ProjectFormPage key={projectEdit.id} id={projectEdit.id} />;
+  const project = matchPath('/projects/:id', path);
+  if (project) return <ProjectPage key={project.id} id={project.id} />;
   if (path === '/files') return <FilesPage />;
   const department = matchPath('/departments/:id', path);
   if (department) return <DepartmentPage key={department.id} id={department.id} />;

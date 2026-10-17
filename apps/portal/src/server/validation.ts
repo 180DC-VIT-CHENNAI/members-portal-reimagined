@@ -5,6 +5,12 @@ export const optionalText = (max: number) => v.optional(v.nullable(v.pipe(v.stri
 export const emailAddress = v.pipe(v.string(), v.trim(), v.toLowerCase(), v.email(), v.maxLength(254));
 export const fullName = v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(120));
 export const isoDate = v.pipe(v.string(), v.isoDate());
+/** A real calendar day as YYYY-MM-DD; isoDate alone accepts 2026-02-30. */
+export const calendarDate = v.pipe(
+  v.string(),
+  v.isoDate(),
+  v.check((value) => new Date(`${value}T00:00:00Z`).toISOString().startsWith(value), 'invalid_date'),
+);
 const httpsUrl = (host: RegExp) =>
   v.optional(
     v.nullable(

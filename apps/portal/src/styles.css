@@ -302,12 +302,69 @@ code,
   font-weight: 600;
 }
 
-.check {
-  display: inline-flex;
+/* A task: a 44px tap target for its done box, then the task. */
+.task {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 4px;
+  align-items: start;
+}
+
+.task-toggle {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-top: -11px;
   cursor: pointer;
+}
+
+.task-toggle:has(input:disabled) {
+  cursor: default;
+}
+
+.task-toggle input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  cursor: inherit;
+  accent-color: var(--accent);
+}
+
+.task-done {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+
+/* The phone "More" list. */
+.more-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.more-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.more-list li:last-child .more-link {
+  border-bottom: 0;
+}
+
+.clamp-4 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
 /* A list row: content on the left, a control pushed to the right. */

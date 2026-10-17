@@ -19,6 +19,20 @@ The new `apps/portal` deployment uses Google sessions and named permissions, not
 - `DELETE /api/meets/:id`: the manage permission for that meet; 404 when missing. Queued announcements are not cancelled.
 - `POST /api/meets/:id/notify`: the manage permission for that meet; queues a new campaign and returns `{campaignId, queued}`. 10/hour per client, counted before the meet is loaded.
 
+## Void portal projects contract (separate deployment)
+
+- `GET /api/projects`: signed in. Every project the caller can see, newest first: project fields plus `termLabel`, `departments: [{id, name}]`, `myRole` (their role if named on it), `tasks: {total, completed}` and `access: {view, manage, manageMembers, manageTasks}`.
+- `POST /api/projects`: `{name (1–255), client? (≤255), description? (≤5000), termId?, deadline? (YYYY-MM-DD, a real date), departmentIds (1–20)}`. Needs `projects.manage` covering every department. Unknown departments or terms are 400. Queues a `New project: …` email to the departments' leads and returns 201 `{id, notified}`. 60 writes/hour per client.
+- `GET /api/projects/:id`: the project with `termLabel`, `departments`, `members: [{id, personId, role, fullName, photoKey, status}]`, `tasks` (open first, then by due date, priority and age; each with `version`, `assigneeName` and `canUpdateStatus`) and `access`. Hidden or missing projects are 404.
+- `PATCH /api/projects/:id`: any of the creation fields. Needs `projects.manage` over all current departments, and over the new ones when `departmentIds` changes. `DELETE /api/projects/:id` and `PUT /api/projects/:id/status` (`{status: 'active' | 'completed'}`) need the same; setting the current status again returns `changed: false`.
+- `GET /api/projects/:id/people`: for people who manage the project's members or tasks. Everyone with access: `{id, fullName, departmentId, member, canSee}`.
+- `POST /api/projects/:id/members` `{personId, role (1–80)}`: `projects.members.manage` covering one of the project's departments. The person must have access (400 `person_without_access`); 409 `already_member`. Queues an `Added to … as …` email unless they added themselves. `DELETE /api/projects/:id/members/:memberId` removes the entry (404 when missing); their tasks stay assigned.
+- `POST /api/projects/:id/tasks` `{title (1–255), description? (≤2000), assigneeId?, dueDate?, priority? ('low' | 'normal' | 'high' | 'urgent', default 'normal')}`: `projects.tasks.manage` covering one of the project's departments. The assignee must have access and be able to see the project (400 `assignee_cannot_see_project`). 201 `{id}`. 300 task writes/hour per client.
+- `PATCH /api/projects/:id/tasks/:taskId` `{version, …fields}`: task managers. Returns `{version, changed}`; a stale `version` is 409 `task_changed`. `DELETE` removes the task.
+- `PUT /api/projects/:id/tasks/:taskId/status` `{status: 'pending' | 'completed'}`: the assignee or a task manager; sets or clears `completedAt`; 409 `task_changed` if the task changed after it was read.
+- `POST /api/projects/:id/complete-tasks`: task managers; completes every open task and returns `{completed}`.
+- `GET /api/content/projects`: public, 100/minute. Completed projects only: `{id, name, client, description, completedAt}`.
+
 ## Conventions
 
 - **Auth:**

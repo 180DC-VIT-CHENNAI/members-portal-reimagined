@@ -1,6 +1,7 @@
 import { people, personGrants, rolePermissions } from '@schema';
-import { and, db, eq, inArray } from 'void/db';
-import { type PermissionSet, resolvePermissions } from './permissions';
+import type { SQL } from 'drizzle-orm';
+import { and, asc, db, eq, inArray } from 'void/db';
+import { type Grant, type PermissionSet, resolvePermissions } from './permissions';
 
 /** Statuses that keep access. Anything else ends access on the next request. */
 export const ACTIVE_STATUSES = ['active', 'on_leave'] as const;
@@ -13,11 +14,20 @@ export interface Principal {
 }
 
 /** The person behind a Better Auth user, or null when they have no access. */
-export async function loadPrincipal(authUserId: string): Promise<Principal | null> {
+export function loadPrincipal(authUserId: string): Promise<Principal | null> {
+  return principalWhere(eq(people.authUserId, authUserId));
+}
+
+/** A person and their permissions by person id, or null when they have no access. */
+export function loadPersonPrincipal(personId: string): Promise<Principal | null> {
+  return principalWhere(eq(people.id, personId));
+}
+
+async function principalWhere(match: SQL): Promise<Principal | null> {
   const [person] = await db
     .select()
     .from(people)
-    .where(and(eq(people.authUserId, authUserId), inArray(people.status, [...ACTIVE_STATUSES])))
+    .where(and(match, inArray(people.status, [...ACTIVE_STATUSES])))
     .limit(1);
   if (!person) return null;
 
@@ -42,3 +52,20 @@ export function serializePermissions(set: PermissionSet): Record<string, 'global
   return out;
 }
 
+
+/** Everyone with access and their permissions, by name (for audiences and pickers). */
+export async function loadActivePrincipals(): Promise<Principal[]> {
+  const [persons, roleGrants, ownGrants] = await Promise.all([
+    db.select().from(people).where(inArray(people.status, [...ACTIVE_STATUSES])).orderBy(asc(people.fullName)),
+    db.select({ roleId: rolePermissions.roleId, permission: rolePermissions.permission, scope: rolePermissions.scope }).from(rolePermissions),
+    db.select({ personId: personGrants.personId, permission: personGrants.permission, departmentId: personGrants.departmentId }).from(personGrants),
+  ]);
+  const byRole = new Map<string, typeof roleGrants>();
+  for (const grant of roleGrants) byRole.set(grant.roleId, [...(byRole.get(grant.roleId) ?? []), grant]);
+  const byPerson = new Map<string, Grant[]>();
+  for (const grant of ownGrants) byPerson.set(grant.personId, [...(byPerson.get(grant.personId) ?? []), grant]);
+  return persons.map((person) => ({
+    person,
+    permissions: resolvePermissions(byRole.get(person.accessRoleId) ?? [], byPerson.get(person.id) ?? [], person.departmentId),
+  }));
+}
