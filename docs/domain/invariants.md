@@ -15,6 +15,12 @@ Invariants are properties that must never become false while the system is runni
 - **PORTAL-MEETS-01:** No portal read returns a meet link once the meet is more than 24 hours past (`julianday(scheduled_at) >= julianday('now', '-1 day')` keeps it), and re-announcements of such meets carry no link. Enforced in `apps/portal/src/server/meets.ts`; covered by `tests/e2e/meets.test.mjs`.
 - **PORTAL-MEETS-02:** A meet announcement reaches only active and on-leave people: everyone except advisory members without a department for club-wide meets, otherwise exactly the people whose home department is one of the meet's departments.
 
+## Void portal projects invariants
+
+- **PORTAL-PROJECTS-01:** Being named on a project only grants seeing it. Managing a project always comes from a grant covering its departments: `projects.manage` must cover all of them; `projects.members.manage` and `projects.tasks.manage` any of them. Enforced in `apps/portal/src/server/project-rules.ts`; covered by `project-rules.test.ts` and `tests/e2e/projects.test.mjs`.
+- **PORTAL-PROJECTS-02:** A task is only assigned to someone who can see its project, and every task edit or status change applies to the exact version it was based on (otherwise 409, nothing written).
+- **PORTAL-PROJECTS-03:** Only completed projects are public, and only their id, name, client, description and completion time.
+
 ## Auth invariants
 
 ### INV-AUTH-04: Explicit browser write origins are authorised

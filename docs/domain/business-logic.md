@@ -23,6 +23,18 @@ These rules apply to the separate `apps/portal` deployment.
 - Scheduling queues one announcement campaign, one message per recipient, from `180DC Admin` with Reply-To set to the scheduler. The audience is active and on-leave people: everyone for club-wide meets except advisory members without a department, otherwise exactly the people whose home department is selected. Re-announcing queues a new campaign; removing a meet does not cancel queued ones.
 - A meet's link is hidden from every read once the meet is more than 24 hours past, and re-announcements of such meets omit it. The stored link is unchanged.
 
+## Void portal projects rules
+
+These rules apply to the separate `apps/portal` deployment.
+
+- A project belongs to one or more departments, may be tied to a term, and is `active` or `completed`. Completed projects are public: their name, client and description are listed on the landing page.
+- People see a project when a `projects.view` grant (or a project management grant) covers one of its departments, or when they are named on it. Everyone else gets 404 for it.
+- Editing, completing, reopening or deleting a project needs `projects.manage` covering all of its departments. Admins hold it globally; a department-scoped grant reaches only projects wholly in that department. Naming people and managing tasks need `projects.members.manage` or `projects.tasks.manage` covering any one of its departments; directors hold these for their own department. Being named on a project never grants management, whatever the role on it.
+- Creating a project emails its departments' leads, meaning the people in those departments who manage tasks there (not the creator). Naming someone on a project emails them.
+- Tasks can only be assigned to people with access who can see the project. The assignee or a task manager marks a task done or open again; task managers create, edit, reassign and remove tasks. Every change raises the task's version, and an edit or status change based on an older version is refused with 409.
+- Taking someone off a project leaves their tasks assigned to them; they stop seeing the project unless their department lets them.
+- Task changes go to the audit log (`task.create`, `task.status`, `task.update`, `task.delete`) with the project and the before and after values, for the task history in slice 5b.
+
 ## Authentication and sessions
 
 On `reimagined`, token sign-in uses `POST /api/auth/session` in all environments. It exchanges the existing registry credential for a new device session with fixed seven-day expiry. A registry-only onboarding account may create its user row only while the source token remains active. Every device request loads current identity/role and verifies its session and source registry state; role changes take effect without reissuing the session. Source-token revoke/delete/rotate invalidates its device sessions. Individual session revocation is account-owner scoped. Member removal batches registry and identity deletion to prevent concurrent exchange from recreating the removed member.

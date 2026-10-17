@@ -9,6 +9,19 @@ Defined in `apps/portal/db/schema/meets.ts` (migration `20261017072508_vengeful_
 | `meets` | `id` | `kind` (`club`, `department`, `inter_department`), title, optional description and link, `scheduled_at` (ISO UTC), creator and creation time. Indexed by kind and schedule. |
 | `meet_departments` | `(meet_id, department_id)` | The department of a department meet (exactly one) or the departments of an inter-department meet (one or more). Rows go with their meet. |
 
+## Void portal projects schema
+
+Defined in `apps/portal/db/schema/projects.ts` (migration `20261017074729_lucky_shinko_yamashiro.sql`, which also grants the `projects.*` permissions). These replace the legacy `projects`, `project_departments`, `project_roles` and `project_tasks` tables; the separate `department_projects` tracker is unchanged.
+
+| Table | Key | Purpose |
+|---|---|---|
+| `projects` | `id` | Name, client, description, optional term (cleared if the term is deleted), deadline (YYYY-MM-DD), `status` (`active`, `completed`), `completed_at`, creator. |
+| `project_departments` | `(project_id, department_id)` | The departments a project belongs to. |
+| `project_members` | `id`, unique `(project_id, person_id)` | People named on a project and their role on it. |
+| `project_tasks` | `id` | Title, description, assignee (a person), `status` (`pending`, `completed`), due date, `priority` (`low`, `normal`, `high`, `urgent`), `version` (raised on every change), completion and update times. |
+
+A project's departments, members and tasks are deleted with it.
+
 ## Void portal email schema
 
 The separate `apps/portal` deployment uses generated, additive Drizzle migrations, not `ensureTables`. Email tables are defined in `apps/portal/db/schema/email.ts`; migration `20261016192957_lazy_captain_flint.sql` also grants global email administration to `admin` and department-scoped sending to `director`.

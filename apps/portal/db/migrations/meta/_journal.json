@@ -43,6 +43,13 @@
       "when": 1792221908614,
       "tag": "20261017072508_vengeful_spencer_smythe",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792223249116,
+      "tag": "20261017074729_lucky_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

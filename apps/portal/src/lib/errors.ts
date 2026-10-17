@@ -67,6 +67,16 @@ const MESSAGES: Record<string, string> = {
   unsupported_image_type: 'Use a JPEG, PNG, GIF or WebP image.',
   document_required: 'Choose a PDF or Word document.',
   document_empty: "No text could be read from that document.",
+  invalid_meet_link: 'Use a meeting link that starts with https:// or http://.',
+  invalid_date: 'Enter a real date.',
+  project_not_found: "This project doesn't exist, or you can't see it.",
+  task_not_found: 'That task no longer exists.',
+  member_not_found: 'That person is no longer on this project.',
+  task_changed: 'Someone changed this task while you were editing. Close and reopen it to see their changes, or save again to keep yours.',
+  assignee_cannot_see_project: "That person can't see this project. Name them on the project first.",
+  already_member: 'That person is already on this project.',
+  person_without_access: "That person doesn't have access to the portal.",
+  nothing_to_change: 'Nothing changed.',
 };
 
 export function friendlyIssue(message: string): string {

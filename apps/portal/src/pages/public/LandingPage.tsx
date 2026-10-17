@@ -9,6 +9,8 @@ export function LandingPage() {
   useTitle('Social impact consulting');
   const caseStudies = useLoad(() => api('/api/content/case-studies'), []);
   const partners = useLoad(() => api('/api/content/partners'), []);
+  const projects = useLoad(() => api('/api/content/projects'), []);
+  const completed = (projects.data ?? []).slice(0, 6);
   const latest = (caseStudies.data ?? []).slice(-3).reverse();
   return (
     <>
@@ -90,6 +92,21 @@ export function LandingPage() {
         <SectionHeader eyebrow="04 - Clients" title="Our clients" />
         <PartnerGrid partners={partners.data ?? []} />
       </section>
+
+      {completed.length > 0 && (
+        <section className="site-section stack">
+          <SectionHeader eyebrow="05 - Projects" title="Completed projects" />
+          <div className="case-grid">
+            {completed.map((project) => (
+              <article key={project.id} className="case-card">
+                {project.client && <span className="badge">{project.client}</span>}
+                <h3>{project.name}</h3>
+                {project.description && <p className="muted clamp-4">{project.description}</p>}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="site-section">
         <div className="cta-band">

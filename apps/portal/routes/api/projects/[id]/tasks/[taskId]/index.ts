@@ -1,0 +1,65 @@
+import { projectTasks } from '@schema';
+import * as v from 'valibot';
+import { defineHandler } from 'void';
+import { and, db, eq } from 'void/db';
+import { audit } from '../../../../../../src/server/audit';
+import { routeParam } from '../../../../../../src/server/departments';
+import { requirePrincipal } from '../../../../../../src/server/guard';
+import { badRequest, conflict, idParam, notFound } from '../../../../../../src/server/http';
+import { canSeeProject, projectFor, requireRight, taskFields, taskOr404 } from '../../../../../../src/server/projects';
+import { rateLimit } from '../../../../../../src/server/rate-limit';
+
+const taskEdit = v.object({
+  version: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  title: v.optional(taskFields.title),
+  description: taskFields.description,
+  assigneeId: taskFields.assigneeId,
+  dueDate: taskFields.dueDate,
+  priority: taskFields.priority,
+});
+
+/** Edit a task. `version` must be the task's current version, otherwise 409 and nothing changes. */
+export const PATCH = defineHandler.withValidator({ body: taskEdit })(async (c, { body }) => {
+  const actor = await requirePrincipal(c);
+  const loaded = await projectFor(actor, idParam(c));
+  requireRight(loaded, 'manageTasks');
+  const task = await taskOr404(loaded.project.id, routeParam(c, 'taskId'));
+  const next = {
+    title: body.title ?? task.title,
+    description: body.description === undefined ? task.description : body.description || null,
+    assigneeId: body.assigneeId === undefined ? task.assigneeId : body.assigneeId || null,
+    dueDate: body.dueDate === undefined ? task.dueDate : body.dueDate,
+    priority: body.priority ?? task.priority,
+  };
+  const changed = (Object.keys(next) as (keyof typeof next)[]).filter((key) => next[key] !== task[key]);
+  if (!changed.length) return { version: task.version, changed: false };
+  if (body.version !== task.version) conflict('task_changed');
+  await rateLimit(c, 'tasks_write', 300, 3600);
+  if (changed.includes('assigneeId') && next.assigneeId && !(await canSeeProject(next.assigneeId, loaded))) {
+    badRequest('assignee_cannot_see_project');
+  }
+  const [updated] = await db
+    .update(projectTasks)
+    .set({ ...next, version: task.version + 1, updatedAt: new Date().toISOString() })
+    .where(and(eq(projectTasks.id, task.id), eq(projectTasks.version, task.version)))
+    .returning({ version: projectTasks.version });
+  if (!updated) conflict('task_changed');
+  const pick = (source: typeof next) => Object.fromEntries(changed.map((key) => [key, source[key]]));
+  await audit(actor.person.id, 'task.update', 'task', task.id, { projectId: loaded.project.id, from: pick(task), to: pick(next) });
+  return { version: updated.version, changed: true };
+});
+
+/** Remove a task. */
+export const DELETE = defineHandler(async (c) => {
+  const actor = await requirePrincipal(c);
+  const loaded = await projectFor(actor, idParam(c));
+  requireRight(loaded, 'manageTasks');
+  const taskId = routeParam(c, 'taskId');
+  const [removed] = await db
+    .delete(projectTasks)
+    .where(and(eq(projectTasks.id, taskId), eq(projectTasks.projectId, loaded.project.id)))
+    .returning({ title: projectTasks.title });
+  if (!removed) notFound('task_not_found');
+  await audit(actor.person.id, 'task.delete', 'task', taskId, { projectId: loaded.project.id, title: removed.title });
+  return { id: taskId };
+});
