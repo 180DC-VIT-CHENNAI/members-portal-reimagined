@@ -6,9 +6,9 @@
 
 `apps/portal` is a separate blank-data deployment on `180dc-portal`, delivered by `.github/workflows/portal-ci.yml` after PRs merge to origin main. The old Worker and custom domain remain in place until the final cutover. Do not copy old database rows or R2 objects for this launch.
 
-Email is scheduled by `apps/portal/crons/email.ts` every minute. Set `SPACEMAIL_SMTP_USER` and `SPACEMAIL_SMTP_PASS` as portal Worker secrets before expecting SMTP delivery; `SPACEMAIL_HOURLY_LIMIT` optionally overrides 500/hour. Without credentials, direct sends pause and custom mail is queued rather than reported as sent. The queue remains pending and eventually fails after five no-progress claims.
+Email is scheduled by `apps/portal/crons/email.ts` every minute and sent through Cloudflare Email Sending using the `SEND_EMAIL` binding in `apps/portal/void.config.ts`; no secrets are involved (ADR-008). `180dc.vitcc.org` is onboarded as a sending subdomain on the `vitcc.org` zone (`cf email-sending subdomains list --zone vitcc.org`), and the account's Workers Paid plan allows any recipient (3,000 messages a month included, then $0.35 per 1,000). `EMAIL_HOURLY_LIMIT` optionally overrides the self-imposed 500/hour cap. Because `email.from` is unset, `void deploy` keeps the authored binding and changes no email routing or DNS. If the subdomain ever stops being enabled for sending, sends return `INVALID_FROM`, which pauses direct mail and campaigns instead of failing recipients.
 
-`EMAIL_TEST_MODE` and `EMAIL_TEST_RECIPIENT` are local-test settings only; never provision them on the deployed Worker. Production builds disable capture/redirect regardless of those values, and `.dev.ts` outbox/drain routes are excluded. `ENVIRONMENT=production` also disables test modes in development runtime tests. See [portal setup and email operations](../../apps/portal/README.md#email).
+`EMAIL_TEST_MODE` is a local-test setting only; never provision it on the deployed Worker. Production builds disable capture regardless of its value, and the `.dev.ts` outbox/drain routes are excluded. `ENVIRONMENT=production` also disables capture in development runtime tests. See [portal setup and email operations](../../apps/portal/README.md#email).
 
 ### Personal deployment on reimagined
 

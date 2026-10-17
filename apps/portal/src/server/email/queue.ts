@@ -1,7 +1,7 @@
 import { emailDeliveries, emailQueue } from '@schema';
 import { and, asc, db, eq, inArray, or, sql } from 'void/db';
+import type { Attachment } from 'void/email';
 import { campaignBudget } from './budget.ts';
-import type { EmailAttachment } from './mime.ts';
 import { emailQuota, emailTestMode, sendEmail } from './send.ts';
 
 type NewCampaign = Pick<typeof emailQueue.$inferInsert, 'kind' | 'fromAddress' | 'subject' | 'html' | 'recipients'> &
@@ -67,7 +67,7 @@ export async function drainEmailQueue(
 
   const deliveries = await db.select().from(emailDeliveries).where(eq(emailDeliveries.campaignId, campaign.id));
   const settled = new Set(deliveries.filter((d) => d.status !== 'failed').map((d) => d.recipient));
-  const attachments: EmailAttachment[] = [];
+  const attachments: Attachment[] = [];
   for (const reference of campaign.attachments ?? []) {
     try {
       const object = await attachmentsBucket.get(reference.key);
@@ -75,14 +75,14 @@ export async function drainEmailQueue(
         console.warn(JSON.stringify({ event: 'email_attachment_missing', campaignId: campaign.id, key: reference.key }));
         continue;
       }
-      let binary = '';
-      for (const byte of new Uint8Array(await object.arrayBuffer())) binary += String.fromCharCode(byte);
-      attachments.push({ filename: reference.filename, content: btoa(binary), contentType: reference.contentType });
+      attachments.push({ filename: reference.filename, content: await object.arrayBuffer(), contentType: reference.contentType });
     } catch (error) {
       if (!(error instanceof Error)) throw error;
       console.warn(JSON.stringify({ event: 'email_attachment_unreadable', campaignId: campaign.id, key: reference.key }));
     }
   }
+  const meta = campaign.meta ?? {};
+  const replyTo = typeof meta.replyTo === 'string' ? meta.replyTo : undefined;
   let cursor = campaign.cursor;
   let sent = 0;
   let failed = 0;
@@ -94,7 +94,7 @@ export async function drainEmailQueue(
     if (attempts && !emailTestMode()) await delay(1500);
     attempts++;
     const result = await sendEmail({
-      from: campaign.fromAddress, to: recipient, subject: campaign.subject, html: campaign.html, attachments,
+      from: campaign.fromAddress, to: recipient, subject: campaign.subject, html: campaign.html, replyTo, attachments,
     }, true);
     if (result.status === 'paused') { lastError = result.error; break; }
     const status = result.status;

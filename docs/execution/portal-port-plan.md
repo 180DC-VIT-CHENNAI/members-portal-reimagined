@@ -29,7 +29,7 @@ The old Worker's 165 routes and 52 tables map onto the slices like this.
 4. **Department workspace.** `department_documents`, `department_instructions`, `department_projects`, and the department overview.
 5. **Projects and tasks.** `projects`, `project_roles`, `project_departments`, `project_tasks`, `task_comments`, and task history and scheduling. It also includes the dashboard and the work queue.
 6. **Team instances.** The `instance_*` and `team_instances` tables.
-7. **Email infrastructure.** `email_queue`, `email_deliveries`, `email_hour_count`, `daily_email_count`, `rate_limits`, and the `* * * * *` cron sending over Spacemail SMTP (at most 15 per minute and 500 per hour). It includes `/api/admin/email-queue*`, `/api/send-email` and the dev outbox.
+7. **Email infrastructure.** `email_queue`, `email_deliveries`, `email_hour_count`, `daily_email_count`, `rate_limits`, and the `* * * * *` cron sending through Cloudflare Email Sending (`sendEmail` from `void/email`, ADR-008; at most 15 per minute and 500 per hour). It includes `/api/admin/email-queue*`, `/api/send-email` and the dev outbox.
 8. **Newsletter.** Uses the separate `NEWSLETTER_DB`: `newsletters`, `newsletter_subscribers` with double opt-in, editor OTP sessions and authorized emails, subscriber and unsubscribe pages, and the newsletter editor.
 9. **Letter studio.** `letter_*`, `letters_sent`, and `/api/letter-studio/*`.
 10. **Blank-data launch and cutover.** This slice:
@@ -47,7 +47,8 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Public site/content (slice 1): PR #22, merged.
 - Files (slice 2): PR #23, with deployment fixes in #24–#25, merged and deployed.
 - Department workspace (slice 4): PR #26, merged and deployed. The live public `/api/departments` returns all six seeded departments.
-- Next implementation order: email infrastructure (7), meets (3), projects/tasks (5), team instances (6), newsletter (8), letter studio (9), then cutover (10). Meets must enqueue real notifications through slice 7.
+- Email infrastructure (slice 7): PR #28, merged and deployed; its Spacemail SMTP transport was then replaced with Cloudflare Email Sending at the user's request (ADR-008).
+- Next implementation order: meets (3), projects/tasks (5), team instances (6), newsletter (8), letter studio (9), then cutover (10). Meets must enqueue real notifications through slice 7.
 
 ## Rules carried over (see docs/domain/invariants.md)
 

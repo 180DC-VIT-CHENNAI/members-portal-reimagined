@@ -6,10 +6,10 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 The new `apps/portal` deployment uses Google sessions and named permissions, not the legacy power-level/token conventions below. Its complete route table is maintained in [the portal README](../../apps/portal/README.md#api).
 
-- `GET /api/admin/email-queue` and `GET /api/admin/email-queue/:id/deliveries`: `email.view`; campaign counts, recent campaigns, shared hourly usage and recipient SMTP acceptance records.
+- `GET /api/admin/email-queue` and `GET /api/admin/email-queue/:id/deliveries`: `email.view`; campaign counts, recent campaigns, shared hourly usage and per-recipient acceptance records (acceptance by Cloudflare Email Sending, not inbox delivery).
 - `POST /api/admin/email-queue/:id/retry-failed`: `email.manage`; 404 missing campaign, 409 while pending/processing, 400 if nothing failed. Successful recipients remain settled.
-- `POST /api/send-email`: `email.send`; `{to, subject, body}`. `to` is a string of comma/semicolon/whitespace-separated addresses (20,000 characters maximum); subject is 1–255 characters and plain-text body is 1–4,000. Addresses are deduplicated. Department grants restrict recipients to active/on-leave people in permitted departments. Up to 10 recipients send directly; larger sets or quota-paused direct sends queue. Response: `{sent, failed, queued, total, campaignId}`.
-- Consulting accept/reject routes record the decision even when mail cannot send; `emailSent` is true only after SMTP acceptance.
+- `POST /api/send-email`: `email.send`; `{to, subject, body}`. `to` is a string of comma/semicolon/whitespace-separated addresses (20,000 characters maximum); subject is 1–255 characters and plain-text body is 1–4,000. Addresses are deduplicated. Department grants restrict recipients to active/on-leave people in permitted departments. Up to 10 recipients send directly; larger sets or quota-paused direct sends queue. Response: `{sent, failed, queued, total, campaignId}`. Mail carries Reply-To set to the sender.
+- Consulting accept/reject routes record the decision even when mail cannot send; `emailSent` is true only after Cloudflare accepts the reply, which carries Reply-To set to the deciding admin.
 - `/api/dev/outbox` (GET/DELETE) and `/api/dev/drain-email` (POST) are absent from production builds and require a development test mode. Drain is capture-only and awaited.
 
 ## Conventions

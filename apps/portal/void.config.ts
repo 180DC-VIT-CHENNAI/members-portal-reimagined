@@ -1,4 +1,5 @@
 import { defineConfig } from 'void/config';
+import { SENDER_ADDRESS } from './src/server/email/sender';
 
 // The Void rewrite deploys to its own Worker. Production (180dc.vitcc.org)
 // stays on the current Worker until the cutover PR moves the domain here.
@@ -26,5 +27,10 @@ export default defineConfig({
       { binding: 'CASE_STUDIES', bucket_name: 'members-portal-reimagined-case-studies' },
       { binding: 'GALLERY_CDN', bucket_name: 'members-portal-reimagined-gallery' },
     ],
+    // Cloudflare Email Sending, used through sendEmail() from 'void/email'.
+    // 180dc.vitcc.org is onboarded for sending in this account. `email.from` is
+    // left unset on purpose: it would make Void manage Email Routing as well,
+    // which the portal does not use. Every send passes an explicit sender.
+    send_email: [{ name: 'SEND_EMAIL', allowed_sender_addresses: [SENDER_ADDRESS] }],
   },
 });

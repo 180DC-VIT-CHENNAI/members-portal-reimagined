@@ -96,6 +96,8 @@ export async function startPortal(bindings = {}) {
   return {
     base,
     db,
+    /** Token for Void's dev endpoints: the scheduled trigger and the email inbox. */
+    devToken: triggerToken,
     async runCron() {
       const response = await fetch(`${base}/__void/scheduled`, {
         method: 'POST',

@@ -28,7 +28,7 @@ function campaign(recipients, overrides = {}) {
   const id = crypto.randomUUID();
   portal.db.prepare(`INSERT INTO email_queue
     (id,kind,from_address,subject,html,recipients,total,status,attempts,updated_at)
-    VALUES (?, 'custom', 'technical@180dcvitc.org', 'Queued', '<p>Hello</p>', ?, ?, ?, ?, ?)`)
+    VALUES (?, 'custom', '180DC Admin <noreply@180dc.vitcc.org>', 'Queued', '<p>Hello</p>', ?, ?, ?, ?, ?)`)
     .run(id, JSON.stringify(recipients), recipients.length, overrides.status ?? 'pending',
       overrides.attempts ?? 0, overrides.updatedAt ?? '2026-01-01 00:00:00');
   return id;
@@ -62,6 +62,8 @@ test('ten recipients send directly, deduplicate and escape plain-text body', asy
   const messages = await outbox();
   assert.equal(messages.length, 10);
   assert.match(messages[0].html, /&lt;script&gt;/);
+  assert.equal(messages[0].fromAddress, '180DC Admin <noreply@180dc.vitcc.org>');
+  assert.equal(messages[0].headers['Reply-To'], 'srijan.guchhait@gmail.com');
   assert.equal(portal.db.prepare('SELECT count FROM daily_email_count').get().count, 10);
 });
 
@@ -80,37 +82,42 @@ test('eleven recipients queue and an awaited real cron invocation completes the 
   assert.equal((await outbox()).length, 11);
 });
 
-test('temporary and permanent recipient rejection do not block following recipients', async () => {
-  const id = campaign(['one@reject.invalid', 'two@tempfail.invalid', 'ok@example.com']);
+test('unverified and unknown-outcome recipients fail without blocking the rest; only the unknown outcome keeps its hourly slot', async () => {
+  const id = campaign(['one@unverified.invalid', 'two@unknown.invalid', 'ok@example.com']);
   await portal.runCron();
   assert.equal(row(id).status, 'done');
   assert.equal(row(id).sent, 1);
   assert.equal(row(id).failed, 2);
   const result = await admin.get(`/api/admin/email-queue/${id}/deliveries`);
   assert.equal(result.status, 200, result.text);
-  assert.deepEqual(result.json.deliveries.map((d) => d.status).sort(), ['failed', 'failed', 'sent']);
+  const errors = Object.fromEntries(result.json.deliveries.map((d) => [d.recipient, d.error]));
+  assert.match(errors['one@unverified.invalid'], /^UNVERIFIED_DESTINATION/);
+  assert.match(errors['two@unknown.invalid'], /^OUTCOME_UNKNOWN/);
+  assert.equal(errors['ok@example.com'], null);
+  // Cloudflare may have accepted the unknown outcome, so it still counts against the hour.
+  assert.equal(portal.db.prepare('SELECT sum(count) AS n FROM email_hour_count').get().n, 2);
 });
 
 test('retry-failed skips settled recipients and only retries failure records', async () => {
-  const id = campaign(['bad@reject.invalid', 'ok@example.com']);
+  const id = campaign(['bad@unverified.invalid', 'ok@example.com']);
   await portal.runCron();
   assert.equal((await admin.post(`/api/admin/email-queue/${id}/retry-failed`, {})).json.retrying, 1);
   await portal.runCron();
   assert.deepEqual((await outbox()).map((m) => m.recipient), ['ok@example.com']);
-  const delivery = portal.db.prepare('SELECT attempts FROM email_deliveries WHERE recipient=?').get('bad@reject.invalid');
+  const delivery = portal.db.prepare('SELECT attempts FROM email_deliveries WHERE recipient=?').get('bad@unverified.invalid');
   assert.equal(delivery.attempts, 2);
 });
 
-test('timeouts pause without advancing and five no-progress claims eventually fail', async () => {
-  const id = campaign(['x@timeout.invalid', 'next@example.com']);
+test('provider outages pause without advancing and five no-progress claims eventually fail', async () => {
+  const id = campaign(['x@upstream.invalid', 'next@example.com']);
   for (let i = 0; i < 6; i++) await portal.runCron();
   assert.equal(row(id).status, 'failed');
   assert.equal(row(id).cursor, 0);
   assert.equal((await outbox()).length, 0);
 });
 
-test('provider hourly throttling pauses the cursor and saturates the shared hour counter', async () => {
-  const id = campaign(['provider@hourlimit.invalid', 'next@example.com']);
+test('provider quota errors pause the cursor and saturate the shared hour counter', async () => {
+  const id = campaign(['provider@quota.invalid', 'next@example.com']);
   await portal.runCron();
   assert.equal(row(id).status, 'pending');
   assert.equal(row(id).cursor, 0);
@@ -200,7 +207,7 @@ test('department-scoped queue grants cannot inspect or retry global campaigns', 
   assert.equal((await admin.put(`/api/people/${person.id}/access`, { accessRoleId: 'director', grants: [] })).status, 200);
 });
 
-test('consulting replies report SMTP acceptance and appear in the capture outbox', async () => {
+test('consulting replies report provider acceptance and send client replies to the deciding admin', async () => {
   const created = await anonymous(portal).post('/api/consulting-request', {
     name: 'Client', email: 'client@example.com', phone: '1234567890', organization: 'Client Org', requirement: 'Help',
   });
@@ -211,5 +218,9 @@ test('consulting replies report SMTP acceptance and appear in the capture outbox
   });
   assert.equal(result.status, 200, result.text);
   assert.equal(result.json.emailSent, true);
-  assert.deepEqual((await outbox()).map((m) => m.recipient), ['client@example.com']);
+  const [reply, ...others] = await outbox();
+  assert.equal(others.length, 0);
+  assert.equal(reply.recipient, 'client@example.com');
+  assert.equal(reply.fromAddress, '180DC Consulting <noreply@180dc.vitcc.org>');
+  assert.equal(reply.headers['Reply-To'], 'srijan.guchhait@gmail.com');
 });

@@ -6,6 +6,7 @@ import { and, db, inArray } from 'void/db';
 import { audit } from '../../src/server/audit';
 import { enqueueEmailCampaign } from '../../src/server/email/queue';
 import { sendEmail } from '../../src/server/email/send';
+import { sender } from '../../src/server/email/sender';
 import { requirePermission } from '../../src/server/guard';
 import { escapeHtml } from '../../src/server/html';
 import { badRequest } from '../../src/server/http';
@@ -31,14 +32,16 @@ export const POST = defineHandler.withValidator({
     recipients = recipients.filter((email) => allowed.has(email));
     if (!recipients.length) throw new HTTPException(403, { message: 'no_permitted_recipients' });
   }
-  const from = '180DC Admin <technical@180dcvitc.org>';
+  const from = sender('180DC Admin');
+  // Replies reach the person who wrote the message.
+  const replyTo = actor.person.email;
   const html = '<p>' + escapeHtml(body.body).replace(/\n/g, '<br>') + '</p>';
   let sent = 0;
   let failed = 0;
   let remaining = recipients;
   if (recipients.length <= 10) {
     for (const [index, recipient] of recipients.entries()) {
-      const result = await sendEmail({ from, to: recipient, subject: body.subject, html });
+      const result = await sendEmail({ from, replyTo, to: recipient, subject: body.subject, html });
       if (result.status === 'paused') { remaining = recipients.slice(index); break; }
       if (result.status === 'sent') sent++;
       else failed++;
@@ -46,7 +49,7 @@ export const POST = defineHandler.withValidator({
     }
   }
   const campaignId = remaining.length ? await enqueueEmailCampaign({
-    kind: 'custom', fromAddress: from, recipients: remaining, subject: body.subject, html, createdBy: actor.person.id,
+    kind: 'custom', fromAddress: from, recipients: remaining, subject: body.subject, html, meta: { replyTo }, createdBy: actor.person.id,
   }) : null;
   await audit(actor.person.id, 'email.send', 'email_campaign', campaignId, {
     sent, failed, queued: remaining.length, total: recipients.length,

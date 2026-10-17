@@ -4,10 +4,11 @@ Invariants are properties that must never become false while the system is runni
 
 ## Void portal email invariants
 
-- **PORTAL-EMAIL-01:** Each SMTP attempt reserves a shared hourly slot atomically in D1. Direct mail cannot reserve above the configured limit (500 by default), and campaigns cannot reserve above 90% of it. Failed sends release the slot; a crash may leave conservative usage until the hour changes. Enforced by `apps/portal/src/server/email/send.ts`; concurrent last-slot behavior is covered in `tests/e2e/email.test.mjs`.
+- **PORTAL-EMAIL-01:** Each send attempt reserves a shared hourly slot atomically in D1. Direct mail cannot reserve above the configured limit (500 by default), and campaigns cannot reserve above 90% of it. Failed sends release the slot, except `OUTCOME_UNKNOWN` results, which Cloudflare may have accepted; a crash may leave conservative usage until the hour changes. Enforced by `apps/portal/src/server/email/send.ts`; concurrent last-slot behavior is covered in `tests/e2e/email.test.mjs`.
 - **PORTAL-EMAIL-02:** Campaign inspection and retries require global `email.view` and `email.manage` respectively. A department-scoped grant cannot reveal global campaigns. Arbitrary sends with department-scoped `email.send` reach only active/on-leave people in those departments. API tests cover both boundaries.
-- **PORTAL-EMAIL-03:** Production builds never capture or redirect messages through test mode, and never include the `.dev.ts` outbox/drain routes. Capture tests make no SMTP connection.
-- **PORTAL-EMAIL-04:** Recorded SMTP acceptance settles a recipient across retries; it is not proof of inbox delivery or exactly-once delivery. SMTP acceptance and D1 persistence are separate operations.
+- **PORTAL-EMAIL-03:** Production builds never capture messages through test mode and never include the `.dev.ts` outbox/drain routes. Capture tests never call `sendEmail`.
+- **PORTAL-EMAIL-04:** Recorded acceptance by Cloudflare settles a recipient across retries; it is not proof of inbox delivery or exactly-once delivery. Acceptance and D1 persistence are separate operations.
+- **PORTAL-EMAIL-05:** The `SEND_EMAIL` binding allows only `noreply@180dc.vitcc.org` (`allowed_sender_addresses` in `apps/portal/void.config.ts`), so no code path can send as another address on the domain.
 
 ## Auth invariants
 
