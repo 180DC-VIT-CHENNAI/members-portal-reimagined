@@ -1,6 +1,6 @@
-import { departments, people, projectDepartments, projectMembers, projects, projectTasks, TASK_PRIORITIES, terms } from '@schema';
+import { departments, people, projectDepartments, projectMembers, projects, projectTasks, TASK_PRIORITIES, taskComments, terms } from '@schema';
 import * as v from 'valibot';
-import { and, asc, db, desc, eq, inArray, sql } from 'void/db';
+import { and, asc, db, desc, eq, inArray, isNull, sql } from 'void/db';
 import { enqueueEmailCampaign } from './email/queue';
 import { sender } from './email/sender';
 import { badRequest, forbidden, notFound } from './http';
@@ -140,7 +140,7 @@ export async function listProjects(principal: Principal) {
 
 /** A project with its departments, people and tasks, as the caller may see it. */
 export async function projectDetail(principal: Principal, { project, access }: LoadedProject) {
-  const [term, linked, members, tasks] = await Promise.all([
+  const [term, linked, members, tasks, commentCounts] = await Promise.all([
     project.termId ? db.select({ label: terms.label }).from(terms).where(eq(terms.id, project.termId)) : Promise.resolve([]),
     db
       .select({ id: departments.id, name: departments.name })
@@ -166,14 +166,26 @@ export async function projectDetail(principal: Principal, { project, access }: L
       .from(projectTasks)
       .leftJoin(people, eq(people.id, projectTasks.assigneeId))
       .where(eq(projectTasks.projectId, project.id)),
+    db
+      .select({ taskId: taskComments.taskId, count: sql<number>`count(*)` })
+      .from(taskComments)
+      .innerJoin(projectTasks, eq(projectTasks.id, taskComments.taskId))
+      .where(and(eq(projectTasks.projectId, project.id), isNull(taskComments.deletedAt)))
+      .groupBy(taskComments.taskId),
   ]);
+  const comments = new Map(commentCounts.map((row) => [row.taskId, row.count]));
   return {
     ...project,
     termLabel: term[0]?.label ?? null,
     departments: linked,
     members,
     tasks: tasks
-      .map(({ task, assigneeName }) => ({ ...task, assigneeName, canUpdateStatus: access.manageTasks || task.assigneeId === principal.person.id }))
+      .map(({ task, assigneeName }) => ({
+        ...task,
+        assigneeName,
+        comments: comments.get(task.id) ?? 0,
+        canUpdateStatus: access.manageTasks || task.assigneeId === principal.person.id,
+      }))
       .sort(compareTasks),
     access,
   };

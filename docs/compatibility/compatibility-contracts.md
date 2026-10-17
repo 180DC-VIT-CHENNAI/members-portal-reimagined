@@ -2,6 +2,14 @@
 
 These contracts are the surfaces that external systems, the frontend, and club members depend on. Do not break them without an explicit migration plan.
 
+## COMP-PORTAL-UI-01 Separate Void portal home and task activity
+
+The contracts below describe the legacy deployment. While both Workers run, it keeps those contracts; the Void portal's API is documented separately in `apps/portal/README.md` and the portal sections of `api-contract.md`.
+
+- In the Void portal, `/me` and a successful sign-in without an explicit local `next` destination open `/today`. Existing project, directory and profile routes remain reachable; the phone tab bar moves Announcements into More.
+- Task comments/history use current Google sessions and the project visibility policy. They do not accept registry tokens or expose the global audit log. A failed access refresh discards private feed data.
+- The portal's `GET /api/today` replaces its dashboard/work-queue UI with task, meet, announcement and permission-scoped attention data; obsolete token registries, signup requests and role-transfer panels are not recreated.
+
 ## COMP-API-01 Public API routes must remain functional
 
 The following routes are called by the public website without authentication. They must continue to return the same JSON shape and status codes.

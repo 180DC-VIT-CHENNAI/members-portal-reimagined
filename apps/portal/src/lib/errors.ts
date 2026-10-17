@@ -77,6 +77,9 @@ const MESSAGES: Record<string, string> = {
   already_member: 'That person is already on this project.',
   person_without_access: "That person doesn't have access to the portal.",
   nothing_to_change: 'Nothing changed.',
+  comment_not_found: 'That comment no longer exists.',
+  request_reused: 'This request was already used for another comment. Edit your draft and post again.',
+  invalid_cursor: 'That page link is invalid. Refresh to load the latest entries.',
 };
 
 export function friendlyIssue(message: string): string {

@@ -1,8 +1,8 @@
-import { projectDepartments, projectMembers, projects, projectTasks } from '@schema';
+import { projectDepartments, projectMembers, projects, projectTasks, taskComments } from '@schema';
 import type { BatchItem } from 'drizzle-orm/batch';
 import * as v from 'valibot';
 import { defineHandler } from 'void';
-import { db, eq } from 'void/db';
+import { db, eq, inArray } from 'void/db';
 import { audit } from '../../../../src/server/audit';
 import { requirePrincipal } from '../../../../src/server/guard';
 import { badRequest, forbidden, idParam } from '../../../../src/server/http';
@@ -47,7 +47,7 @@ export const PATCH = defineHandler.withValidator({ body: v.partial(v.object(proj
   return { id: projectId };
 });
 
-/** Remove a project with its tasks and people. Needs projects.manage over all its departments. */
+/** Remove a project with its tasks, their comments and its people. Needs projects.manage over all its departments. */
 export const DELETE = defineHandler(async (c) => {
   const actor = await requirePrincipal(c);
   const loaded = await projectFor(actor, idParam(c));
@@ -55,6 +55,7 @@ export const DELETE = defineHandler(async (c) => {
   await rateLimit(c, 'projects_write', 60, 3600);
   const { project } = loaded;
   await db.batch([
+    db.delete(taskComments).where(inArray(taskComments.taskId, db.select({ id: projectTasks.id }).from(projectTasks).where(eq(projectTasks.projectId, project.id)))),
     db.delete(projectTasks).where(eq(projectTasks.projectId, project.id)),
     db.delete(projectMembers).where(eq(projectMembers.projectId, project.id)),
     db.delete(projectDepartments).where(eq(projectDepartments.projectId, project.id)),

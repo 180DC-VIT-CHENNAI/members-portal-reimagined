@@ -337,6 +337,22 @@ code,
   text-decoration: line-through;
 }
 
+/* Lazy activity within a task, using the same spacing and hairlines as forms. */
+.task-activity {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.activity-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-list .pre-wrap {
+  overflow-wrap: anywhere;
+}
+
 /* The phone "More" list. */
 .more-list {
   margin: 0;

@@ -22,6 +22,14 @@ Defined in `apps/portal/db/schema/projects.ts` (migration `20261017074729_lucky_
 
 A project's departments, members and tasks are deleted with it.
 
+Slice 5b adds `task_comments` in `20261017081155_cheerful_mach_iv.sql`:
+
+| Table | Key | Purpose |
+|---|---|---|
+| `task_comments` | auto-increment `id`, unique `(author_id, request_id)` | Task FK (cascades on delete), author person FK, client request UUID, plain-text body, creation time and optional deletion time. Deleted bodies are erased. Indexed by task/id for stable 50-row cursor paging. |
+
+Task history uses the existing `audit_log` integer id for cursor ordering. Comment writes and their audit entries share a D1 batch transaction. Deleting a task or project deletes its comments; retained audit history is not exposed once the parent is inaccessible.
+
 ## Void portal email schema
 
 The separate `apps/portal` deployment uses generated, additive Drizzle migrations, not `ensureTables`. Email tables are defined in `apps/portal/db/schema/email.ts`; migration `20261016192957_lazy_captain_flint.sql` also grants global email administration to `admin` and department-scoped sending to `director`.

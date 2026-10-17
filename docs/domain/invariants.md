@@ -21,6 +21,10 @@ Invariants are properties that must never become false while the system is runni
 - **PORTAL-PROJECTS-02:** A task is only assigned to someone who can see its project, and every task edit or status change applies to the exact version it was based on (otherwise 409, nothing written).
 - **PORTAL-PROJECTS-03:** Only completed projects are public, and only their id, name, client, description and completion time.
 
+- **PORTAL-PROJECTS-04:** A comment request is unique per author/request UUID; only identical, undeleted retries replay. Removal erases its body. Creation/removal and their audit entry either both commit or neither does. Covered by failure-injected D1 trigger tests in `task-activity.test.mjs`.
+- **PORTAL-PROJECTS-05:** Task comments/history require current project access and correct task parentage. History exposes only allow-listed values, never comment text, raw descriptions or raw audit details. Cursor ordering remains stable for entries with identical timestamps.
+- **PORTAL-TODAY-01:** Today never returns an assigned task without current project visibility, or a completed task/project. Its inter-department meeting previews match the reader's department-view scope. Attention counts are omitted without the relevant permission.
+
 ## Auth invariants
 
 ### INV-AUTH-04: Explicit browser write origins are authorised

@@ -164,6 +164,12 @@ All spacing derives from a base of **4px**.
 - **States**: default, focus (green border + green glow ring), error (red border), disabled
 - **Motion**: 200ms ease-out on border/shadow
 
+### Portal task activity
+- A task's Activity disclosure opens a neutral, hairline-separated panel, using the existing 16px spacing step, stack, segmented radios, fields and buttons.
+- Comments and History are alternate views. Opening loads the current page; Newer/Older page controls and Refresh remain keyboard reachable.
+- All comment content is plain text and wraps, including long unbroken text. Removal uses the existing destructive confirmation dialog.
+- Loading, empty and retryable error states use the shared portal primitives; access-denied refreshes clear private content.
+
 ## 6. Motion & Interaction
 
 ### Timing

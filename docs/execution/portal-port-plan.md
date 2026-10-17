@@ -49,8 +49,9 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Department workspace (slice 4): PR #26, merged and deployed. The live public `/api/departments` returns all six seeded departments.
 - Email infrastructure (slice 7): PR #28, merged and deployed; its Spacemail SMTP transport was then replaced with Cloudflare Email Sending at the user's request (ADR-008).
 - Meets (slice 3): one `meets` table with `meet_departments` replaces the three legacy tables; announcements are real queued campaigns through slice 7.
-- Projects and tasks (slice 5a): projects, their departments and people, and versioned tasks, plus the public list of completed projects. Task comments, task history and the Today page follow as slice 5b.
-- Next implementation order: task comments, history and the Today page (5b), team instances (6), newsletter (8), letter studio (9), then cutover (10).
+- Projects and tasks (slice 5a): projects, their departments and people, and versioned tasks, plus the public list of completed projects. PR #31 is merged and deployed.
+- Task activity and Today (slice 5b): plain-text comments with atomic history and idempotent retries, paged history and the default Today home.
+- Next implementation order: team instances (6), newsletter (8), letter studio (9), then cutover (10).
 
 ## Rules carried over (see docs/domain/invariants.md)
 
