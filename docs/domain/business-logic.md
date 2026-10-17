@@ -35,6 +35,14 @@ These rules apply to the separate `apps/portal` deployment.
 - Taking someone off a project leaves their tasks assigned to them; they stop seeing the project unless their department lets them.
 - Task changes go to the audit log (`task.create`, `task.status`, `task.update`, `task.delete`) with the project and the before and after values, for the task history in slice 5b.
 
+## Void portal task activity and Today
+
+- Every current project reader can comment, not just assignees and managers. The author or a task manager can remove a comment. Bodies are plain text, and removed bodies are erased while the thread retains a marker.
+- Clients choose a UUID per draft and retain it across retries. A matching retry returns the original comment; reuse for different text/target or after removal conflicts. Comment creation/removal and their audit records are transactional, and no-op retries create no audit entry.
+- Task history is available to project readers without global audit access. It is projected from five allow-listed task action types and fields; private descriptions, comment bodies, comment ids and raw audit details never enter the history response. Both feeds page backwards by integer ids, not timestamps.
+- `/today` is the default signed-in home. It shows open assigned tasks on active projects the person can still see, relevant meetings in the next seven days, three latest announcements and permission-scoped invite/email attention counts. Assignment alone never preserves project access. Refresh runs on demand and when the page becomes visible again.
+- The project page opens Comments/History lazily per task. A failed access refresh clears the private feed. Comment count excludes removed comments. The Today done box uses the same assignee/manager status endpoint as the project page.
+
 ## Authentication and sessions
 
 On `reimagined`, token sign-in uses `POST /api/auth/session` in all environments. It exchanges the existing registry credential for a new device session with fixed seven-day expiry. A registry-only onboarding account may create its user row only while the source token remains active. Every device request loads current identity/role and verifies its session and source registry state; role changes take effect without reissuing the session. Source-token revoke/delete/rotate invalidates its device sessions. Individual session revocation is account-owner scoped. Member removal batches registry and identity deletion to prevent concurrent exchange from recreating the removed member.

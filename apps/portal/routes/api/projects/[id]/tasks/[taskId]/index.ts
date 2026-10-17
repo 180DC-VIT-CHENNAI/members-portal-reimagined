@@ -1,11 +1,11 @@
-import { projectTasks } from '@schema';
+import { projectTasks, taskComments } from '@schema';
 import * as v from 'valibot';
 import { defineHandler } from 'void';
 import { and, db, eq } from 'void/db';
 import { audit } from '../../../../../../src/server/audit';
 import { routeParam } from '../../../../../../src/server/departments';
 import { requirePrincipal } from '../../../../../../src/server/guard';
-import { badRequest, conflict, idParam, notFound } from '../../../../../../src/server/http';
+import { badRequest, conflict, idParam } from '../../../../../../src/server/http';
 import { canSeeProject, projectFor, requireRight, taskFields, taskOr404 } from '../../../../../../src/server/projects';
 import { rateLimit } from '../../../../../../src/server/rate-limit';
 
@@ -49,17 +49,13 @@ export const PATCH = defineHandler.withValidator({ body: taskEdit })(async (c, {
   return { version: updated.version, changed: true };
 });
 
-/** Remove a task. */
+/** Remove a task and its comments. */
 export const DELETE = defineHandler(async (c) => {
   const actor = await requirePrincipal(c);
   const loaded = await projectFor(actor, idParam(c));
   requireRight(loaded, 'manageTasks');
-  const taskId = routeParam(c, 'taskId');
-  const [removed] = await db
-    .delete(projectTasks)
-    .where(and(eq(projectTasks.id, taskId), eq(projectTasks.projectId, loaded.project.id)))
-    .returning({ title: projectTasks.title });
-  if (!removed) notFound('task_not_found');
-  await audit(actor.person.id, 'task.delete', 'task', taskId, { projectId: loaded.project.id, title: removed.title });
-  return { id: taskId };
+  const task = await taskOr404(loaded.project.id, routeParam(c, 'taskId'));
+  await db.batch([db.delete(taskComments).where(eq(taskComments.taskId, task.id)), db.delete(projectTasks).where(eq(projectTasks.id, task.id))]);
+  await audit(actor.person.id, 'task.delete', 'task', task.id, { projectId: loaded.project.id, title: task.title });
+  return { id: task.id };
 });

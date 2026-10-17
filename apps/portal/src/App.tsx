@@ -29,6 +29,7 @@ import { FilesPage } from './pages/FilesPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { MeetsPage } from './pages/MeetsPage.tsx';
 import { MorePage } from './pages/MorePage.tsx';
+import { TodayPage } from './pages/TodayPage.tsx';
 import { ProjectFormPage } from './pages/ProjectFormPage.tsx';
 import { ProjectPage } from './pages/ProjectPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
@@ -125,15 +126,16 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     [me, permissions, refresh],
   );
 
-  const home = can(permissions, 'people.view') ? '/people' : `/people/${me.person.id}`;
+  const home = '/today';
   const tools = visibleAdminTools(permissions);
 
   // Phones show the first four entries as tabs and the rest under More; `tab: false` sends an entry straight to More.
   const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean; tab?: boolean }> = [
+    { to: '/today', label: 'Today', icon: 'checkCircle', show: true, active: path === '/today' },
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people', tab: false },
     // On phones the header avatar links to the profile.
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}`, tab: false },
-    { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements' },
+    { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements', tab: false },
     { to: '/meets', label: 'Meets', icon: 'calendar', show: can(permissions, 'meets.view'), active: path === '/meets' },
     { to: '/projects', label: 'Projects', icon: 'clipboard', show: true, active: path.startsWith('/projects') },
     {
@@ -237,6 +239,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
 function route(path: string, home: string, next: string | null) {
   if (path === '/me') return <Redirect to={home} />;
   if (path === '/login') return <Redirect to={next && next.startsWith('/') && !next.startsWith('//') ? next : home} />;
+  if (path === '/today') return <TodayPage />;
   if (path === '/people') return <DirectoryPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/meets') return <MeetsPage />;

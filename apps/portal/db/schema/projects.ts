@@ -91,3 +91,26 @@ export const projectTasks = sqliteTable(
   },
   (t) => [index('project_tasks_project').on(t.projectId, t.createdAt), index('project_tasks_assignee').on(t.assigneeId, t.status)],
 );
+
+/**
+ * Plain-text comments on a task, by anyone who can see its project. Removing a
+ * comment blanks it and keeps its place. `request_id` is chosen by the client so
+ * a retried post is stored once.
+ */
+export const taskComments = sqliteTable(
+  'task_comments',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => projectTasks.id, { onDelete: 'cascade' }),
+    authorId: text('author_id')
+      .notNull()
+      .references(() => people.id),
+    requestId: text('request_id').notNull(),
+    body: text('body').notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+  },
+  (t) => [uniqueIndex('task_comments_request').on(t.authorId, t.requestId), index('task_comments_task').on(t.taskId, t.id)],
+);

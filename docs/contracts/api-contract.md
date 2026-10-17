@@ -33,6 +33,16 @@ The new `apps/portal` deployment uses Google sessions and named permissions, not
 - `POST /api/projects/:id/complete-tasks`: task managers; completes every open task and returns `{completed}`.
 - `GET /api/content/projects`: public, 100/minute. Completed projects only: `{id, name, client, description, completedAt}`.
 
+## Void portal task activity and Today (slice 5b)
+
+These routes require a current Google session. Project activity uses the same visibility policy as the project detail route; an inaccessible project or a task belonging to a different project returns 404. Activity and Today responses use `Cache-Control: private, no-store`.
+
+- `GET /api/projects/:id/tasks/:taskId/comments`: `{comments: [{id, authorName, body, createdAt, removed, canRemove}], nextBefore}`. Removed bodies are null. IDs are monotonically increasing integers; newest first, 50/page. `?before=<nextBefore>` pages backwards. Malformed cursors are 400. 120 reads/minute per client.
+- `POST` at the same path: `{requestId: UUID, body}`. Plain text, nonblank, no more than 4,000 raw characters, trimmed for storage. Returns 201 `{id, replayed}`. The `(author, requestId)` key is unique: same task/text replays the original id; different target/text or a removed comment is 409 `request_reused`. Comment and audit entry commit together. 30 writes/minute per client.
+- `DELETE /api/projects/:id/tasks/:taskId/comments/:commentId`: author or task manager. Missing/wrong-task comments are 404; other readers get 403. Erases text and records an atomic `task.comment.remove` audit entry; repeating is a no-op. Shares the comment write limit.
+- `GET /api/projects/:id/tasks/:taskId/history`: `{events: [{id, action, createdAt, actorName, from, to, bulk}], nextBefore}` with the same pagination contract and its own 120/minute limit. Actions: `task.create`, `task.update`, `task.status`, `task.comment`, `task.comment.remove`. Values are allow-listed: title, assignee id/name, due date, priority, status and a description-change flag. No raw descriptions, comment bodies/ids, actor emails or raw details.
+- `GET /api/today`: `{generatedAt, tasks, hasMoreTasks, meets, hasMoreMeets, announcements, attention}`. Tasks are open, assigned to the caller, on active projects they can still see; sorted by due date (undated last), priority and age, at most 100. Meets are in `[now, now + 7 days)`, at most 20; inter-department meets must cover the caller's department-view scope. The latest three announcements are included. `attention.invited` is present only with `people.invite` and follows its department scope; `attention.failedEmails` needs global `email.view`. 60/minute.
+
 ## Conventions
 
 - **Auth:**
