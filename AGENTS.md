@@ -2,6 +2,20 @@
 
 This file is the primary entry point for any coding agent working on the `180dc-admin-website` repository.
 
+## Active Void rewrite (`apps/portal`)
+
+For new development, start with `apps/portal/README.md` and `docs/execution/portal-port-plan.md`. The portal is a separate production-quality Void app; the legacy `apps/admin-api` / `apps/frontend` deployment stays live until the user approves domain cutover. Launch with blank data: do not import legacy records, sessions, tokens or R2 objects.
+
+- Use feature PRs to **origin main only**. Do not push, promote releases or open PRs to upstream for this rewrite. `reimagined` is reserved for the junior-consultant problem-statement document.
+- Portal auth is Better Auth Google-only, invite-gated through personnel email. There are no registry-token or OTP editor credentials. Titles/positions never grant access; use the named role/personal permission system.
+- Portal schema is `apps/portal/db/schema/*.ts`, with generated additive migrations under `db/migrations/`. Use `void db generate`, review SQL/snapshots and commit them together. The legacy `ensureTables` rules below do not define the portal schema.
+- Portal newsletters share the Void-managed portal D1 with its email queue (ADR-009). The separate `NEWSLETTER_DB` / `newsletterDb(c)` requirement below applies to the **legacy Worker only**.
+- Portal mail uses Cloudflare Email Sending (`void/email`) and its D1 campaign queue, not SMTP. Tests capture email; no live message is needed for ordinary verification.
+- In `apps/portal`, run `pnpm typecheck`, `pnpm test:unit` and `pnpm test:e2e`; from the root run `pnpm turbo run build` and the legacy `pnpm test` regression suite. Do not add global Void middleware: it would invoke the Worker for static assets.
+- CI/CD deploys the portal after merge to origin main. A custom-domain move or old-Worker retirement requires explicit user approval.
+
+The remaining sections primarily describe the legacy deployment unless they specifically name `apps/portal`.
+
 ## Project classification
 
 - **Project mode:** BROWNFIELD

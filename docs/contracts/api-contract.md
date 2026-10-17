@@ -1,5 +1,22 @@
 # API Contract — 180DC VIT Chennai Platform
 
+## Void portal newsletter contract (slice 8)
+
+These are the new portal's APIs, not replacements on the legacy Worker (ADR-009). Public success bodies use the shapes below; errors use the portal's standard validation JSON/plain-text codes. No editor OTP or registry credential is accepted.
+
+- `POST /api/newsletter/subscribe` `{email, name?}`: 5/hour; normalized email, optional name up to 120. Always `{pending: true}` for valid input, without enumerating active addresses. Inactive/new addresses receive a 48-hour confirmation link; active addresses are unchanged.
+- `POST /api/newsletter/confirm` `{token}`: 20/hour; atomically activates and consumes the hashed token. `{confirmed: true, welcomeBack}`. Invalid, expired, replaced or replayed credentials are 400. Welcome mail includes personal unsubscribe headers.
+- `POST /api/newsletter/unsubscribe/:token`: 48 lowercase hex characters. `{status: 'unsubscribed' | 'already' | 'not_found', email}`. Supports no-Origin form-encoded one-click POSTs; GET never changes state. Cross-site browser origins are denied.
+- `POST /api/newsletter/unsubscribe-link` `{email}`: 5/hour; always `{requested: true}` and emails a personal link if relevant. It does not unsubscribe by email alone.
+- `GET /api/newsletter/subscribers/count`: public confirmed count, 100/minute shared with archive reads. `GET /api/newsletter/subscribers`: global `newsletter.manage`, subscription metadata only, never credentials. `DELETE /api/newsletter/subscribers/:id`: erase plus credential-free audit in one transaction, 60/hour.
+- `GET /api/newsletter`: up to 50 published summaries with stable `issue-NN` slugs. `GET /api/newsletter/:id`: published issue by UUID or slug, sanitized content and source/image URLs. Draft lookup is 404 even with its UUID.
+- `GET`/`POST /api/newsletter/issues`: global `newsletter.edit`. Lists own/shared drafts (all with `newsletter.manage`). Creation returns 201 `{id}`. Body: `{title (1-255), emailSubject? (1-255), description? (up to 1000), content (up to 50000), format: 'text' | 'html', shared?, sourceAssetId?, imageAssetId?}`.
+- `GET`/`PATCH`/`DELETE /api/newsletter/issues/:id`: ownership/shared checks; PATCH takes the complete creation body plus `version` and refuses stale edits with 409 `newsletter_changed`. Editing/deleting is blocked during a broadcast. Only the owner of an unsent issue or a manager deletes it. Writes share 120/hour.
+- `POST /api/newsletter/issues/:id/test`: editors, 10/hour shared with event tests. Queues only to the caller's verified address and never publishes; supplied arbitrary recipient fields cannot change the audience.
+- `POST /api/newsletter/issues/:id/send`: global `newsletter.send` plus issue access, 3/hour. Claims an unsent issue and creates its campaign atomically, returning `{campaignId, queued}`; repeat/concurrent claims are 409. No active subscribers is 400.
+- `POST /api/newsletter/assets`: global `newsletter.edit`, 20/hour. Multipart `file`, up to 20 MiB, PDF/DOCX/JPEG/PNG/GIF/WebP with signature checks. Returns asset id, URL, filename, byte length, MIME and email eligibility. Other editors cannot attach private uploads unless already referenced by the shared issue; managers may.
+- `POST /api/newsletter/events`: explicit `{mode: 'test' | 'broadcast', subject (1-255), description (1-4000), sourceAssetId?, imageAssetId?}`. Test needs edit and only reaches self; broadcast needs send and targets confirmed readers, 3/hour. `{campaignId, queued}`. No missing/invalid test recipient can fall through to broadcasting.
+
 This document describes the public and authenticated surface of `admin-api.technical-vitc.workers.dev`. All routes are served by `apps/admin-api/index.ts`.
 
 ## Void portal email contract (separate deployment)

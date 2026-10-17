@@ -30,7 +30,7 @@ The old Worker's 165 routes and 52 tables map onto the slices like this.
 5. **Projects and tasks.** `projects`, `project_roles`, `project_departments`, `project_tasks`, `task_comments`, and task history and scheduling. It also includes the dashboard and the work queue.
 6. **Team instances.** The `instance_*` and `team_instances` tables.
 7. **Email infrastructure.** `email_queue`, `email_deliveries`, `email_hour_count`, `daily_email_count`, `rate_limits`, and the `* * * * *` cron sending through Cloudflare Email Sending (`sendEmail` from `void/email`, ADR-008; at most 15 per minute and 500 per hour). It includes `/api/admin/email-queue*`, `/api/send-email` and the dev outbox.
-8. **Newsletter.** Uses the separate `NEWSLETTER_DB`: `newsletters`, `newsletter_subscribers` with double opt-in, editor OTP sessions and authorized emails, subscriber and unsubscribe pages, and the newsletter editor.
+8. **Newsletter.** Portal-owned issues, assets and double opt-in subscribers in the Void-managed portal D1 (ADR-009). Google permissions replace legacy editor OTP/authorized-email sessions; includes subscriber/unsubscribe pages, editor, test/broadcast/event mail and archive.
 9. **Letter studio.** `letter_*`, `letters_sent`, and `/api/letter-studio/*`.
 10. **Blank-data launch and cutover.** This slice:
     - launches with fresh portal databases and empty portal R2 buckets; no records or objects are copied from the old Worker;
@@ -52,7 +52,8 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Projects and tasks (slice 5a): projects, their departments and people, and versioned tasks, plus the public list of completed projects. PR #31 is merged and deployed.
 - Task activity and Today (slice 5b): plain-text comments with atomic history and idempotent retries, paged history and the default Today home.
 - Team instances (slice 6): instances with departments, level ladders, groups, teams, outside people and placements, with department-scoped running versus all-department configuring, capacity enforced atomically, and Staffing, Progression, Roster and Activity views.
-- Next implementation order: newsletter (8), letter studio (9), then cutover (10).
+- Newsletter (slice 8): double opt-in and one-click unsubscribe, current Google editor permissions, owned/shared drafts and uploads, self-tests, atomic broadcasts, personalized headers and late-unsubscribe suppression, events and public archive. See ADR-009.
+- Next implementation order: letter studio (9), then cutover (10).
 
 ## Rules carried over (see docs/domain/invariants.md)
 

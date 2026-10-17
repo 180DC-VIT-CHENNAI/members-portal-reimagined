@@ -45,12 +45,26 @@ import { PartnersPage } from './pages/public/PartnersPage.tsx';
 import { PublicLayout } from './pages/public/PublicLayout.tsx';
 import { TeamPage } from './pages/public/TeamPage.tsx';
 import { WorkWithUsPage } from './pages/public/WorkWithUsPage.tsx';
+import { SubscriberPage } from './pages/public/SubscriberPage.tsx';
+import { UnsubscribePage } from './pages/public/UnsubscribePage.tsx';
+import { NewsletterEditorPage } from './pages/NewsletterEditorPage.tsx';
+import { NewsletterFormPage } from './pages/NewsletterFormPage.tsx';
+import { NewsletterEventPage } from './pages/NewsletterEventPage.tsx';
+import { NewslettersPage, NewsletterArticlePage } from './pages/public/NewslettersPage.tsx';
+import { NewsletterSubscribersPage } from './pages/admin/NewsletterSubscribersPage.tsx';
 
 type Boot = { state: 'loading' } | { state: 'signed-out' } | { state: 'error'; problem: ApiProblem } | { state: 'ready'; me: MeResponse };
 
 /** Public pages render without the session boot; everything else is the members portal. */
 function publicPage(path: string) {
   if (path === '/') return <LandingPage />;
+  if (path === '/subscriber') return <SubscriberPage />;
+  if (path === '/newsletter') return <NewslettersPage />;
+  const issue = matchPath('/newsletter/:id', path);
+  if (issue) return <NewsletterArticlePage id={issue.id} />;
+  if (path === '/unsubscribe') return <UnsubscribePage />;
+  const unsubscribe = matchPath('/unsubscribe/:token', path);
+  if (unsubscribe) return <UnsubscribePage token={unsubscribe.token} />;
   if (path === '/team') return <TeamPage />;
   if (path === '/case-studies') return <CaseStudiesPage />;
   if (path === '/partners') return <PartnersPage />;
@@ -157,7 +171,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
       active: path.startsWith('/departments/'),
     },
     { to: '/files', label: 'Files', icon: 'fileText', show: can(permissions, 'files.view'), active: path === '/files' },
-    { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') },
+    { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') || path.startsWith('/newsletter-editor') },
   ];
   const visible = nav.filter((item) => item.show);
   const tabs = visible.filter((item) => item.tab !== false).slice(0, 4);
@@ -271,7 +285,14 @@ function route(path: string, home: string, next: string | null) {
   if (department) return <DepartmentPage key={department.id} id={department.id} />;
   const person = matchPath('/people/:id', path);
   if (person) return <PersonPage key={person.id} id={person.id} />;
+  if (path === '/subscriber/newsletter') return <Redirect to="/newsletter-editor" />;
+  if (path === '/newsletter-editor') return <NewsletterEditorPage />;
+  if (path === '/newsletter-editor/new') return <NewsletterFormPage />;
+  if (path === '/newsletter-editor/events') return <NewsletterEventPage />;
+  const editorial = matchPath('/newsletter-editor/:id', path);
+  if (editorial) return <NewsletterFormPage key={editorial.id} id={editorial.id} />;
   if (path === '/admin') return <AdminHome />;
+  if (path === '/admin/newsletter-subscribers') return <NewsletterSubscribersPage />;
   if (path === '/admin/email-queue') return <EmailQueuePage />;
   if (path === '/admin/send-email') return <SendEmailPage />;
   if (path === '/admin/invite') return <InvitePage />;

@@ -1,5 +1,11 @@
 # Compatibility Contracts — 180DC VIT Chennai Platform
 
+## COMP-PORTAL-NEWS-01 Fresh newsletter identity and URLs
+
+The Void portal intentionally starts with no legacy subscriber, editor session or unsubscribe/confirmation credentials (ADR-009). The legacy Worker keeps its existing JSON contracts. The new portal uses its own documented APIs, Google editor permissions, `/subscriber?confirm=`, `/unsubscribe/:token`, `/newsletter` archive, and `/newsletter-editor`; signed-in `/subscriber/newsletter` redirects to that editor.
+
+Email-entry unsubscribe now requests a personal link rather than unauthenticated removal by address. Public issue detail hides drafts. Mail links are built from the sending portal request's origin. Before moving a hostname used by old mail, review old-link continuity explicitly: a blank database cannot honor credentials issued by the other deployment.
+
 These contracts are the surfaces that external systems, the frontend, and club members depend on. Do not break them without an explicit migration plan.
 
 ## COMP-PORTAL-UI-01 Separate Void portal home and task activity

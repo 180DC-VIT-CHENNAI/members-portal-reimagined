@@ -1,5 +1,13 @@
 # apps/portal — 180DC members portal (Void rewrite)
 
+## Newsletter
+
+The Catalyst lives in this fresh portal: `/newsletter` (archive), `/subscriber` (double opt-in), `/unsubscribe` (request a personal link), `/unsubscribe/:token` (explicit removal), `/newsletter-editor` (Google-authenticated drafts/events) and `/admin/newsletter-subscribers` (administration). Detailed route contracts and limits are in `docs/contracts/api-contract.md` under the portal newsletter section.
+
+All newsletter data is in this portal's Void-managed D1; do not connect it to legacy `NEWSLETTER_DB` (ADR-009). `newsletter.edit` is global for admin/director/member, `newsletter.send` for admin/director, `newsletter.manage` for admin. Grants remain configurable. Tests only reach the caller; broadcasts need explicit permission and confirmed readers. No OTP/editor allowlist tables are used.
+
+Source uploads are limited to 20 MiB; files up to 3 MiB are also attached, larger sources are linked. Required attachment failures stop the campaign. The existing minute queue adds per-recipient unsubscribe links/headers, skips late unsubscribes/erasures, and publishes real issues only after a completed campaign has an accepted message. Email queue retries remain the delivery-recovery surface.
+
 The rewrite of the members portal as a [Void](https://void.cloud) app in SPA + API mode. See
 [ADR-007](../../docs/architecture/decisions/007-void-portal-rewrite.md). Production still runs `apps/admin-api` +
 `apps/frontend` until the cutover PR.

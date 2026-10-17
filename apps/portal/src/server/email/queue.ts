@@ -1,4 +1,5 @@
-import { emailDeliveries, emailQueue } from '@schema';
+import { emailDeliveries, emailQueue, newsletters, newsletterSubscribers } from '@schema';
+import { unsubscribeHeaders, unsubscribeUrl, UNSUBSCRIBE_MARKER } from '../newsletter/mail.ts';
 import { and, asc, db, eq, inArray, or, sql } from 'void/db';
 import type { Attachment } from 'void/email';
 import { campaignBudget } from './budget.ts';
@@ -73,16 +74,27 @@ export async function drainEmailQueue(
       const object = await attachmentsBucket.get(reference.key);
       if (!object) {
         console.warn(JSON.stringify({ event: 'email_attachment_missing', campaignId: campaign.id, key: reference.key }));
+        if (reference.required) {
+          await db.update(emailQueue).set({ status: 'failed', failed: campaign.total, lastError: 'required_attachment_missing', finishedAt: new Date().toISOString() }).where(eq(emailQueue.id, campaign.id));
+          return { campaignId: campaign.id, sent: 0, failed: campaign.total };
+        }
         continue;
       }
       attachments.push({ filename: reference.filename, content: await object.arrayBuffer(), contentType: reference.contentType });
     } catch (error) {
       if (!(error instanceof Error)) throw error;
       console.warn(JSON.stringify({ event: 'email_attachment_unreadable', campaignId: campaign.id, key: reference.key }));
+      if (reference.required) {
+        await db.update(emailQueue).set({ status: 'pending', lastError: 'required_attachment_unreadable' }).where(eq(emailQueue.id, campaign.id));
+        return { campaignId: campaign.id, sent: 0, failed: 0 };
+      }
     }
   }
   const meta = campaign.meta ?? {};
   const replyTo = typeof meta.replyTo === 'string' ? meta.replyTo : undefined;
+  const headers = typeof meta.headers === 'object' && meta.headers !== null
+    ? Object.fromEntries(Object.entries(meta.headers).flatMap(([key, value]) => typeof value === 'string' ? [[key, value]] : []))
+    : undefined;
   let cursor = campaign.cursor;
   let sent = 0;
   let failed = 0;
@@ -93,8 +105,22 @@ export async function drainEmailQueue(
     if (settled.has(recipient)) { cursor++; continue; }
     if (attempts && !emailTestMode()) await delay(1500);
     attempts++;
+    let html = campaign.html;
+    let recipientHeaders = headers;
+    if (meta.audience === 'subscribers' && typeof meta.origin === 'string') {
+      // Re-check immediately before each send, not merely when the audience was queued.
+      const [subscriber] = await db.select().from(newsletterSubscribers).where(eq(newsletterSubscribers.email, recipient));
+      if (!subscriber || subscriber.status !== 'active') {
+        await db.insert(emailDeliveries).values({ campaignId: campaign.id, recipient, status: 'skipped', error: 'unsubscribed', attempts: 0 })
+          .onConflictDoUpdate({ target: [emailDeliveries.campaignId, emailDeliveries.recipient], set: { status: 'skipped', error: 'unsubscribed', updatedAt: sql`datetime('now')` } });
+        cursor++;
+        continue;
+      }
+      html = html.split(UNSUBSCRIBE_MARKER).join(unsubscribeUrl(meta.origin, subscriber.unsubscribeToken));
+      recipientHeaders = { ...headers, ...unsubscribeHeaders(meta.origin, subscriber.unsubscribeToken) };
+    }
     const result = await sendEmail({
-      from: campaign.fromAddress, to: recipient, subject: campaign.subject, html: campaign.html, replyTo, attachments,
+      from: campaign.fromAddress, to: recipient, subject: campaign.subject, html, replyTo, attachments, headers: recipientHeaders,
     }, true);
     if (result.status === 'paused') { lastError = result.error; break; }
     const status = result.status;
@@ -121,5 +147,12 @@ export async function drainEmailQueue(
     updatedAt: sql`datetime('now')`,
     finishedAt: done ? new Date().toISOString() : null,
   }).where(eq(emailQueue.id, campaign.id));
+  if (done && typeof meta.newsletterId === 'string' && campaign.kind === 'newsletter') {
+    const accepted = campaign.sent + sent;
+    await db.update(newsletters).set({
+      broadcastId: null,
+      ...(accepted > 0 ? { sentAt: sql`COALESCE(${newsletters.sentAt}, datetime('now'))`, recipientCount: accepted } : {}),
+    }).where(eq(newsletters.id, meta.newsletterId));
+  }
   return { campaignId: campaign.id, sent, failed };
 }

@@ -14,6 +14,15 @@ const STATUS_NAMES: Record<string, string> = {
 };
 
 const MESSAGES: Record<string, string> = {
+  newsletter_not_found: 'This issue does not exist or you cannot edit it.',
+  newsletter_asset_missing: 'That uploaded file no longer exists. Upload it again.',
+  newsletter_changed: 'Someone saved a newer version. Reload before editing again.',
+  newsletter_already_sending_or_sent: 'This issue is already queued or sent. Use the email queue for failed-delivery retries.',
+  no_active_subscribers: 'There are no confirmed subscribers yet. Send a test to yourself first.',
+  confirmation_invalid: 'This confirmation link is invalid, already used or expired. Subscribe again for a new one.',
+  unsubscribe_invalid: 'This unsubscribe link is invalid. Request a new one with your email address.',
+  subscriber_not_found: 'That subscription has already been removed.',
+  forbidden_origin: 'Open this form on the portal website and try again.',
   unauthorized: 'Your session has ended. Sign in again.',
   forbidden: "You don't have permission to do that.",
   not_found: 'That record no longer exists.',

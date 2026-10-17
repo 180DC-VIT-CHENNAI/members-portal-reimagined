@@ -10,6 +10,8 @@ Email is scheduled by `apps/portal/crons/email.ts` every minute and sent through
 
 `EMAIL_TEST_MODE` is a local-test setting only; never provision it on the deployed Worker. Production builds disable capture regardless of its value, and the `.dev.ts` outbox/drain routes are excluded. `ENVIRONMENT=production` also disables capture in development runtime tests. See [portal setup and email operations](../../apps/portal/README.md#email).
 
+Newsletter data for the fresh portal stays in its Void-managed D1 (ADR-009), with generated migrations applied by CI. No newsletter OTP or `NEWSLETTER_DB` binding is provisioned. Mail links use the portal request origin; use a stable public hostname for live broadcasts and consider previously issued links before changing it. No legacy data or credentials are migrated.
+
 ### Personal deployment on reimagined
 
 The reimagined deployment is **one Cloudflare Worker** (`members-portal-reimagined`) on Srijan's personal account, configured by the repo-root `wrangler.jsonc` and served at `https://180dc.vitcc.org` (Worker custom domain on the `vitcc.org` zone; `workers.dev` and preview URLs are disabled).

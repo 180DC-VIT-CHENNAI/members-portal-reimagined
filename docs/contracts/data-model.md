@@ -1,5 +1,17 @@
 # Data Model — 180DC VIT Chennai Platform
 
+## Void portal newsletter schema
+
+ADR-009 uses the portal D1, not the legacy `NEWSLETTER_DB`. Generated migrations `20261017220559_daily_prodigy.sql` and `20261017221325_careful_dormammu.sql` add:
+
+| Table | Key | Purpose |
+|---|---|---|
+| `newsletter_subscribers` | UUID, unique normalized email, unique unsubscribe token and confirmation hash | `pending`/`active`/`unsubscribed`; name, 48-hour hash/expiry, confirmation time and historical last-unsubscribe time. Only status determines current eligibility. |
+| `newsletter_assets` | UUID, unique generated R2 key | Original filename, MIME, byte length, uploader and creation time for source files and posters in `CASE_STUDIES/source/`. |
+| `newsletters` | Atomic auto-increment issue number, unique UUID | Title, email subject, summary, sanitized HTML, source/cover asset references, owner/shared flag, optimistic version, current campaign, accepted-recipient count and publication time. Slugs are derived from issue numbers, never a max-slug scan. |
+
+The existing email queue carries immutable snapshots, subscriber-audience metadata and optional required attachment references. No OTP/session/authorized-email tables are added; Google principals and named grants replace them.
+
 ## Void portal meets schema
 
 Defined in `apps/portal/db/schema/meets.ts` (migration `20261017072508_vengeful_spencer_smythe.sql`, which also grants the `meets.*` permissions).

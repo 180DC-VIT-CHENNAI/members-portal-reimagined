@@ -64,6 +64,20 @@
       "when": 1792271672457,
       "tag": "20261017211432_fancy_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792274759916,
+      "tag": "20261017220559_daily_prodigy",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792275205843,
+      "tag": "20261017221325_careful_dormammu",
+      "breakpoints": true
     }
   ]
 }
