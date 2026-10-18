@@ -10,7 +10,9 @@ The scheduled backup covers the live Void portal (`180dc-portal`, D1 `180dc-port
 | Write failover | same | If an R2 write throws, the object is written to B2 instead, so uploads during an R2 outage are not lost. |
 | Read failover | same | If an R2 read/head/list throws, B2 serves it. If R2 has no object, B2 is checked too, so outage-time uploads stay readable after R2 recovers. |
 | Daily full copy | `.github/workflows/backup.yml` (20:30 UTC = 02:00 IST, also manual) | `rclone copy` of all four R2 buckets to B2 using rclone's native `b2` backend (its S3-compatible mode misreads B2 prefixes as files). Never `sync`, so B2-only objects are kept. |
-| Daily D1 export | same workflow | SQL exports of `180dc-portal-db`, `members-portal-reimagined-db` and `members-portal-reimagined-newsletter`, gzipped. The workflow retains its pinned Wrangler export command. |
+| Daily D1 export | same workflow | SQL exports of `180dc-portal-db`, `members-portal-reimagined-db` and `members-portal-reimagined-newsletter` (Wrangler pinned to an exact version), gzipped. The portal export is restored in memory by `scripts/verify-portal-backup.mjs` before upload; a failed check stops the job. |
+| Manifest | same workflow | `manifests/<UTC timestamp>.txt` in B2: the verifier's counts, the SHA-256 of each uploaded export and `rclone size` of each mirrored bucket folder. Counts only, no member data. |
+| Failure alert | same workflow | A failed run opens (or comments on) the GitHub issue "Backup to Backblaze B2 failed" with the run link. |
 
 Deletes still require R2: a B2-only delete would let the R2 copy reappear later.
 
@@ -20,7 +22,10 @@ Deletes still require R2: a B2-only delete would let the R2 copy reappear later.
 r2/club_files/<key>      r2/blog_images/<key>
 r2/case_studies/<key>    r2/gallery_cdn/<key>
 d1/<database-name>/<UTC timestamp>.sql.gz
+manifests/<UTC timestamp>.txt
 ```
+
+rclone is installed from a pinned release whose SHA-256 is checked in the workflow; bump `RCLONE_VERSION` and `RCLONE_SHA256` together from `https://downloads.rclone.org/<version>/SHA256SUMS`.
 
 Custom metadata is stored in the `x-amz-meta-r2-custom` header (URI-encoded JSON). Retention: no lifecycle rule yet, so B2 keeps every version and export (decision pending).
 
@@ -50,7 +55,7 @@ GitHub Actions secrets on `members-portal-reimagined`: `CLOUDFLARE_API_TOKEN` (u
 
 ## Portal recovery drill
 
-1. Download a trusted export from `d1/180dc-portal-db/<UTC timestamp>.sql.gz`. Do not use a legacy database export.
+1. Download a trusted export from `d1/180dc-portal-db/<UTC timestamp>.sql.gz`. Do not use a legacy database export. Check it against the same timestamp's manifest: `sha256sum` must match its `sha256` line.
 2. From the repository root, restore it into an in-memory SQLite database and check structure, integrity and foreign keys:
 
    ```bash

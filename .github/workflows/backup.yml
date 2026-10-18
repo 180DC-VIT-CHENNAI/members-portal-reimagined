@@ -8,6 +8,10 @@ on:
     - cron: "30 20 * * *" # 02:00 IST
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write # open/update the failure alert issue
+
 concurrency:
   group: b2-backup
   cancel-in-progress: false
@@ -31,8 +35,25 @@ jobs:
       RCLONE_CONFIG_B2_ACCOUNT: ${{ secrets.B2_KEY_ID }}
       RCLONE_CONFIG_B2_KEY: ${{ secrets.B2_APPLICATION_KEY }}
     steps:
-      - name: Install rclone
-        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+      - uses: actions/checkout@v4
+
+      # node:sqlite for scripts/verify-portal-backup.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install rclone (pinned, checksum-verified)
+        env:
+          RCLONE_VERSION: v1.75.2
+          RCLONE_SHA256: 349ac8fba6ff65d6247043f1750cdcb518ec5d500ef91463a10d37c0ccdf3702
+        run: |
+          set -euo pipefail
+          zip="rclone-${RCLONE_VERSION}-linux-amd64.zip"
+          curl -fsSLO "https://downloads.rclone.org/${RCLONE_VERSION}/${zip}"
+          echo "${RCLONE_SHA256}  ${zip}" | sha256sum -c -
+          unzip -q "${zip}"
+          sudo install -m 0755 "rclone-${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
+          rclone version
 
       - name: Copy R2 buckets to B2
         run: |
@@ -48,12 +69,40 @@ jobs:
           gallery_cdn members-portal-reimagined-gallery
           EOF
 
-      - name: Export D1 databases to B2
+      - name: Export D1 databases to B2 (portal export verified before upload)
         run: |
           set -euo pipefail
           stamp=$(date -u +%Y-%m-%dT%H%MZ)
+          manifest="manifest-${stamp}.txt"
+          echo "# 180DC backup manifest ${stamp} (sha256 of uploaded objects; counts only, no member data)" > "$manifest"
           for db in 180dc-portal-db members-portal-reimagined-db members-portal-reimagined-newsletter; do
-            npx --yes wrangler@4 d1 export "$db" --remote --output "${db}.sql"
+            npx --yes wrangler@4.151.0 d1 export "$db" --remote --output "${db}.sql"
+            if [ "$db" = 180dc-portal-db ]; then
+              # Restores the export into in-memory SQLite: integrity_check, foreign keys,
+              # required tables. A failed check stops the job before upload.
+              echo "verify ${db} $(node scripts/verify-portal-backup.mjs "${db}.sql")" >> "$manifest"
+            fi
             gzip -9 "${db}.sql"
             rclone copyto "${db}.sql.gz" "b2:${B2_BUCKET}/d1/${db}/${stamp}.sql.gz"
+            echo "sha256 $(sha256sum "${db}.sql.gz" | cut -d' ' -f1) d1/${db}/${stamp}.sql.gz" >> "$manifest"
           done
+          for folder in club_files blog_images case_studies gallery_cdn; do
+            echo "size r2/${folder} $(rclone size "b2:${B2_BUCKET}/r2/${folder}" --json)" >> "$manifest"
+          done
+          rclone copyto "$manifest" "b2:${B2_BUCKET}/manifests/${stamp}.txt"
+          cat "$manifest"
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Backup to Backblaze B2 failed"
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number -q '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "Scheduled backup failed: $RUN_URL. See docs/operations/BACKUP_B2.md."
+          fi
