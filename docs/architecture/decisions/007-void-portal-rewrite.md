@@ -1,6 +1,6 @@
 # ADR-007: Rewrite the members portal on Void, with Google-only sign-in and a personnel system
 
-- **Status:** decided (implementation in progress; production still runs `apps/admin-api` + `apps/frontend`)
+- **Status:** implemented. Since the cutover (PR #37, 2026-10-18) the portal serves `180dc.vitcc.org`; the old `apps/admin-api` + `apps/frontend` Worker stays deployed without a domain for rollback until its retirement is approved.
 - **Date:** 2026-10-16
 
 ## Context
