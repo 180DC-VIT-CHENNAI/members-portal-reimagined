@@ -12,7 +12,7 @@ The scheduled backup covers the live Void portal (`180dc-portal`, D1 `180dc-port
 | Daily full copy | `.github/workflows/backup.yml` (20:30 UTC = 02:00 IST, also manual) | `rclone copy` of all four R2 buckets to B2 using rclone's native `b2` backend (its S3-compatible mode misreads B2 prefixes as files). Never `sync`, so B2-only objects are kept. |
 | Daily D1 export | same workflow | SQL exports of `180dc-portal-db`, `members-portal-reimagined-db` and `members-portal-reimagined-newsletter` (Wrangler pinned to an exact version), gzipped. The portal export is restored in memory by `scripts/verify-portal-backup.mjs` before upload; a failed check stops the job. |
 | Manifest | same workflow | `manifests/<UTC timestamp>.txt` in B2: the verifier's counts, the SHA-256 of each uploaded export and `rclone size` of each mirrored bucket folder. Counts only, no member data. |
-| Failure alert | same workflow | A failed run opens (or comments on) the GitHub issue "Backup to Backblaze B2 failed" with the run link. |
+| Failure alert | same workflow | A failed run writes an error annotation and job summary. Issues are disabled on this repository, so the alert is GitHub's failed-workflow email to the schedule owner. |
 
 Deletes still require R2: a B2-only delete would let the R2 copy reappear later.
 
@@ -25,7 +25,7 @@ d1/<database-name>/<UTC timestamp>.sql.gz
 manifests/<UTC timestamp>.txt
 ```
 
-rclone is installed from a pinned release whose SHA-256 is checked in the workflow; bump `RCLONE_VERSION` and `RCLONE_SHA256` together from `https://downloads.rclone.org/<version>/SHA256SUMS`.
+rclone is installed from a pinned release whose SHA-256 is checked in the workflow; bump `PINNED_RCLONE` and `PINNED_RCLONE_ZIP_SHA256` together from `https://downloads.rclone.org/<version>/SHA256SUMS`.
 
 Custom metadata is stored in the `x-amz-meta-r2-custom` header (URI-encoded JSON). Retention: no lifecycle rule yet, so B2 keeps every version and export (decision pending).
 

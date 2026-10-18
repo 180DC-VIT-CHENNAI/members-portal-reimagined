@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  issues: write # open/update the failure alert issue
 
 concurrency:
   group: b2-backup
@@ -43,16 +42,18 @@ jobs:
           node-version: 24
 
       - name: Install rclone (pinned, checksum-verified)
+        # Not RCLONE_*: rclone reads every RCLONE_<FLAG> variable as a flag
+        # (RCLONE_VERSION became --version and crashed it).
         env:
-          RCLONE_VERSION: v1.75.2
-          RCLONE_SHA256: 349ac8fba6ff65d6247043f1750cdcb518ec5d500ef91463a10d37c0ccdf3702
+          PINNED_RCLONE: v1.75.2
+          PINNED_RCLONE_ZIP_SHA256: 349ac8fba6ff65d6247043f1750cdcb518ec5d500ef91463a10d37c0ccdf3702
         run: |
           set -euo pipefail
-          zip="rclone-${RCLONE_VERSION}-linux-amd64.zip"
-          curl -fsSLO "https://downloads.rclone.org/${RCLONE_VERSION}/${zip}"
-          echo "${RCLONE_SHA256}  ${zip}" | sha256sum -c -
+          zip="rclone-${PINNED_RCLONE}-linux-amd64.zip"
+          curl -fsSLO "https://downloads.rclone.org/${PINNED_RCLONE}/${zip}"
+          echo "${PINNED_RCLONE_ZIP_SHA256}  ${zip}" | sha256sum -c -
           unzip -q "${zip}"
-          sudo install -m 0755 "rclone-${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
+          sudo install -m 0755 "rclone-${PINNED_RCLONE}-linux-amd64/rclone" /usr/local/bin/rclone
           rclone version
 
       - name: Copy R2 buckets to B2
@@ -92,17 +93,11 @@ jobs:
           rclone copyto "$manifest" "b2:${B2_BUCKET}/manifests/${stamp}.txt"
           cat "$manifest"
 
-      - name: Alert on failure
+      # Issues are disabled on this repository; GitHub emails the failed
+      # scheduled run to the workflow's owner, and the summary names the cause.
+      - name: Failure summary
         if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          set -euo pipefail
-          title="Backup to Backblaze B2 failed"
-          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number -q '.[0].number')
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Failed again: $RUN_URL"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "Scheduled backup failed: $RUN_URL. See docs/operations/BACKUP_B2.md."
-          fi
+          echo "::error::Backup to Backblaze B2 failed; see docs/operations/BACKUP_B2.md"
+          echo "### Backup failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "No complete backup was recorded for this run. Check the failed step above, then re-run the workflow." >> "$GITHUB_STEP_SUMMARY"
