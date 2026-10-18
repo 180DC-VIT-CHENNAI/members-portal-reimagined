@@ -415,3 +415,7 @@ Validate role, active department, matching active position and current term befo
 ## Portal project collaboration
 
 Consolidation copies portal-local department work into canonical internal projects, retaining source rows and old IDs without importing legacy Worker data. Workspace authority or named membership establishes internal eligibility; client-management grants alone do not. Completion never publishes internal work. Blocking requires a reason, and unblocking/completion clears it while retaining optimistic versions and history. Attachment permissions are rechecked per request; metadata cascades enqueue primary-object deletion.
+
+## Portal notifications and meeting follow-through
+
+Task assignment/comment notices are deduplicated and commit atomically with the originating mutation. Deadline reminders cover visible pending/blocked tasks due today/tomorrow UTC. Reads, unread counts and cursors filter by current project access, so revocation removes visibility. Meeting managers edit plain-text agenda/notes and link existing tasks; viewers only receive task labels for projects they can already see. The meet-link hiding window remains unchanged.

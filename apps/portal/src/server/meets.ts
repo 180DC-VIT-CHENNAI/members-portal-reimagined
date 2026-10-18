@@ -1,4 +1,4 @@
-import { departments, type MeetKind, meetDepartments, meets, people } from '@schema';
+import { departments, type MeetKind, meetActionItems, type TaskStatus, meetDepartments, meets, people, projects, projectTasks } from '@schema';
 import type { Context } from 'hono';
 import { and, asc, db, eq, inArray, or, sql } from 'void/db';
 import { enqueueEmailCampaign } from './email/queue';
@@ -7,8 +7,13 @@ import { requirePermission } from './guard';
 import { notFound } from './http';
 import { type MeetEmail, meetEmailHtml } from './meet-email';
 import { ACTIVE_STATUSES, type Person, type Principal } from './principal';
+import { visibleProjects } from './project-visibility';
+import { optionalText } from './validation';
 
 const DAY_MS = 86_400_000;
+
+/** Agenda and notes as a manager may set them; empty clears. */
+export const followUpFields = { agenda: optionalText(5000), notes: optionalText(10000) };
 
 /** The stored link, or null once the meet is more than a day past. */
 const visibleLink = sql<string | null>`CASE WHEN julianday(${meets.scheduledAt}) >= julianday('now', '-1 day') THEN ${meets.meetLink} ELSE NULL END`;
@@ -56,6 +61,8 @@ export async function listMeets(principal: Principal) {
       title: meets.title,
       description: meets.description,
       meetLink: visibleLink,
+      agenda: meets.agenda,
+      notes: meets.notes,
       scheduledAt: meets.scheduledAt,
       createdAt: meets.createdAt,
       createdBy: meets.createdBy,
@@ -69,13 +76,58 @@ export async function listMeets(principal: Principal) {
     .leftJoin(departments, eq(departments.id, meetDepartments.departmentId))
     .where(or(inArray(meets.kind, ['club', 'inter_department']), departmentMeets))
     .orderBy(asc(meets.scheduledAt), asc(meets.id), asc(departments.name));
-  const byId = new Map<string, Omit<(typeof rows)[number], 'departmentId' | 'departmentName'> & { departments: { id: string; name: string }[] }>();
+  const actionItems = await visibleActionItems(principal);
+  const byId = new Map<
+    string,
+    Omit<(typeof rows)[number], 'departmentId' | 'departmentName'> & { departments: { id: string; name: string }[]; actionItems: ActionItem[] }
+  >();
   for (const { departmentId, departmentName, ...meet } of rows) {
-    const entry = byId.get(meet.id) ?? { ...meet, departments: [] };
+    const entry = byId.get(meet.id) ?? { ...meet, departments: [], actionItems: actionItems.get(meet.id) ?? [] };
     if (departmentId && departmentName) entry.departments.push({ id: departmentId, name: departmentName });
     byId.set(meet.id, entry);
   }
   return [...byId.values()];
+}
+
+export interface ActionItem {
+  readonly taskId: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly title: string;
+  readonly status: TaskStatus;
+  readonly dueDate: string | null;
+}
+
+/** Linked task labels follow current project visibility, never meeting access. */
+async function visibleActionItems(principal: Principal): Promise<Map<string, ActionItem[]>> {
+  const rows = await db
+      .select({
+        meetId: meetActionItems.meetId,
+        taskId: projectTasks.id,
+        projectId: projects.id,
+        projectName: projects.name,
+        title: projectTasks.title,
+        status: projectTasks.status,
+        dueDate: projectTasks.dueDate,
+      })
+      .from(meetActionItems)
+      .innerJoin(projectTasks, eq(projectTasks.id, meetActionItems.taskId))
+      .innerJoin(projects, eq(projects.id, projectTasks.projectId))
+      .where(visibleProjects(principal))
+      .orderBy(asc(meetActionItems.createdAt), asc(projectTasks.id));
+  const byMeet = new Map<string, ActionItem[]>();
+  for (const { meetId, ...item } of rows) byMeet.set(meetId, [...(byMeet.get(meetId) ?? []), item]);
+  return byMeet;
+}
+
+/** The project a linked task belongs to, or 404 when the meet has no such action item. */
+export async function actionItemProjectOr404(meetId: string, taskId: string): Promise<string> {
+  const [row] = await db
+    .select({ projectId: projectTasks.projectId })
+    .from(meetActionItems)
+    .innerJoin(projectTasks, eq(projectTasks.id, meetActionItems.taskId))
+    .where(and(eq(meetActionItems.meetId, meetId), eq(meetActionItems.taskId, taskId)));
+  return row?.projectId ?? notFound('action_item_not_found');
 }
 
 /** Everyone with access who should hear about a meet, deduplicated. */

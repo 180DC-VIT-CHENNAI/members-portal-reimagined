@@ -464,3 +464,9 @@ Projects accept internal?: boolean and stages upcoming, active, on_hold and comp
 Task status accepts blocked with a nonblank single-line blockedReason of at most 500 characters; pending/completed clears it. Today includes visible pending/blocked work on active projects with authorization before the 101-row bound.
 
 GET/POST /api/projects/:id/files and /api/projects/:id/tasks/:taskId/files list/upload private attachments (multipart file, shared type policy, 25 MiB, 100 per scope). GET .../files/:fileId/download serves private/no-store downloads; DELETE .../files/:fileId returns 204. Upload/deletion requires task management; reads follow current project access and exact scope.
+
+## Portal notifications and meeting follow-through
+
+GET /api/notifications returns {notifications, nextBefore}, newest first, 30/page, with before cursor and unread=1 filter. GET /api/notifications/count returns {unread, capped}, capped at 99 after authorization. POST /api/notifications/read accepts ids (1-50 positive integers) or upTo and marks only the caller inbox. Responses are private/no-store.
+
+PATCH /api/meets/:id accepts optional nullable agenda (5000 characters) and notes (10000), manager-only, 60 writes/hour, no announcement. GET /api/meets includes these fields and permission-filtered actionItems. POST /api/meets/:id/action-items accepts {projectId, taskId}, requires meet management and project visibility, and returns 201 for a new link or 200 for a replay. DELETE /api/meets/:id/action-items/:taskId unlinks without deleting the task.

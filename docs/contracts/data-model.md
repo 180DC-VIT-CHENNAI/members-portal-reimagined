@@ -760,3 +760,7 @@ Task timelines read the existing `audit_log`. An idempotent `idx_audit_task_hist
 ## Portal project collaboration
 
 The additive project migration adds projects.internal (default false), a unique nullable legacy_department_project_id, project_tasks.blocked_reason, project_files and project_file_deletions. It copies existing portal-local department rows with new canonical IDs and retains source IDs separately. A metadata-delete trigger queues byte cleanup, including parent cascades. Project stages are upcoming/active/on_hold/completed; tasks are pending/blocked/completed, using existing text columns without rebuilding tables.
+
+## Portal notifications and meeting follow-through
+
+The additive generated migration adds meets.agenda/notes, meet_action_items with primary key (meet_id, task_id), and notifications with recipient/task references, kind, optional actor/comment/due date, creation/read times, unique recipient/dedupe key and inbox/task indexes. Parent task/meet deletion cascades links; task deletion cascades notifications. Notices retain 180 days of history.

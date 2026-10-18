@@ -8,6 +8,7 @@ import { requirePrincipal } from '../../../../../../src/server/guard';
 import { badRequest, conflict, idParam } from '../../../../../../src/server/http';
 import { canSeeProject, projectFor, requireRight, taskFields, taskOr404 } from '../../../../../../src/server/projects';
 import { rateLimit } from '../../../../../../src/server/rate-limit';
+import { notifyTaskAssigned } from '../../../../../../src/server/notifications';
 
 const taskEdit = v.object({
   version: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -38,11 +39,16 @@ export const PATCH = defineHandler.withValidator({ body: taskEdit })(async (c, {
   if (changed.includes('assigneeId') && next.assigneeId && !(await canSeeProject(next.assigneeId, loaded))) {
     badRequest('assignee_cannot_see_project');
   }
-  const [updated] = await db
+  const [updates] = await db.batch([db
     .update(projectTasks)
     .set({ ...next, version: task.version + 1, updatedAt: new Date().toISOString() })
     .where(and(eq(projectTasks.id, task.id), eq(projectTasks.version, task.version)))
-    .returning({ version: projectTasks.version });
+    .returning({ version: projectTasks.version }),
+    ...(changed.includes('assigneeId') && next.assigneeId
+      ? [notifyTaskAssigned({ taskId: task.id, version: task.version + 1, assigneeId: next.assigneeId, actorId: actor.person.id })]
+      : []),
+  ]);
+  const [updated] = updates;
   if (!updated) conflict('task_changed');
   const pick = (source: typeof next) => Object.fromEntries(changed.map((key) => [key, source[key]]));
   await audit(actor.person.id, 'task.update', 'task', task.id, { projectId: loaded.project.id, from: pick(task), to: pick(next) });

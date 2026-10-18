@@ -7,6 +7,7 @@ import { conflict, idParam } from '../../../../../../../src/server/http';
 import { projectFor, taskOr404 } from '../../../../../../../src/server/projects';
 import { rateLimit } from '../../../../../../../src/server/rate-limit';
 import { commentInput, pageQuery, taskCommentsPage } from '../../../../../../../src/server/task-activity';
+import { notifyTaskComment } from '../../../../../../../src/server/notifications';
 
 /** A task's comments for anyone who can see the project, newest first. */
 export const GET = defineHandler.withValidator({ query: pageQuery })(async (c, { query }) => {
@@ -44,6 +45,7 @@ export const POST = defineHandler.withValidator({ body: commentInput })(async (c
     }).from(taskComments).where(and(
       eq(taskComments.authorId, actor.person.id), eq(taskComments.requestId, body.requestId), sql`changes() = 1`,
     ))),
+    notifyTaskComment({ authorId: actor.person.id, requestId: body.requestId }),
   ]);
   const added = inserted[0];
   c.header('Cache-Control', 'private, no-store');
