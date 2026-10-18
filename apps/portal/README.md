@@ -188,3 +188,7 @@ Invitations validate all references before atomically saving personnel, optional
 ## Project collaboration
 
 Department and client work share the canonical project workspace. Internal work never publishes and requires workspace authority or explicit membership. Tasks support required blocker reasons; Today applies visibility and ordering before its 101-row database bound. Private project/task attachments inherit project permissions and use the existing 25 MiB file policy. Metadata deletion queues primary-byte cleanup, drained every five minutes. Team instances open on Roster.
+
+## Notifications and meeting follow-through
+
+The unread inbox covers assignment, comments and deadlines today/tomorrow UTC, with an hourly reminder cron at minute 5. Source mutations and notices commit together; current project access filters labels and counts. Meeting managers can edit agendas/notes and link existing tasks without sending announcements; meeting access never grants access to a project.

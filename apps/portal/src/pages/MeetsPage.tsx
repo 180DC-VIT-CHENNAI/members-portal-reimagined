@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { Icon } from '../components/icons.tsx';
+import { MeetFollowThrough } from '../components/meetings/MeetFollowThrough.tsx';
 import {
   Button,
   Card,
@@ -99,6 +100,7 @@ export function MeetsPage() {
       manage={canManage(can, m)}
       busy={busy === m.id}
       onAnnounce={() => announce(m)}
+      onChanged={meets.reload}
       onRemove={() => {
         setProblem(null);
         setRemoving(m);
@@ -163,7 +165,21 @@ export function MeetsPage() {
   );
 }
 
-function MeetItem({ meet, manage, busy, onAnnounce, onRemove }: { meet: Meet; manage: boolean; busy: boolean; onAnnounce: () => void; onRemove: () => void }) {
+function MeetItem({
+  meet,
+  manage,
+  busy,
+  onAnnounce,
+  onRemove,
+  onChanged,
+}: {
+  meet: Meet;
+  manage: boolean;
+  busy: boolean;
+  onAnnounce: () => void;
+  onRemove: () => void;
+  onChanged: () => void;
+}) {
   const where = meet.departments.map((d) => d.name).join(', ');
   const link = meet.meetLink && /^https?:\/\//i.test(meet.meetLink) ? meet.meetLink : null;
   return (
@@ -177,6 +193,7 @@ function MeetItem({ meet, manage, busy, onAnnounce, onRemove }: { meet: Meet; ma
         {where && ` · ${where}`}
       </p>
       {meet.description && <p className="pre-wrap">{meet.description}</p>}
+      <MeetFollowThrough meet={meet} manage={manage} onChanged={onChanged} />
       {(link || manage) && (
         <div className="cluster">
           {link && (
