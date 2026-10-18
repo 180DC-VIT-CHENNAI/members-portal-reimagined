@@ -9,6 +9,7 @@ export type QueueAttachment = {
   readonly key: string;
   readonly contentType?: string;
   readonly required?: boolean;
+  readonly bucket?: 'CASE_STUDIES' | 'CLUB_FILES';
 };
 
 /** One campaign, sent as one message per recipient; never a BCC batch. */

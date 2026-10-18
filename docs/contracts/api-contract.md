@@ -1,5 +1,18 @@
 # API Contract — 180DC VIT Chennai Platform
 
+## Void portal letters contract (slice 9)
+
+These routes use current Google personnel sessions, not legacy Letter Studio OTPs. `letters.manage` is global for admin and department-scoped for director; `letters.send` uses the same defaults. Permissions remain configurable through personnel roles/grants.
+
+- `GET /api/letters`: recent saved document summaries within the caller's manage scope, up to 100. Includes reference, type, filename, byte length, access department, save time, private download URL and email eligibility. Snapshots and storage keys are not in the list.
+- `POST /api/letters`: multipart `file` (PDF bytes, maximum 20 MiB) and `metadata` JSON `{departmentId: string | null, data: Record<string,string>}`. The snapshot includes a supported type, reference `180DC-XXXXXXXX` and document date. Manage scope must cover the explicit department (null requires global); free-text template departments never authorize access. Stores immutable metadata and PDF under `CLUB_FILES/letters/<uuid>.pdf`; returns `{id, docnum, filename, bytes, downloadUrl, emailEligible}`. 60/hour.
+- `GET /api/letters/:id`: authorized summary, immutable snapshot and durable per-recipient send history. Hidden documents are 404. `GET /api/letters/:id/file`: authorized PDF stream, private/no-store. Documents have no edit endpoint, and shared Club Files never lists them.
+- `GET /api/letters/recipients`: people with active/on-leave access within the caller's manage scope; id, name, email, registration number and department for the studio picker.
+- `POST /api/letters/:id/send`: `{recipientEmail, requestId: UUID}`, 30/hour. Requires read/manage access plus `letters.send` over the document's department. Department senders may only address active/on-leave people in their own permitted departments; global senders may address external recipients. PDFs above 3 MiB are download/print-only. Subject, body and required attachment come from the saved snapshot/file, never mutable send-form fields.
+- A send intent and its email campaign are inserted in one transaction. Identical actor/request retries replay one campaign; another document or recipient with the same UUID is 409. Success means queued, not sent. Durable history distinguishes `queued`, `accepted`, `failed` and `uncertain`; provider-unknown outcomes are never automatically resent. Acceptance is not proof of inbox delivery.
+
+Supported documents: appointment, promotion, termination, transfer, resignation, show-cause, service, relieving, recognition, MOU, announcement, department report and Leadership Decision / Initiative proposal. Template reference numbers are deterministic legacy hashes, not a unique or sequential ledger. PDF bytes are supplied by the authorized operator's browser; signature/header checks do not cryptographically bind them to metadata.
+
 ## Void portal newsletter contract (slice 8)
 
 These are the new portal's APIs, not replacements on the legacy Worker (ADR-009). Public success bodies use the shapes below; errors use the portal's standard validation JSON/plain-text codes. No editor OTP or registry credential is accepted.

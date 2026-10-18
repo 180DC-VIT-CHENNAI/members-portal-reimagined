@@ -14,6 +14,14 @@ const STATUS_NAMES: Record<string, string> = {
 };
 
 const MESSAGES: Record<string, string> = {
+  letter_not_found: 'This saved PDF does not exist or is outside your access.',
+  letter_file_missing: 'The saved PDF is unavailable. No email was sent.',
+  invalid_letter_metadata: 'The letter metadata is invalid or too large.',
+  invalid_letter_type: 'Choose one of the supported document types.',
+  pdf_required: 'Choose a PDF with valid PDF file bytes.',
+  letter_too_large_for_email: 'This PDF exceeds the 3 MB email budget. Download it or export a smaller document.',
+  letter_recipient_outside_scope: 'You can only email current members in your permitted departments.',
+  letter_request_reused: 'This send request was already used for a different document or recipient.',
   newsletter_not_found: 'This issue does not exist or you cannot edit it.',
   newsletter_asset_missing: 'That uploaded file no longer exists. Upload it again.',
   newsletter_changed: 'Someone saved a newer version. Reload before editing again.',

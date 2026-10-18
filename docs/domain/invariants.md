@@ -1,5 +1,13 @@
 # Invariants — 180DC VIT Chennai Platform
 
+## Void portal letter studio invariants
+
+- **PORTAL-LETTERS-01:** Read/save/send authority uses current personnel grants and an explicit saved department, never a free-text team, position, document title or old OTP credential. Letter files cannot be read through public/shared-file routes.
+- **PORTAL-LETTERS-02:** Saved PDF bytes and metadata are immutable; one actor/request UUID creates at most one send intent and campaign transactionally. Sending derives attachment and content from that saved document.
+- **PORTAL-LETTERS-03:** A queued message is never labeled accepted before the provider result. Unknown results are distinct and not automatically resent. Required missing PDFs stop delivery, and raw attachments cannot exceed the 3 MiB email budget.
+
+Covered by `apps/portal/tests/e2e/letters.test.mjs`; browser/PDF QA also verifies every template's fixed A4 geometry and refusal of content that cannot fit safely.
+
 ## Void portal newsletter invariants
 
 - **PORTAL-NEWS-01:** A pending/unsubscribed/missing subscriber never receives a real newsletter or event broadcast. Audience state is rechecked before each send; each message carries only that recipient's unsubscribe capability.

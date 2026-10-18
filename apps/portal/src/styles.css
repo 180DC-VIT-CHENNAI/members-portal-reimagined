@@ -173,6 +173,12 @@ img {
   max-width: 100%;
 }
 
+/* html2canvas (Letter Studio PDFs) finds text baselines with a 1x1 inline <img>
+   probe appended under <body>. As a block it would shift every captured line down. */
+body > div > img[width='1'][height='1'] {
+  display: inline;
+}
+
 button,
 input,
 select,
@@ -2670,3 +2676,8 @@ code,
   padding: 0;
   font-weight: 600;
 }
+
+/* The document renderer owns fixed A4 geometry; only this visible clone scales to the viewport. */
+.letter-form-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+.letter-preview-viewport { position: relative; width: 100%; overflow: hidden; }
+.letter-preview-scaled { position: absolute; top: 0; left: 0; transform-origin: top left; }

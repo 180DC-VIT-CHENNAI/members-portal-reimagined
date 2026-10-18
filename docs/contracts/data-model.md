@@ -1,5 +1,16 @@
 # Data Model — 180DC VIT Chennai Platform
 
+## Void portal letters schema
+
+`apps/portal/db/schema/letters.ts`, migration `20261017223322_dapper_redwing.sql`:
+
+| Table | Key | Purpose |
+|---|---|---|
+| `letter_documents` | UUID, unique private object key | Immutable PDF filename/size, type, non-unique printed reference, explicit access-department FK, JSON string-field snapshot, creator and save time. |
+| `letter_sends` | UUID, unique `(created_by, request_id)` | Document FK, recipient, campaign id, durable queued/accepted/failed/uncertain state, provider error, acceptance/save timestamps and actor. |
+
+Campaign ids are not foreign keys: generic email campaigns expire after 30 days while official-document history remains. Required attachment JSON references carry a bucket discriminator so letter PDFs load from `CLUB_FILES`, not newsletter `CASE_STUDIES`. No legacy letter OTP, session or allowlist tables are copied.
+
 ## Void portal newsletter schema
 
 ADR-009 uses the portal D1, not the legacy `NEWSLETTER_DB`. Generated migrations `20261017220559_daily_prodigy.sql` and `20261017221325_careful_dormammu.sql` add:

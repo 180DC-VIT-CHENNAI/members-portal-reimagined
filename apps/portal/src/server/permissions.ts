@@ -32,6 +32,8 @@ export const PERMISSIONS = {
   'projects.tasks.manage': "Create, edit, reassign, complete and delete tasks on a department's projects",
   'team_instances.view': 'See team instances: their teams, people, progression and activity',
   'team_instances.manage': "Run a department's team instances: settings, groups, teams, outside people and staffing",
+  'letters.manage': 'Create and read official letters within permitted departments',
+  'letters.send': 'Email saved letters to permitted recipients',
   'newsletter.edit': 'Write newsletter drafts and send tests to yourself',
   'newsletter.send': 'Broadcast newsletters and events to confirmed subscribers',
   'newsletter.manage': 'Manage newsletter issues and subscribers',

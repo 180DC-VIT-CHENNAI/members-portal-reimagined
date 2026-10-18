@@ -23,6 +23,7 @@ export interface AdminTool {
 }
 
 export const ADMIN_TOOLS: readonly AdminTool[] = [
+  { path: '/letters', label: 'Letter studio', description: 'Compose, save and send official PDFs with private delivery history.', permission: 'letters.manage', icon: 'fileText' },
   { path: '/newsletter-editor', label: 'Newsletter editor', description: 'Draft issues, test mail and announce events.', permission: 'newsletter.edit', icon: 'bookOpen' },
   { path: '/admin/newsletter-subscribers', label: 'Newsletter subscribers', description: 'Confirmed readers, pending sign-ups and subscription erasure.', permission: 'newsletter.manage', icon: 'inbox' },
   { path: '/admin/email-queue', label: 'Email queue', description: 'Campaign progress, provider acceptance and retries.', permission: 'email.view', icon: 'inbox' },

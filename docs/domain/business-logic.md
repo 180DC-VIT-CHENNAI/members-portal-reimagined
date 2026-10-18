@@ -1,5 +1,15 @@
 # Business Logic — 180DC VIT Chennai Platform
 
+## Void portal letter studio rules
+
+- Current Google principals and `letters.manage`/`letters.send` replace the standalone OTP allowlist. Admins hold both globally, directors for their department. Positions and typed team labels never grant access.
+- All 13 existing document types remain available. Composition, preview and local PDF export run in the browser; saving freezes the PDF and its metadata. Sending uses the saved snapshot, even if the composer has since changed.
+- Each saved PDF has a separate explicit access department. Null means global-only. Downloads and history are private and scoped; the general shared-file APIs cannot expose `letters/` objects.
+- Scoped senders address only active/on-leave personnel in their permitted departments. Global senders can address external recipients. A send request UUID binds the actor, saved document and recipient and prevents duplicate submissions.
+- Saving accepts PDFs up to 20 MiB; email is limited to 3 MiB raw PDF to stay under the provider's encoded-message ceiling. Larger documents remain downloadable/printable. Required missing PDFs fail instead of silently sending without the document.
+- Queued, provider-accepted, failed and unknown outcomes are distinct. Durable send history survives campaign cleanup. A provider-unknown outcome requires an explicit retry decision, which can duplicate a message.
+- Template references are deterministic hashes and need not be unique. Printed signature artwork/text is not a cryptographic signature. Static legacy signatory/tenure text must be reviewed before issuing official correspondence.
+
 ## Void portal newsletter rules
 
 - Subscribers confirm email ownership; they are not personnel and do not need Google. Pending or unsubscribed addresses never enter a real broadcast. Subscribe responses do not reveal whether an address is active.

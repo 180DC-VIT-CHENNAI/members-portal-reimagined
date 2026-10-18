@@ -8,3 +8,4 @@ export * from './schema/meets';
 export * from './schema/projects';
 export * from './schema/team-instances';
 export * from './schema/newsletter';
+export * from './schema/letters';

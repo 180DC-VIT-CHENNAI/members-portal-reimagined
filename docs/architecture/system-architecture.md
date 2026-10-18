@@ -1,5 +1,17 @@
 # System Architecture — 180DC VIT Chennai Platform
 
+## Fresh Void portal architecture
+
+`apps/portal` is the new deployment (`180dc-portal`); the legacy architecture below remains live until an approved custom-domain cutover. See ADR-007, ADR-008 and ADR-009.
+
+- One Void Worker with Workers Assets serves the React SPA; static assets bypass Worker invocation. File-based `routes/api/**` handlers share modular server services. No global middleware, KV or Queue service is added.
+- Better Auth handles Google-only invite-gated identity. D1 personnel lifecycle and named global/department grants authorize each request; titles/tenures remain separate from permissions.
+- Generated Drizzle migrations own the portal D1: personnel, content, department workspaces, meets, projects/tasks/comments, team instances, newsletter issues/assets/subscribers, letter documents/send intents and email accounting.
+- R2 holds shared files, case-study/newsletter assets, gallery images and private `letters/` PDFs. Private letters are accessed only by scoped APIs, not the public/shared-file surfaces. Existing optional B2 failover remains available.
+- A minute cron claims D1 email campaigns and sends through Cloudflare Email Sending. Newsletter/event campaigns recheck subscribers and personalize unsubscribe headers; letter campaigns read required PDFs from `CLUB_FILES` and retain durable acceptance/uncertainty records beyond campaign cleanup.
+- The browser-only letter renderer and PDF libraries are lazy-loaded. It freezes document data before capture/save and uses a scoped, fixed-A4 layout independently of the responsive editor.
+- Origin-main PRs run diagnostics/tests/builds; main merges deploy via `portal-ci.yml`. No legacy data or credentials are copied for this launch, and upstream is not modified.
+
 ## High-level architecture
 
 On `reimagined`, Pages supports an optional runtime `API_ORIGIN` for personal-account Worker routing and matching CSP connection origins. Absent configuration retains the existing Worker origin. Invalid values fail closed. API redirects are not followed by the proxy. The backend accepts explicit additional HTTPS browser origins via `ALLOWED_WEB_ORIGINS` for both CORS and CSRF. Infrastructure bindings still require personal deployment configuration.
