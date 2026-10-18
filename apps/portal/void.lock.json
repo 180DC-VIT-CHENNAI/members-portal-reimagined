@@ -2,6 +2,12 @@
   "version": 1,
   "source": {
     "name": "180dc-portal",
+    "routes": [
+      {
+        "pattern": "180dc.vitcc.org",
+        "custom_domain": true
+      }
+    ],
     "workers_dev": true,
     "preview_urls": true,
     "r2_buckets": [
@@ -45,6 +51,14 @@
         "bucket_name": "members-portal-reimagined-gallery"
       }
     ],
+    "send_email": [
+      {
+        "name": "SEND_EMAIL",
+        "allowed_sender_addresses": [
+          "noreply@180dc.vitcc.org"
+        ]
+      }
+    ],
     "account_id": "ee4c08f37c3a62fedc87fbd1b8b96ff4",
     "compatibility_date": "2026-02-24",
     "d1_databases": [
@@ -55,14 +69,12 @@
         "migrations_dir": "./db/migrations"
       }
     ],
-    "send_email": [
+    "routes": [
       {
-        "name": "SEND_EMAIL",
-        "allowed_sender_addresses": [
-          "noreply@180dc.vitcc.org"
-        ]
+        "pattern": "180dc.vitcc.org",
+        "custom_domain": true
       }
     ]
   },
-  "text": "{\n  \"name\": \"180dc-portal\",\n  \"workers_dev\": true,\n  \"preview_urls\": true,\n  \"r2_buckets\": [\n    {\n      \"binding\": \"CLUB_FILES\",\n      \"bucket_name\": \"members-portal-reimagined-club-files\"\n    },\n    {\n      \"binding\": \"CASE_STUDIES\",\n      \"bucket_name\": \"members-portal-reimagined-case-studies\"\n    },\n    {\n      \"binding\": \"GALLERY_CDN\",\n      \"bucket_name\": \"members-portal-reimagined-gallery\"\n    }\n  ],\n  \"account_id\": \"ee4c08f37c3a62fedc87fbd1b8b96ff4\",\n  \"compatibility_date\": \"2026-02-24\",\n  \"d1_databases\": [\n    {\n      \"binding\": \"DB\",\n      \"database_name\": \"180dc-portal-db\",\n      \"database_id\": \"f95987df-5310-4e03-8d4c-60e6b32da67e\",\n      \"migrations_dir\": \"./db/migrations\"\n    }\n  ],\n  \"send_email\": [\n    {\n      \"name\": \"SEND_EMAIL\",\n      \"allowed_sender_addresses\": [\n        \"noreply@180dc.vitcc.org\"\n      ]\n    }\n  ]\n}\n"
+  "text": "{\n  \"name\": \"180dc-portal\",\n  \"workers_dev\": true,\n  \"preview_urls\": true,\n  \"r2_buckets\": [\n    {\n      \"binding\": \"CLUB_FILES\",\n      \"bucket_name\": \"members-portal-reimagined-club-files\"\n    },\n    {\n      \"binding\": \"CASE_STUDIES\",\n      \"bucket_name\": \"members-portal-reimagined-case-studies\"\n    },\n    {\n      \"binding\": \"GALLERY_CDN\",\n      \"bucket_name\": \"members-portal-reimagined-gallery\"\n    }\n  ],\n  \"send_email\": [\n    {\n      \"name\": \"SEND_EMAIL\",\n      \"allowed_sender_addresses\": [\n        \"noreply@180dc.vitcc.org\"\n      ]\n    }\n  ],\n  \"account_id\": \"ee4c08f37c3a62fedc87fbd1b8b96ff4\",\n  \"compatibility_date\": \"2026-02-24\",\n  \"d1_databases\": [\n    {\n      \"binding\": \"DB\",\n      \"database_name\": \"180dc-portal-db\",\n      \"database_id\": \"f95987df-5310-4e03-8d4c-60e6b32da67e\",\n      \"migrations_dir\": \"./db/migrations\"\n    }\n  ],\n  \"routes\": [\n    {\n      \"pattern\": \"180dc.vitcc.org\",\n      \"custom_domain\": true\n    }\n  ]\n}\n"
 }

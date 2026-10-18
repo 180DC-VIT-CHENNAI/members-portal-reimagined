@@ -2,7 +2,7 @@
 
 ## Fresh Void portal architecture
 
-`apps/portal` is the new deployment (`180dc-portal`); the legacy architecture below remains live until an approved custom-domain cutover. See ADR-007, ADR-008 and ADR-009.
+`apps/portal` is the new deployment (`180dc-portal`) and has served `180dc.vitcc.org` since the approved custom-domain cutover; the legacy architecture below describes the old Worker, which stays deployed without a domain for rollback. See ADR-007, ADR-008 and ADR-009.
 
 - One Void Worker with Workers Assets serves the React SPA; static assets bypass Worker invocation. File-based `routes/api/**` handlers share modular server services. No global middleware, KV or Queue service is added.
 - Better Auth handles Google-only invite-gated identity. D1 personnel lifecycle and named global/department grants authorize each request; titles/tenures remain separate from permissions.

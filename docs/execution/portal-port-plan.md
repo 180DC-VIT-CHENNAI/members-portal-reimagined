@@ -55,7 +55,8 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Newsletter (slice 8): double opt-in and one-click unsubscribe, current Google editor permissions, owned/shared drafts and uploads, self-tests, atomic broadcasts, personalized headers and late-unsubscribe suppression, events and public archive. See ADR-009.
 - Letter studio (slice 9): all 13 template/data models, isolated A4 preview/export, private immutable PDFs, scoped recipients, transactional send-intent deduplication and durable provider outcomes. PR #35 is merged and deployed.
 - Launch readiness (slice 10), 2026-10-18: production D1 holds only the seeded admin (`srijan.guchhait@gmail.com`: active, `admin` role, `tech`, 2026-27 tenure as Technical Lead - DevOps & Cloud) and every migration through slice 9. The first live message, a newsletter confirmation to the admin, was accepted by Cloudflare Email Sending.
-- Next: inbox confirmation from the user, then the explicit user-approved domain cutover (10).
+- Domain cutover (slice 10): `180dc.vitcc.org` moved to `180dc-portal` with the user's explicit approval. The old Worker stays deployed without a domain for rollback.
+- Next: retire the old Worker when the user approves.
 
 ## Rules carried over (see docs/domain/invariants.md)
 

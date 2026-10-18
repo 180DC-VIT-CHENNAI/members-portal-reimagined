@@ -14,6 +14,10 @@ Email-entry unsubscribe now requests a personal link rather than unauthenticated
 
 These contracts are the surfaces that external systems, the frontend, and club members depend on. Do not break them without an explicit migration plan.
 
+## COMP-PORTAL-CUTOVER-01 One hostname, fresh portal
+
+`180dc.vitcc.org` reaches the Void portal. The blank portal does not honor credentials or links the old Worker issued on this hostname: registry-token and OTP sign-ins, member sessions, newsletter confirm/unsubscribe links and legacy `/api/*` paths. Members re-enter through Google sign-in with an invited email. The old Worker's D1 and R2 data are unchanged until its retirement is approved. The club deployment configured by `apps/admin-api/wrangler.toml` and Cloudflare Pages is separate and unaffected.
+
 ## COMP-PORTAL-UI-01 Separate Void portal home and task activity
 
 The contracts below describe the legacy deployment. While both Workers run, it keeps those contracts; the Void portal's API is documented separately in `apps/portal/README.md` and the portal sections of `api-contract.md`.

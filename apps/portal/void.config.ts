@@ -13,8 +13,11 @@ export default defineConfig({
   },
   cloudflare: {
     name: '180dc-portal',
-    // Reachable at 180dc-portal.srijan-guchhait.workers.dev until the cutover
-    // adds the 180dc.vitcc.org custom domain; preview URLs back the readiness check.
+    // Production domain since the cutover from the old members-portal-reimagined
+    // Worker; the repo-root wrangler.jsonc must never declare it again, or that
+    // Worker's next CI deploy takes it back. workers.dev stays reachable and
+    // preview URLs back the deploy readiness check.
+    routes: [{ pattern: '180dc.vitcc.org', custom_domain: true }],
     workers_dev: true,
     preview_urls: true,
     // The buckets the current deployment (repo-root wrangler.jsonc) uses in
