@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { auth } from 'void/client';
 import logo from './assets/logo.png';
 import { Icon, type IconName } from './components/icons.tsx';
-import { Avatar, ErrorState } from './components/ui.tsx';
+import { Avatar, ErrorState, LoadingBlock } from './components/ui.tsx';
 import { can, type PermissionMap, visibleAdminTools } from './lib/access.ts';
 import { api, clearCache, onUnauthorized, problemFrom } from './lib/api.ts';
 import type { ApiProblem } from './lib/errors.ts';
@@ -52,6 +52,8 @@ import { NewsletterFormPage } from './pages/NewsletterFormPage.tsx';
 import { NewsletterEventPage } from './pages/NewsletterEventPage.tsx';
 import { NewslettersPage, NewsletterArticlePage } from './pages/public/NewslettersPage.tsx';
 import { NewsletterSubscribersPage } from './pages/admin/NewsletterSubscribersPage.tsx';
+
+const LetterStudioPage = lazy(() => import('./pages/letters/LetterStudioPage.tsx').then((module) => ({ default: module.LetterStudioPage })));
 
 type Boot = { state: 'loading' } | { state: 'signed-out' } | { state: 'error'; problem: ApiProblem } | { state: 'ready'; me: MeResponse };
 
@@ -171,7 +173,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
       active: path.startsWith('/departments/'),
     },
     { to: '/files', label: 'Files', icon: 'fileText', show: can(permissions, 'files.view'), active: path === '/files' },
-    { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') || path.startsWith('/newsletter-editor') },
+    { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') || path.startsWith('/newsletter-editor') || path.startsWith('/letters') },
   ];
   const visible = nav.filter((item) => item.show);
   const tabs = visible.filter((item) => item.tab !== false).slice(0, 4);
@@ -285,6 +287,7 @@ function route(path: string, home: string, next: string | null) {
   if (department) return <DepartmentPage key={department.id} id={department.id} />;
   const person = matchPath('/people/:id', path);
   if (person) return <PersonPage key={person.id} id={person.id} />;
+  if (path === '/letters') return <Suspense fallback={<LoadingBlock label="Loading letter studio" />}><LetterStudioPage /></Suspense>;
   if (path === '/subscriber/newsletter') return <Redirect to="/newsletter-editor" />;
   if (path === '/newsletter-editor') return <NewsletterEditorPage />;
   if (path === '/newsletter-editor/new') return <NewsletterFormPage />;

@@ -170,6 +170,12 @@ All spacing derives from a base of **4px**.
 - All comment content is plain text and wraps, including long unbroken text. Removal uses the existing destructive confirmation dialog.
 - Loading, empty and retryable error states use the shared portal primitives; access-denied refreshes clear private content.
 
+### Portal official documents
+- The Letter Studio editor reuses the portal cards, fields, dialogs, badges and responsive tables. The entire studio and PDF engines are lazy-loaded.
+- Document pages are white A4 paper with fixed physical geometry and legacy letterhead artwork, independent of UI theme and phone width. All document CSS is isolated below `.letter-document`; never style global `.page`, `html` or `body` from the portal stylesheet.
+- Visible previews scale a clone only. Measurement and PDF capture use an unscaled offscreen tree after fonts/images are ready. Content/signature overflow must paginate or fail explicitly, never silently clip.
+- PDF save freezes bytes plus metadata. Send operates only on a selected saved version and uses the existing confirmation/dialog primitives. Open/print links always use permission-checked private file URLs.
+
 ## 6. Motion & Interaction
 
 ### Timing

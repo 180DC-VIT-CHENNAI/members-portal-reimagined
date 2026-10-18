@@ -200,6 +200,12 @@ importers:
       hono:
         specifier: 4.13.13
         version: 4.13.13
+      html2canvas:
+        specifier: ^1.4.1
+        version: 1.4.1
+      jspdf:
+        specifier: ^4.2.1
+        version: 4.2.1
       mammoth:
         specifier: 1.12.1
         version: 1.12.1

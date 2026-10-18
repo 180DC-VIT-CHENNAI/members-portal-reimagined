@@ -1,5 +1,11 @@
 # Compatibility Contracts — 180DC VIT Chennai Platform
 
+## COMP-PORTAL-LETTERS-01 Official documents in the fresh portal
+
+The `/letters` surface remains, but authenticates with the existing Google personnel session and named permissions. New APIs live under `/api/letters`; legacy `/api/letter-studio/*` and OTP credentials remain confined to the old Worker. No credentials or old PDFs are imported.
+
+All 13 templates and their fields are retained. Save, local download/print and email are separate deliberate operations; a download does not silently upload or open Send. PDF storage is private and immutable. Printed references retain the deterministic, non-unique legacy semantics; signature marks are not digital certificates.
+
 ## COMP-PORTAL-NEWS-01 Fresh newsletter identity and URLs
 
 The Void portal intentionally starts with no legacy subscriber, editor session or unsubscribe/confirmation credentials (ADR-009). The legacy Worker keeps its existing JSON contracts. The new portal uses its own documented APIs, Google editor permissions, `/subscriber?confirm=`, `/unsubscribe/:token`, `/newsletter` archive, and `/newsletter-editor`; signed-in `/subscriber/newsletter` redirects to that editor.

@@ -31,7 +31,7 @@ The old Worker's 165 routes and 52 tables map onto the slices like this.
 6. **Team instances.** The `instance_*` and `team_instances` tables.
 7. **Email infrastructure.** `email_queue`, `email_deliveries`, `email_hour_count`, `daily_email_count`, `rate_limits`, and the `* * * * *` cron sending through Cloudflare Email Sending (`sendEmail` from `void/email`, ADR-008; at most 15 per minute and 500 per hour). It includes `/api/admin/email-queue*`, `/api/send-email` and the dev outbox.
 8. **Newsletter.** Portal-owned issues, assets and double opt-in subscribers in the Void-managed portal D1 (ADR-009). Google permissions replace legacy editor OTP/authorized-email sessions; includes subscriber/unsubscribe pages, editor, test/broadcast/event mail and archive.
-9. **Letter studio.** `letter_*`, `letters_sent`, and `/api/letter-studio/*`.
+9. **Letter studio.** All 13 document templates with isolated browser/PDF rendering, private immutable `letter_documents`, durable `letter_sends`, current Google permission scopes and `/api/letters/*`. Legacy OTP/session tables are not recreated.
 10. **Blank-data launch and cutover.** This slice:
     - launches with fresh portal databases and empty portal R2 buckets; no records or objects are copied from the old Worker;
     - verifies the reference data and initial admin seeded by the portal migrations, including `srijan.guchhait@gmail.com` with full admin access and the title "Technical Lead - DevOps & Cloud";
@@ -53,7 +53,8 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Task activity and Today (slice 5b): plain-text comments with atomic history and idempotent retries, paged history and the default Today home.
 - Team instances (slice 6): instances with departments, level ladders, groups, teams, outside people and placements, with department-scoped running versus all-department configuring, capacity enforced atomically, and Staffing, Progression, Roster and Activity views.
 - Newsletter (slice 8): double opt-in and one-click unsubscribe, current Google editor permissions, owned/shared drafts and uploads, self-tests, atomic broadcasts, personalized headers and late-unsubscribe suppression, events and public archive. See ADR-009.
-- Next implementation order: letter studio (9), then cutover (10).
+- Letter studio (slice 9): all 13 template/data models, isolated A4 preview/export, private immutable PDFs, scoped recipients, transactional send-intent deduplication and durable provider outcomes.
+- Next: launch-readiness verification and explicit user-approved domain cutover (10).
 
 ## Rules carried over (see docs/domain/invariants.md)
 

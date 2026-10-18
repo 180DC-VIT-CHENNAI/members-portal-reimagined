@@ -7,5 +7,5 @@ import { emailTestMode } from '../../../src/server/email/send';
 /** Development-only, synchronous drain for capture integration tests. */
 export const POST = defineHandler(async (c) => {
   if (emailTestMode() !== 'capture') throw new HTTPException(404);
-  return drainEmailQueue(bucket(c, 'CASE_STUDIES'));
+  return drainEmailQueue(bucket(c, 'CASE_STUDIES'), undefined, bucket(c, 'CLUB_FILES'));
 });

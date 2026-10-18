@@ -1,5 +1,13 @@
 # apps/portal — 180DC members portal (Void rewrite)
 
+## Letter Studio
+
+`/letters` uses existing Google personnel sessions and global/department `letters.manage` and `letters.send` grants. Admins hold both globally, directors for their department. Use the role/grant editor rather than creating a separate letter OTP allowlist.
+
+The studio includes all 13 legacy document types. PDF export runs in a lazy-loaded browser renderer; the preview is a scaled clone, not the export surface. Save freezes the document bytes and metadata; local Download/Print and Email are independent actions. Printed signatories are not cryptographic signatures.
+
+Private PDFs live at `CLUB_FILES/letters/` and are served only by authorized `/api/letters/:id/file` requests; shared files exclude this prefix. Save accepts 20 MiB but email requires at most 3 MiB. The minute queue loads the private bucket for required PDF attachments and records queued/accepted/failed/uncertain outcomes in `letter_sends`, which outlives generic campaign retention. See the portal letters section of `docs/contracts/api-contract.md` for all request shapes and limits.
+
 ## Newsletter
 
 The Catalyst lives in this fresh portal: `/newsletter` (archive), `/subscriber` (double opt-in), `/unsubscribe` (request a personal link), `/unsubscribe/:token` (explicit removal), `/newsletter-editor` (Google-authenticated drafts/events) and `/admin/newsletter-subscribers` (administration). Detailed route contracts and limits are in `docs/contracts/api-contract.md` under the portal newsletter section.

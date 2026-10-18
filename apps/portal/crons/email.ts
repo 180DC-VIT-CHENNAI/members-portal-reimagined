@@ -5,5 +5,5 @@ import { drainEmailQueue } from '../src/server/email/queue';
 export const cron = '* * * * *';
 
 export default defineScheduled(async () => {
-  await drainEmailQueue(env.CASE_STUDIES);
+  await drainEmailQueue(env.CASE_STUDIES, undefined, env.CLUB_FILES);
 });

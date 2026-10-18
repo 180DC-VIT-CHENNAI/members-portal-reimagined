@@ -1,5 +1,13 @@
 # Current State — 180DC VIT Chennai Platform
 
+## Fresh Void portal rollout
+
+The new `apps/portal` is a modular Void SPA/API deployed independently through origin-main CI to `180dc-portal`. The legacy Worker still owns `180dc.vitcc.org` until the explicit cutover. Start portal work with `apps/portal/README.md` and `docs/execution/portal-port-plan.md`; the implementation inventory below primarily describes the legacy system.
+
+The portal port covers Google-only personnel identity/lifecycle, positions/terms and granular access; public content and administration; shared files/gallery; department workspaces; queued Cloudflare Email Sending; meets; projects, versioned tasks and comments/history; Today; team-instance staffing/progression; The Catalyst subscriptions/editor/archive/events; and private immutable Letter Studio documents with queued delivery history. Legacy OTP/registry credentials are not recreated.
+
+This is a blank-data launch, not a data migration. Existing records/files and previously issued subscription credentials remain in the old deployment. Inbox-delivery confirmation, Google callback/domain readiness and explicit approval of live routing changes are launch gates, not implied by capture tests or a successful build.
+
 This document describes the repository as it exists on the `main` branch. It is the descriptive source of truth for an agent starting work.
 
 ## Overall status

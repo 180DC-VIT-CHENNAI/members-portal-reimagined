@@ -1,4 +1,4 @@
-import { emailDeliveries, emailQueue, newsletters, newsletterSubscribers } from '@schema';
+import { emailDeliveries, emailQueue, newsletters, newsletterSubscribers, letterSends } from '@schema';
 import { unsubscribeHeaders, unsubscribeUrl, UNSUBSCRIBE_MARKER } from '../newsletter/mail.ts';
 import { and, asc, db, eq, inArray, or, sql } from 'void/db';
 import type { Attachment } from 'void/email';
@@ -44,10 +44,14 @@ function eligible() {
 export async function drainEmailQueue(
   attachmentsBucket: R2Bucket,
   delay: (milliseconds: number) => Promise<void> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  clubFilesBucket?: R2Bucket,
 ) {
   await db.update(emailQueue).set({
     status: 'failed', lastError: 'max attempts reached', finishedAt: new Date().toISOString(),
   }).where(and(eligible(), sql`${emailQueue.attempts} >= 5`));
+  await db.update(letterSends).set({ status: 'failed', lastError: 'campaign_failed' }).where(and(
+    eq(letterSends.status, 'queued'), inArray(letterSends.campaignId, db.select({ id: emailQueue.id }).from(emailQueue).where(eq(emailQueue.status, 'failed'))),
+  ));
   await db.delete(emailQueue).where(and(
     inArray(emailQueue.status, ['done', 'failed']),
     sql`julianday(${emailQueue.finishedAt}) < julianday('now', '-30 days')`,
@@ -71,11 +75,13 @@ export async function drainEmailQueue(
   const attachments: Attachment[] = [];
   for (const reference of campaign.attachments ?? []) {
     try {
-      const object = await attachmentsBucket.get(reference.key);
+      const source = reference.bucket === 'CLUB_FILES' ? clubFilesBucket : attachmentsBucket;
+      const object = source ? await source.get(reference.key) : null;
       if (!object) {
         console.warn(JSON.stringify({ event: 'email_attachment_missing', campaignId: campaign.id, key: reference.key }));
         if (reference.required) {
           await db.update(emailQueue).set({ status: 'failed', failed: campaign.total, lastError: 'required_attachment_missing', finishedAt: new Date().toISOString() }).where(eq(emailQueue.id, campaign.id));
+          await db.update(letterSends).set({ status: 'failed', lastError: 'required_attachment_missing' }).where(eq(letterSends.campaignId, campaign.id));
           return { campaignId: campaign.id, sent: 0, failed: campaign.total };
         }
         continue;
@@ -132,6 +138,12 @@ export async function drainEmailQueue(
       target: [emailDeliveries.campaignId, emailDeliveries.recipient],
       set: { status, error, sentAt, attempts: sql`${emailDeliveries.attempts} + 1`, updatedAt: sql`datetime('now')` },
     });
+    if (campaign.kind === 'letter') {
+      await db.update(letterSends).set({
+        status: status === 'sent' ? 'accepted' : error?.startsWith('OUTCOME_UNKNOWN:') ? 'uncertain' : 'failed',
+        acceptedAt: sentAt, lastError: error,
+      }).where(and(eq(letterSends.campaignId, campaign.id), eq(letterSends.recipient, recipient)));
+    }
     if (status === 'sent') sent++;
     else { failed++; lastError = error; }
     cursor++;

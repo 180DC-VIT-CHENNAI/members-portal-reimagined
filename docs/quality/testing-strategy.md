@@ -1,5 +1,28 @@
 # Testing Strategy — 180DC VIT Chennai Platform
 
+## Void portal verification
+
+Run from `apps/portal`:
+
+```bash
+pnpm typecheck
+pnpm test:unit
+pnpm test:e2e
+```
+
+Run from the repository root:
+
+```bash
+pnpm turbo run build
+pnpm test
+```
+
+Portal e2e tests use a fresh local D1/R2 and existing Google-session fixtures. Capture-only email and the awaited dev drain verify queue outcomes without sending external mail. Production excludes dev routes and capture mode. Every changed route belongs in `apps/portal/tests/e2e/`; pure domain/render planning checks sit beside their source.
+
+Frontend verification uses the real browser at 390/1440 px, light/dark, including loading/empty/error states, keyboard actions and scrolled ends. Letter changes additionally require all 13 render paths and every exported PDF page to be inspected; HTML text or a unit test alone cannot prove absence of clipping, blank captures or signature loss. Observe events/state changes before triggering actions; do not add timing sleeps to tests.
+
+The older sections below describe legacy deployment tests/plans.
+
 ## Current state
 
 `tests/` holds an end-to-end suite for the admin-api: 215 tests covering every route
