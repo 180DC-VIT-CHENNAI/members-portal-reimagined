@@ -2,25 +2,28 @@ import { useState } from 'react';
 import { Button, Card, EmptyState, ErrorState, LoadingBlock, PageHeader, SearchField, SelectField } from '../components/ui.tsx';
 import { api, useLoad } from '../lib/api.ts';
 import { formatDate } from '../lib/format.ts';
-import { Link, navigate } from '../lib/router.tsx';
+import { Link, navigate, useLocation } from '../lib/router.tsx';
 import { useSession } from '../lib/session.tsx';
 
 const loadProjects = () => api('/api/projects');
-type Status = 'active' | 'completed';
+type Status = 'active' | 'completed' | 'upcoming' | 'on_hold';
 
 /** Every project the caller can see, filtered by status, term and a search. */
 export function ProjectsPage() {
   const { can } = useSession();
+  const { query: locationQuery } = useLocation();
   const projects = useLoad(loadProjects, []);
   const [status, setStatus] = useState<Status>('active');
   const [term, setTerm] = useState('');
   const [query, setQuery] = useState('');
+  const [department, setDepartment] = useState(locationQuery.get('department') ?? '');
 
   const all = projects.data ?? [];
   const terms = [...new Map(all.flatMap((p) => (p.termId && p.termLabel ? [[p.termId, p.termLabel] as const] : []))).entries()];
+  const departments = [...new Map(all.flatMap((project) => project.departments.map((item) => [item.id, item.name] as const))).entries()];
   const needle = query.trim().toLowerCase();
   const shown = all.filter(
-    (p) => p.status === status && (!term || p.termId === term) && (!needle || `${p.name} ${p.client ?? ''}`.toLowerCase().includes(needle)),
+    (p) => p.status === status && (!department || p.departments.some((item) => item.id === department)) && (!term || p.termId === term) && (!needle || `${p.name} ${p.client ?? ''}`.toLowerCase().includes(needle)),
   );
 
   return (
@@ -28,9 +31,9 @@ export function ProjectsPage() {
       <PageHeader
         overline="Work"
         title="Projects"
-        lede="Client projects, the people on them and their tasks."
+        lede="Client and internal work, with one place for people, tasks and files."
         actions={
-          can('projects.manage') && (
+          (can('projects.manage') || can('departments.projects.manage')) && (
             <Button variant="primary" icon="plus" onClick={() => navigate('/projects/new')}>
               New project
             </Button>
@@ -43,6 +46,12 @@ export function ProjectsPage() {
           <SelectField label="Status" value={status} onChange={(e) => setStatus(e.target.value as Status)}>
             <option value="active">Active</option>
             <option value="completed">Completed</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="on_hold">On hold</option>
+          </SelectField>
+          <SelectField label="Department" value={department} onChange={(event) => setDepartment(event.target.value)}>
+            <option value="">All departments</option>
+            {departments.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </SelectField>
           {terms.length > 0 && (
             <SelectField label="Term" value={term} onChange={(e) => setTerm(e.target.value)}>
@@ -82,6 +91,7 @@ export function ProjectsPage() {
                       <td className="cell-primary">
                         <Link to={`/projects/${p.id}`}>{p.name}</Link>
                         {p.client && <div className="caption muted">{p.client}</div>}
+                        {p.internal && <span className="caption muted">Internal</span>}
                       </td>
                       <td data-label="Departments">{p.departments.map((d) => d.name).join(', ')}</td>
                       <td data-label="Term">{p.termLabel ?? '—'}</td>

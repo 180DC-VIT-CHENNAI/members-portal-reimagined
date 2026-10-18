@@ -8,7 +8,7 @@ import { idParam } from '../../../../src/server/http';
 import { projectFor, requireRight } from '../../../../src/server/projects';
 import { rateLimit } from '../../../../src/server/rate-limit';
 
-/** Complete or reopen a project. Completed projects are listed on the public site. */
+/** Change project stage. Only completed, non-internal projects are public. */
 export const PUT = defineHandler.withValidator({ body: v.object({ status: v.picklist(PROJECT_STATUSES) }) })(async (c, { body }) => {
   const actor = await requirePrincipal(c);
   const loaded = await projectFor(actor, idParam(c));

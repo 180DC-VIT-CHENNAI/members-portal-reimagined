@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, EmptyState, ErrorState, LoadingBlock, PageHeader, ProblemAlert } from '../components/ui.tsx';
-import { OnboardingChecklist } from '../components/OnboardingChecklist.tsx';
 import { Icon } from '../components/icons.tsx';
+import { OnboardingChecklist } from '../components/OnboardingChecklist.tsx';
 import { api, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
 import { formatDate, formatDateTime, plural, today } from '../lib/format.ts';
@@ -20,11 +20,11 @@ export function TodayPage() {
     return () => document.removeEventListener('visibilitychange', visible);
   }, [feed.reload]);
 
-  const complete = async (projectId: string, taskId: string) => {
+  const setStatus = async (projectId: string, taskId: string, status: 'pending' | 'completed') => {
     setBusy(taskId);
     setProblem(null);
     try {
-      await api('/api/projects/:id/tasks/:taskId/status', { method: 'PUT', params: { id: projectId, taskId }, body: { status: 'completed' } });
+      await api('/api/projects/:id/tasks/:taskId/status', { method: 'PUT', params: { id: projectId, taskId }, body: { status } });
       feed.reload();
     } catch (err) { setProblem(problemFrom(err)); }
     finally { setBusy(null); }
@@ -38,7 +38,7 @@ export function TodayPage() {
   const failed = data.attention.failedEmails ?? 0;
   return (
     <div className="page page-narrow">
-      <PageHeader overline={me.fullName} title="Today" lede="Your open work and the week ahead."
+      <PageHeader overline={me.fullName} title="Today" lede="Your open and blocked work and the week ahead."
         actions={<Button icon="history" busy={feed.loading} onClick={feed.reload}>Refresh</Button>} />
       <div className="stack">
         <OnboardingChecklist />
@@ -52,19 +52,21 @@ export function TodayPage() {
             </ul>
           </Card>
         )}
-        <Card title="Your tasks" description="Open tasks on active projects you can see, ordered by due date and priority.">
+        <Card title="Your tasks" description="Tasks on active projects you can see: open ones first, then blocked ones, each by due date and priority.">
           {data.tasks.length === 0 ? <EmptyState icon="checkCircle" title="No open tasks assigned to you"><Link to="/projects">Browse your projects</Link></EmptyState> : (
             <ul className="stack">
               {data.tasks.map((task) => (
                 <li key={task.id} className="task">
                   <label className="task-toggle">
                     <input type="checkbox" checked={false} disabled={busy === task.id || feed.loading} aria-label={`Mark "${task.title}" done`}
-                      onChange={() => complete(task.projectId, task.id)} />
+                      onChange={() => setStatus(task.projectId, task.id, 'completed')} />
                   </label>
                   <div className="stack-sm">
                     <strong>{task.title}</strong>
                     <Link className="caption muted" to={`/projects/${task.projectId}`}>{task.projectName}</Link>
+                    {task.status === 'blocked' && <p className="pre-wrap">Blocked: {task.blockedReason}</p>}
                     <div className="cluster">
+                      {task.status === 'blocked' && <span className="badge badge-warning">Blocked</span>}
                       {task.dueDate && <span className={task.dueDate < day ? 'badge badge-error' : 'badge'}>
                         {task.dueDate < day ? 'Overdue · ' : task.dueDate === day ? 'Today · ' : 'Due '}{formatDate(task.dueDate)}
                       </span>}
@@ -72,6 +74,9 @@ export function TodayPage() {
                         {task.priority[0].toUpperCase() + task.priority.slice(1)} priority
                       </span>}
                     </div>
+                    {task.status === 'blocked' && <div className="cluster">
+                      <Button size="sm" icon="history" busy={busy === task.id} disabled={feed.loading} onClick={() => setStatus(task.projectId, task.id, 'pending')}>Unblock</Button>
+                    </div>}
                   </div>
                 </li>
               ))}

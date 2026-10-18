@@ -12,7 +12,10 @@ function summary(event: Event): string {
   switch (event.action) {
     case 'task.create': return 'created the task';
     case 'task.update': return 'edited the task';
-    case 'task.status': return event.to.status === 'completed' ? `marked it done${event.bulk ? ' with all open tasks' : ''}` : 'reopened it';
+    case 'task.status':
+      if (event.to.status === 'completed') return `marked it done${event.bulk ? ' with all open tasks' : ''}`;
+      if (event.to.status === 'blocked') return event.from.status === 'blocked' ? 'changed why it is blocked' : 'marked it blocked';
+      return event.from.status === 'blocked' ? 'unblocked it' : 'reopened it';
     case 'task.comment': return 'added a comment';
     case 'task.comment.remove': return 'removed a comment';
     default: return 'updated the task';

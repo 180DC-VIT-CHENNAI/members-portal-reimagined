@@ -756,3 +756,7 @@ Task timelines read the existing `audit_log`. An idempotent `idx_audit_task_hist
 ## Portal onboarding
 
 `onboarding_acknowledgments` stores the first acknowledgment time with primary key `(person_id, item)`. Profile completeness is derived rather than stored. The feature includes its generated additive migration, snapshot and journal entry.
+
+## Portal project collaboration
+
+The additive project migration adds projects.internal (default false), a unique nullable legacy_department_project_id, project_tasks.blocked_reason, project_files and project_file_deletions. It copies existing portal-local department rows with new canonical IDs and retains source IDs separately. A metadata-delete trigger queues byte cleanup, including parent cascades. Project stages are upcoming/active/on_hold/completed; tasks are pending/blocked/completed, using existing text columns without rebuilding tables.

@@ -22,7 +22,9 @@ export const PATCH = defineHandler.withValidator({ body: v.partial(v.object(proj
   const loaded = await projectFor(actor, idParam(c));
   requireRight(loaded, 'manage');
   const departmentIds = body.departmentIds ? [...new Set(body.departmentIds)] : null;
-  if (departmentIds && !projectAccess(actor.permissions, departmentIds, false).manage) forbidden();
+  const internal = body.internal ?? loaded.project.internal;
+  if (departmentIds && !projectAccess(actor.permissions, departmentIds, loaded.member, internal).manage) forbidden();
+  if (body.internal === false && loaded.project.internal && !projectAccess(actor.permissions, departmentIds ?? loaded.departmentIds, false).manage) forbidden();
   await rateLimit(c, 'projects_write', 60, 3600);
   await requireKnown(departmentIds ?? [], body.termId);
   const changes: Partial<typeof projects.$inferInsert> = {};
@@ -31,6 +33,7 @@ export const PATCH = defineHandler.withValidator({ body: v.partial(v.object(proj
   if (body.description !== undefined) changes.description = body.description || null;
   if (body.termId !== undefined) changes.termId = body.termId;
   if (body.deadline !== undefined) changes.deadline = body.deadline;
+  if (body.internal !== undefined) changes.internal = body.internal;
   const projectId = loaded.project.id;
   const statements: BatchItem<'sqlite'>[] = [];
   if (Object.keys(changes).length) statements.push(db.update(projects).set(changes).where(eq(projects.id, projectId)));

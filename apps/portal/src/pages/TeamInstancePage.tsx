@@ -24,7 +24,7 @@ export function TeamInstancePage({ id }: { id: string }) {
   const instance = useLoad(() => loadInstance(id), [id]);
   const staff = Boolean(instance.data?.access.staff);
   const people = useLoad(() => (staff ? loadPlaceable(id) : Promise.resolve<Placeable[]>([])), [id, staff]);
-  const [view, setView] = useState<View>('staffing');
+  const [view, setView] = useState<View>('roster');
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | null>(null);

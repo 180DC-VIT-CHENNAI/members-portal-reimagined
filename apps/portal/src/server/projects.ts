@@ -16,6 +16,7 @@ export const projectFields = {
   description: optionalText(5000),
   termId: v.optional(v.nullable(id)),
   deadline: v.optional(v.nullable(calendarDate)),
+  internal: v.optional(v.boolean()),
   departmentIds: v.pipe(v.array(id), v.minLength(1), v.maxLength(20)),
 };
 
@@ -27,6 +28,12 @@ export const taskFields = {
   priority: v.optional(v.picklist(TASK_PRIORITIES)),
 };
 
+/** A task status change; blocking a task needs a reason. */
+export const taskStatusChange = v.variant('status', [
+  v.object({ status: v.picklist(['pending', 'completed']) }),
+  v.object({ status: v.literal('blocked'), blockedReason: singleLine(500) }),
+]);
+
 export const memberRole = singleLine(80);
 
 export type Project = typeof projects.$inferSelect;
@@ -34,6 +41,7 @@ export type Project = typeof projects.$inferSelect;
 export interface LoadedProject {
   readonly project: Project;
   readonly departmentIds: string[];
+  readonly member: boolean;
   readonly access: ProjectAccess;
 }
 
@@ -55,9 +63,9 @@ export async function projectFor(principal: Principal, projectId: string): Promi
     isMember(projectId, principal.person.id),
   ]);
   const departmentIds = links.map((link) => link.id);
-  const access = projectAccess(principal.permissions, departmentIds, member);
+  const access = projectAccess(principal.permissions, departmentIds, member, project.internal);
   if (!access.view) notFound('project_not_found');
-  return { project, departmentIds, access };
+  return { project, departmentIds, member, access };
 }
 
 /** 403 unless the caller holds this right on the project. */
@@ -68,7 +76,7 @@ export function requireRight(loaded: LoadedProject, right: Exclude<keyof Project
 /** Whether this person has access and would see the project, as an assignee must. */
 export async function canSeeProject(personId: string, project: LoadedProject): Promise<boolean> {
   const [target, member] = await Promise.all([loadPersonPrincipal(personId), isMember(project.project.id, personId)]);
-  return target !== null && projectAccess(target.permissions, project.departmentIds, member).view;
+  return target !== null && projectAccess(target.permissions, project.departmentIds, member, project.project.internal).view;
 }
 
 /** 400 unless every department and the term exist. */
@@ -129,6 +137,7 @@ export async function listProjects(principal: Principal) {
       principal.permissions,
       linked.map((department) => department.id),
       myRole !== null,
+      project.internal,
     );
     if (!access.view) return [];
     return [{ ...project, termLabel, departments: linked, myRole, tasks: progress.get(project.id) ?? { total: 0, completed: 0 }, access }];
@@ -200,11 +209,11 @@ export async function projectPeople({ project, departmentIds }: LoadedProject) {
     fullName: person.fullName,
     departmentId: person.departmentId,
     member: members.has(person.id),
-    canSee: projectAccess(permissions, departmentIds, members.has(person.id)).view,
+    canSee: projectAccess(permissions, departmentIds, members.has(person.id), project.internal).view,
   }));
 }
 
-type ProjectNotice = Pick<Project, 'id' | 'name' | 'client' | 'deadline'>;
+type ProjectNotice = Pick<Project, 'id' | 'name' | 'client' | 'deadline' | 'internal'>;
 
 /**
  * Queue the new-project email to the leads of its departments: people in those
@@ -220,6 +229,7 @@ export async function notifyProjectLeads(project: ProjectNotice, departmentIds: 
       person.id !== actor.id &&
       person.departmentId !== null &&
       departmentIds.includes(person.departmentId) &&
+      projectAccess(permissions, departmentIds, false, project.internal).view &&
       can(permissions, 'projects.tasks.manage', person.departmentId),
   );
   if (!leads.length) return 0;

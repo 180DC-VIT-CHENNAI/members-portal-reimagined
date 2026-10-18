@@ -10,3 +10,4 @@ export * from './schema/team-instances';
 export * from './schema/newsletter';
 export * from './schema/letters';
 export * from './schema/onboarding';
+export * from './schema/project-files';

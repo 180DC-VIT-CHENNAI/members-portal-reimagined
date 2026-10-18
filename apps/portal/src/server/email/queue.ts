@@ -42,9 +42,9 @@ function eligible() {
 
 /** Process one claimed campaign. The awaited return is the cron completion signal. */
 export async function drainEmailQueue(
-  attachmentsBucket: R2Bucket,
+  attachmentsBucket: Pick<R2Bucket, 'get'>,
   delay: (milliseconds: number) => Promise<void> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  clubFilesBucket?: R2Bucket,
+  clubFilesBucket?: Pick<R2Bucket, 'get'>,
 ) {
   await db.update(emailQueue).set({
     status: 'failed', lastError: 'max attempts reached', finishedAt: new Date().toISOString(),

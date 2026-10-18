@@ -93,6 +93,71 @@ export function NewTask({ projectId, assignable, onAdded }: { projectId: string;
   );
 }
 
+/** Mark a task blocked, or change why it is; the reason is required. */
+export function BlockTask({
+  projectId,
+  task,
+  onSaved,
+  onConflict,
+  onClose,
+}: {
+  projectId: string;
+  task: Task;
+  onSaved: () => void;
+  onConflict: () => void;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState(task.blockedReason ?? '');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<ApiProblem | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api('/api/projects/:id/tasks/:taskId/status', {
+        method: 'PUT',
+        params: { id: projectId, taskId: task.id },
+        body: { status: 'blocked', blockedReason: reason },
+      });
+      onSaved();
+    } catch (err) {
+      const next = problemFrom(err);
+      setProblem(next);
+      if (next.status === 409) onConflict();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open title={task.status === 'blocked' ? 'Change why it is blocked' : `Mark "${task.title}" blocked`} onClose={busy ? () => {} : onClose}>
+      <form className="form" onSubmit={submit}>
+        <TextAreaField
+          label="What is blocking it?"
+          hint="Shown to everyone on the project until the task is unblocked or done."
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          error={problem?.fields.blockedReason}
+          required
+          rows={3}
+          maxLength={500}
+        />
+        <ProblemAlert problem={problem} fieldsShown={['blockedReason']} />
+        <div className="dialog-actions">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" busy={busy} disabled={!reason.trim()}>
+            {task.status === 'blocked' ? 'Save reason' : 'Mark blocked'}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 export function TaskEditor({
   projectId,
   task,
