@@ -1,6 +1,6 @@
 # Portal port plan (admin-api → Void portal)
 
-Status: in progress. The decision behind this is [ADR-007](../architecture/decisions/007-void-portal-rewrite.md). Production (`180dc.vitcc.org`) stays on the old `members-portal-reimagined` Worker until the cutover (slice 10).
+Status: slices 1-10 delivered; the decision behind this is [ADR-007](../architecture/decisions/007-void-portal-rewrite.md). Since the cutover (PR #37, 2026-10-18), `180dc.vitcc.org` is served by `180dc-portal`, and the old `members-portal-reimagined` Worker stays deployed without a domain for rollback.
 
 Each slice below is one PR to `origin/main` and must include:
 - a Drizzle schema change and a generated migration;
@@ -56,7 +56,7 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Letter studio (slice 9): all 13 template/data models, isolated A4 preview/export, private immutable PDFs, scoped recipients, transactional send-intent deduplication and durable provider outcomes. PR #35 is merged and deployed.
 - Launch readiness (slice 10), 2026-10-18: production D1 holds only the seeded admin (`srijan.guchhait@gmail.com`: active, `admin` role, `tech`, 2026-27 tenure as Technical Lead - DevOps & Cloud) and every migration through slice 9. The first live message, a newsletter confirmation to the admin, was accepted by Cloudflare Email Sending.
 - Domain cutover (slice 10): `180dc.vitcc.org` moved to `180dc-portal` with the user's explicit approval. The old Worker stays deployed without a domain for rollback.
-- Next: retire the old Worker when the user approves.
+- Next: retire the old Worker when the user approves. The user also plans to import legacy data later (2026-10-18); that import needs its own plan, because the portal schema, identities and permissions differ from the old tables.
 
 ## Rules carried over (see docs/domain/invariants.md)
 

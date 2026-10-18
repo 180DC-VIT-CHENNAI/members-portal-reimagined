@@ -13,7 +13,7 @@ This directory records decisions that future agents should understand before cha
 
 | ADR-005 | `005-personal-database-evaluation.md` | DECIDED FOR DEVELOPMENT; PRODUCTION PROVISIONAL | Retain two D1 databases while developing; evaluate PlanetScale Postgres/MySQL with correctness, capacity, cost and migration gates before any cutover. |
 
-| ADR-007 | `007-void-portal-rewrite.md` | DECIDED (IN PROGRESS) | Rewrite the portal as a Void app (`apps/portal`): Better Auth Google-only invite sign-in, Drizzle/D1 migrations, personnel lifecycle, positions, terms, granular permissions. |
+| ADR-007 | `007-void-portal-rewrite.md` | IMPLEMENTED (CUTOVER 2026-10-18) | Rewrite the portal as a Void app (`apps/portal`): Better Auth Google-only invite sign-in, Drizzle/D1 migrations, personnel lifecycle, positions, terms, granular permissions. |
 
 | ADR-006 | `006-android-client-foundation.md` | DECIDED FOR INITIAL CLIENT | Expo Android member client on shared custom sessions/APIs; native storage, device acceptance and complete capability parity remain release work. |
 
