@@ -180,3 +180,7 @@ To add a permission:
 | `POST /api/case-studies/upload-image`, `upload-source`, `upload-document` (multipart); `DELETE /api/case-studies/delete-image` | `content.publish`. `upload-document` turns a PDF or DOCX into sanitized HTML and stores nothing. |
 | `GET /api/case-studies/images/*` | public (200/min per IP): `images/` and `source/` keys of `CASE_STUDIES` |
 | `GET /api/gallery-cdn/*` | public, cached for a year: photos in the `GALLERY_CDN` bucket listed by `src/data/galleryManifest.json` |
+
+## Invitations and first-login checklist
+
+Invitations validate all references before atomically saving personnel, optional tenure, audit and queued Google-only invitation email. CSV dry runs do not queue mail. Today shows a nonblocking first-login checklist; public profile completeness is derived, read items are acknowledged explicitly, and phone/registration number remain optional.

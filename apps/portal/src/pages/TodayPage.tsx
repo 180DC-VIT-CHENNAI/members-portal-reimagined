@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, EmptyState, ErrorState, LoadingBlock, PageHeader, ProblemAlert } from '../components/ui.tsx';
+import { OnboardingChecklist } from '../components/OnboardingChecklist.tsx';
 import { Icon } from '../components/icons.tsx';
 import { api, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
@@ -40,6 +41,7 @@ export function TodayPage() {
       <PageHeader overline={me.fullName} title="Today" lede="Your open work and the week ahead."
         actions={<Button icon="history" busy={feed.loading} onClick={feed.reload}>Refresh</Button>} />
       <div className="stack">
+        <OnboardingChecklist />
         <p className="caption muted">Updated <time dateTime={data.generatedAt}>{formatDateTime(data.generatedAt)}</time></p>
         <ProblemAlert problem={problem} />
         {(invited > 0 || failed > 0) && (
