@@ -1,6 +1,6 @@
 # Unified platform delivery plan
 
-Status: active. Sponsor and infrastructure owner: Srijan. Branch: `reimagined`.
+Status: background. Web delivery moved to the Void portal rewrite in `apps/portal` ([ADR-007](../architecture/decisions/007-void-portal-rewrite.md), PRs to origin `main`); the `reimagined` branch now holds only the problem statement. Scope here beyond the [portal port plan](portal-port-plan.md), such as the Android companion, client workspaces and chat, has no active plan. Sponsor and infrastructure owner: Srijan.
 Source: `180DC_Unified_Platform_Problem_Statement.md`; implementation baseline: `650048b`.
 
 ## Goal and authority

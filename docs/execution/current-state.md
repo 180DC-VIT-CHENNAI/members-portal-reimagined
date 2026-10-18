@@ -6,7 +6,7 @@ The new `apps/portal` is a modular Void SPA/API deployed independently through o
 
 The portal port covers Google-only personnel identity/lifecycle, positions/terms and granular access; public content and administration; shared files/gallery; department workspaces; queued Cloudflare Email Sending; meets; projects, versioned tasks and comments/history; Today; team-instance staffing/progression; The Catalyst subscriptions/editor/archive/events; and private immutable Letter Studio documents with queued delivery history. Legacy OTP/registry credentials are not recreated.
 
-This is a blank-data launch, not a data migration. Existing records/files and previously issued subscription credentials remain in the old deployment. Inbox-delivery confirmation, Google callback/domain readiness and explicit approval of live routing changes are launch gates, not implied by capture tests or a successful build.
+This is a blank-data launch, not a data migration. Existing records/files and previously issued subscription credentials remain in the old deployment. Inbox-delivery confirmation, Google callback/domain readiness and explicit approval of live routing changes are launch gates, not implied by capture tests or a successful build. On 2026-10-18 Cloudflare Email Sending accepted the portal's first live message (a newsletter confirmation to the admin); inbox placement still needs the recipient's confirmation.
 
 This document describes the repository as it exists on the `main` branch. It is the descriptive source of truth for an agent starting work.
 

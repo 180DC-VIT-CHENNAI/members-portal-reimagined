@@ -53,8 +53,9 @@ The user explicitly chose a new deployment with blank data rather than a data mi
 - Task activity and Today (slice 5b): plain-text comments with atomic history and idempotent retries, paged history and the default Today home.
 - Team instances (slice 6): instances with departments, level ladders, groups, teams, outside people and placements, with department-scoped running versus all-department configuring, capacity enforced atomically, and Staffing, Progression, Roster and Activity views.
 - Newsletter (slice 8): double opt-in and one-click unsubscribe, current Google editor permissions, owned/shared drafts and uploads, self-tests, atomic broadcasts, personalized headers and late-unsubscribe suppression, events and public archive. See ADR-009.
-- Letter studio (slice 9): all 13 template/data models, isolated A4 preview/export, private immutable PDFs, scoped recipients, transactional send-intent deduplication and durable provider outcomes.
-- Next: launch-readiness verification and explicit user-approved domain cutover (10).
+- Letter studio (slice 9): all 13 template/data models, isolated A4 preview/export, private immutable PDFs, scoped recipients, transactional send-intent deduplication and durable provider outcomes. PR #35 is merged and deployed.
+- Launch readiness (slice 10), 2026-10-18: production D1 holds only the seeded admin (`srijan.guchhait@gmail.com`: active, `admin` role, `tech`, 2026-27 tenure as Technical Lead - DevOps & Cloud) and every migration through slice 9. The first live message, a newsletter confirmation to the admin, was accepted by Cloudflare Email Sending.
+- Next: inbox confirmation from the user, then the explicit user-approved domain cutover (10).
 
 ## Rules carried over (see docs/domain/invariants.md)
 
