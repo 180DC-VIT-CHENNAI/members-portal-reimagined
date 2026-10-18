@@ -752,3 +752,7 @@ Existing shared file objects remain flat `<category>/<id>.<extension>` keys with
 Task reassignment uses existing `project_tasks.assigned_to`; no extra table/column is added. Combined changes audit owner/date/priority before/after in `audit_log` using action `task_details_changed`. The owner must exist, have an active registry credential, and have board/department/explicit-role project access when assigned. Clearing the owner stores SQL null.
 
 Task timelines read the existing `audit_log`. An idempotent `idx_audit_task_history(target_type, target_id, created_at)` index supports scoped reads. SQLite append row sequence breaks same-second ties and is carried only in the opaque pagination cursor. Database migration/export must preserve this order or translate it to an explicit append sequence. No historical audit data is backfilled.
+
+## Portal onboarding
+
+`onboarding_acknowledgments` stores the first acknowledgment time with primary key `(person_id, item)`. Profile completeness is derived rather than stored. The feature includes its generated additive migration, snapshot and journal entry.

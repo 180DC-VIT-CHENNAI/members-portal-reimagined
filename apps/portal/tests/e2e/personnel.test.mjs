@@ -8,7 +8,8 @@ let portal;
 let admin;
 
 before(async () => {
-  portal = await startPortal();
+  // Invitation mail is only ever captured in dev_outbox, never sent.
+  portal = await startPortal({ EMAIL_TEST_MODE: 'capture' });
   admin = signIn(portal, ADMIN);
 });
 after(async () => {
@@ -64,6 +65,80 @@ describe('inviting people', () => {
   test('members cannot invite', async () => {
     const member = signIn(portal, 'fin.member@example.com');
     assert.equal((await member.post('/api/people', { email: 'x3@example.com', fullName: 'X', departmentId: 'finance' })).status, 403);
+  });
+});
+
+describe('invitation email', () => {
+  const count = (sql, ...args) => portal.db.prepare(sql).get(...args).n;
+  const invitations = (email) => portal.db.prepare("SELECT * FROM email_queue WHERE kind = 'invitation' AND recipients LIKE ?").all(`%"${email}"%`);
+
+  test('an invite queues exactly one invitation, recorded with the person', async () => {
+    const [campaign] = invitations('dir.tech@example.com');
+    assert.ok(campaign, 'campaign queued');
+    assert.deepEqual(JSON.parse(campaign.recipients), ['dir.tech@example.com']);
+    assert.equal(campaign.status, 'pending');
+    assert.equal(JSON.parse(campaign.meta).personId, personId('dir.tech@example.com'));
+    assert.equal(JSON.parse(campaign.meta).replyTo, ADMIN);
+    const audit = portal.db.prepare("SELECT details FROM audit_log WHERE action = 'person.invite' AND target_id = ?").get(personId('dir.tech@example.com'));
+    assert.equal(JSON.parse(audit.details).campaignId, campaign.id);
+  });
+
+  test('the captured message links to Google sign-in on this portal with no credential', async () => {
+    const res = await admin.post('/api/people', { email: 'mail.check@example.com', fullName: 'Mail <Check>', departmentId: 'crm' });
+    assert.equal(res.status, 201, res.text);
+    assert.equal(res.json.campaignId, invitations('mail.check@example.com')[0].id);
+    // Each cron run drains one campaign, oldest first; earlier invitations are still queued.
+    for (let run = 0; run < 10 && portal.db.prepare('SELECT status FROM email_queue WHERE id = ?').get(res.json.campaignId).status !== 'done'; run++) {
+      await portal.runCron();
+    }
+    const message = portal.db.prepare('SELECT * FROM dev_outbox WHERE recipient = ?').get('mail.check@example.com');
+    assert.ok(message, 'captured');
+    assert.ok(message.html.includes(`href="${portal.base}/login"`), message.html);
+    assert.ok(message.html.includes('Mail &lt;Check&gt;'));
+    assert.doesNotMatch(message.html, /token|otp|password:/i);
+    assert.equal(JSON.parse(message.headers)['Reply-To'], ADMIN);
+  });
+
+  test('invalid references are rejected before anything is written', async () => {
+    const before = [count('SELECT COUNT(*) AS n FROM people'), count("SELECT COUNT(*) AS n FROM email_queue WHERE kind = 'invitation'"), count('SELECT COUNT(*) AS n FROM tenures')];
+    const bad = [
+      { email: 'v1@example.com', fullName: 'V', departmentId: 'tech', positionId: 'no_such_position' },
+      { email: 'v2@example.com', fullName: 'V', departmentId: 'finance', positionId: 'pos_tech_member' },
+      { email: 'v3@example.com', fullName: 'V', departmentId: 'tech', accessRoleId: 'no_such_role' },
+    ];
+    for (const body of bad) assert.equal((await admin.post('/api/people', body)).status, 400, body.email);
+    portal.db.prepare("UPDATE positions SET active = 0 WHERE id = 'pos_tech_member'").run();
+    portal.db.prepare("UPDATE departments SET active = 0 WHERE id = 'operations'").run();
+    try {
+      assert.equal((await admin.post('/api/people', { email: 'v4@example.com', fullName: 'V', departmentId: 'tech', positionId: 'pos_tech_member' })).status, 400);
+      assert.equal((await admin.post('/api/people', { email: 'v5@example.com', fullName: 'V', departmentId: 'operations' })).status, 400);
+    } finally {
+      portal.db.prepare("UPDATE positions SET active = 1 WHERE id = 'pos_tech_member'").run();
+      portal.db.prepare("UPDATE departments SET active = 1 WHERE id = 'operations'").run();
+    }
+    const after = [count('SELECT COUNT(*) AS n FROM people'), count("SELECT COUNT(*) AS n FROM email_queue WHERE kind = 'invitation'"), count('SELECT COUNT(*) AS n FROM tenures')];
+    assert.deepEqual(after, before);
+  });
+
+  test('a failed campaign write leaves no person, tenure or audit entry behind', async () => {
+    portal.db.exec("CREATE TRIGGER reject_invitation BEFORE INSERT ON email_queue WHEN NEW.kind = 'invitation' BEGIN SELECT RAISE(ABORT, 'injected'); END;");
+    try {
+      const res = await admin.post('/api/people', { email: 'atomic@example.com', fullName: 'Atomic', departmentId: 'marketing', positionId: 'pos_marketing_member' });
+      assert.ok(res.status >= 500, `${res.status} ${res.text}`);
+    } finally {
+      portal.db.exec('DROP TRIGGER reject_invitation');
+    }
+    assert.equal(personId('atomic@example.com'), undefined);
+    assert.equal(count("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'person.invite' AND details LIKE '%atomic@example.com%'"), 0);
+    const retry = await admin.post('/api/people', { email: 'atomic@example.com', fullName: 'Atomic', departmentId: 'marketing', positionId: 'pos_marketing_member' });
+    assert.equal(retry.status, 201, retry.text);
+    assert.equal(invitations('atomic@example.com').length, 1);
+  });
+
+  test('an existing email is a conflict and queues nothing', async () => {
+    const before = count("SELECT COUNT(*) AS n FROM email_queue WHERE kind = 'invitation'");
+    assert.equal((await admin.post('/api/people', { email: 'atomic@example.com', fullName: 'Again' })).status, 409);
+    assert.equal(count("SELECT COUNT(*) AS n FROM email_queue WHERE kind = 'invitation'"), before);
   });
 });
 
@@ -253,6 +328,8 @@ describe('bulk import and export', () => {
     assert.deepEqual([res.json.invited, res.json.skipped, res.json.errors], [2, 1, 3]);
     assert.equal(personId('new.one@example.com'), undefined);
     assert.deepEqual(res.json.results.filter((r) => r.result === 'error').map((r) => r.row), [5, 6, 7]);
+    assert.equal(res.json.campaignId, null);
+    assert.equal(portal.db.prepare("SELECT COUNT(*) AS n FROM email_queue WHERE kind = 'invitation' AND recipients LIKE '%new.one@%'").get().n, 0);
   });
 
   test('import invites valid rows with positions in the current term', async () => {
@@ -263,6 +340,9 @@ describe('bulk import and export', () => {
     assert.equal(one.json.tenures[0].positionId, 'pos_marketing_member');
     assert.equal(one.json.tenures[0].termId, '2027-28');
     assert.ok(personId('new.two@example.com'));
+    const campaign = portal.db.prepare('SELECT * FROM email_queue WHERE id = ?').get(res.json.campaignId);
+    assert.equal(campaign.kind, 'invitation');
+    assert.deepEqual(JSON.parse(campaign.recipients), ['new.one@example.com', 'new.two@example.com']);
     assert.equal((await signIn(portal, 'fin.member@example.com').post('/api/imports/people', { csv })).status, 403);
   });
 

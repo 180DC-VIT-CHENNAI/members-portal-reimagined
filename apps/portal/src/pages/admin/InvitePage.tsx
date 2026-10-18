@@ -32,8 +32,8 @@ export function InvitePage() {
     setBusy(true);
     setProblem(null);
     try {
-      // Void infers `never` for `c.json(body, 201)` responses; the route returns `{ id, status }`.
-      const created = (await api('/api/people', {
+      // Void infers `never` for `c.json(body, 201)` responses; the route returns `{ id, status, campaignId }`.
+      const created: { id: string } = await api('/api/people', {
         method: 'POST',
         body: {
           email: form.email,
@@ -42,7 +42,7 @@ export function InvitePage() {
           accessRoleId: form.accessRoleId,
           positionId: form.positionId || undefined,
         },
-      })) as unknown as { id: string };
+      });
       navigate(`/people/${created.id}`);
     } catch (err) {
       setProblem(problemFrom(err));
@@ -54,11 +54,11 @@ export function InvitePage() {
   return (
     <div className="page page-narrow">
       <BackLink to="/admin">Admin</BackLink>
-      <PageHeader overline="People" title="Invite someone" lede="They can sign in with Google as soon as you add them. Their first sign-in makes them active." />
+      <PageHeader overline="People" title="Invite someone" lede="We'll email them a link to sign in with Google: no password or code. Their first sign-in makes them active." />
       <Card>
         <form className="form" onSubmit={submit} noValidate>
           <div className="form-grid">
-            <TextField label="Email" type="email" value={form.email} onChange={set('email')} error={err('email')} required autoComplete="off" hint="The Google account they'll sign in with." />
+            <TextField label="Email" type="email" value={form.email} onChange={set('email')} error={err('email')} required autoComplete="off" hint="The Google account they'll sign in with. The invitation is sent here." />
             <TextField label="Full name" value={form.fullName} onChange={set('fullName')} error={err('fullName')} required />
             <SelectField label="Department" value={form.departmentId} onChange={set('departmentId')} error={err('departmentId')}>
               {can('people.invite', null) && <option value="">Club-wide</option>}
