@@ -233,3 +233,7 @@ Hairline borders (`1px solid var(--border-default)`) on cards at rest, replaced 
 | OrgChart card variants | orgchart/OrgChart.css | Isolated to leadership section — will refine but keep structure | Next iteration |
 | Members admin area | pages/members/ | Admin-only, not public-facing — lower priority | Separate admin redesign |
 | Chat widget | components/chat/ | Third-party-style widget — refine but keep functionality | Next iteration |
+
+## 9. Portal workflow compositions
+
+The live Void portal reuses its existing `Card`, `Button`, `Dialog`, `SelectField`, `TextAreaField`, badges and responsive page/table primitives. Onboarding is a dismissible card with explicit read actions; the inbox uses a single readable column with unread emphasis and cursor paging. Blocked work uses the existing warning badge plus a text reason, never color alone. Meeting notes remain plain text. Contextual file actions include loading, empty, error and confirmation states and inherit the existing phone layout and keyboard focus treatment. No new color, spacing, font or animation token is introduced by the collaboration increment.

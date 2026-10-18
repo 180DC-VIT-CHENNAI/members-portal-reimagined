@@ -1,5 +1,23 @@
 # Data Model — 180DC VIT Chennai Platform
 
+## Portal collaboration migration
+
+The generated additive migrations are `20261018224102_stiff_purple_man.sql` (onboarding), `20261018224557_mature_spacker_dave.sql` (project collaboration) and `20261018224922_bent_living_tribunal.sql` (notifications and meeting follow-through). The project migration includes reviewed data-copy statements that consolidate only existing portal-local department work.
+
+| Change | Purpose |
+|---|---|
+| `projects.internal` boolean, default false | Keeps existing client publication semantics; internal work never publishes. |
+| `projects.legacy_department_project_id`, nullable unique | Resolves IDs from the retained `department_projects` source table after consolidation. |
+| `project_tasks.blocked_reason` | Reason required by the API while status is `blocked`, cleared otherwise. |
+| `meets.agenda`, `meets.notes` | Manager-edited plain-text follow-through. |
+| `meet_action_items` PK `(meet_id, task_id)` | Links existing tasks; cascading parent deletion removes links without granting project access. |
+| `notifications` | Recipient/task, kind, actor, optional comment/due date, created/read times, unique `(recipient_id, dedupe_key)` and inbox/task indexes. Task deletion cascades. Retained for 180 days. |
+| `onboarding_acknowledgments` PK `(person_id, item)` | First explicit read/dismiss acknowledgments; profile completeness remains derived. |
+| `project_files` | Private generated key, project/task scope, filename/type/size/uploader and timestamps. Parent deletion removes metadata. Bytes live under `CLUB_FILES/project-files/`. |
+| `project_file_deletions` | Private object key and creation time. `20261018224557_mature_spacker_dave.sql` adds an AFTER DELETE trigger on attachment metadata, including cascades, so primary-byte cleanup survives failed requests and restarts. |
+
+Project stages are `upcoming`, `active`, `on_hold`, `completed`; task statuses are `pending`, `blocked`, `completed`. Existing text columns need no destructive rebuild to accept these values. New department work writes `projects` and `project_departments`, not the frozen source table. A migrated project receives a new canonical ID and retains its source ID separately, avoiding collisions with existing client projects.
+
 ## Void portal letters schema
 
 `apps/portal/db/schema/letters.ts`, migration `20261017223322_dapper_redwing.sql`:
@@ -34,14 +52,14 @@ Defined in `apps/portal/db/schema/meets.ts` (migration `20261017072508_vengeful_
 
 ## Void portal projects schema
 
-Defined in `apps/portal/db/schema/projects.ts` (migration `20261017074729_lucky_shinko_yamashiro.sql`, which also grants the `projects.*` permissions). These replace the legacy `projects`, `project_departments`, `project_roles` and `project_tasks` tables; the separate `department_projects` tracker is unchanged.
+Defined in `apps/portal/db/schema/projects.ts` (initial migration `20261017074729_lucky_shinko_yamashiro.sql`). The collaboration migration above consolidates the portal's department tracker into these tables. The separate legacy Worker's tables are untouched.
 
 | Table | Key | Purpose |
 |---|---|---|
-| `projects` | `id` | Name, client, description, optional term (cleared if the term is deleted), deadline (YYYY-MM-DD), `status` (`active`, `completed`), `completed_at`, creator. |
+| `projects` | `id` | Name, client, description, optional term, deadline, stage (`upcoming`, `active`, `on_hold`, `completed`), internal flag, optional legacy department ID, completion time and creator. |
 | `project_departments` | `(project_id, department_id)` | The departments a project belongs to. |
 | `project_members` | `id`, unique `(project_id, person_id)` | People named on a project and their role on it. |
-| `project_tasks` | `id` | Title, description, assignee (a person), `status` (`pending`, `completed`), due date, `priority` (`low`, `normal`, `high`, `urgent`), `version` (raised on every change), completion and update times. |
+| `project_tasks` | `id` | Title, description, assignee, status (`pending`, `blocked`, `completed`), blocked reason, due date, priority, optimistic version, completion and update times. |
 
 A project's departments, members and tasks are deleted with it.
 
@@ -752,15 +770,3 @@ Existing shared file objects remain flat `<category>/<id>.<extension>` keys with
 Task reassignment uses existing `project_tasks.assigned_to`; no extra table/column is added. Combined changes audit owner/date/priority before/after in `audit_log` using action `task_details_changed`. The owner must exist, have an active registry credential, and have board/department/explicit-role project access when assigned. Clearing the owner stores SQL null.
 
 Task timelines read the existing `audit_log`. An idempotent `idx_audit_task_history(target_type, target_id, created_at)` index supports scoped reads. SQLite append row sequence breaks same-second ties and is carried only in the opaque pagination cursor. Database migration/export must preserve this order or translate it to an explicit append sequence. No historical audit data is backfilled.
-
-## Portal onboarding
-
-`onboarding_acknowledgments` stores the first acknowledgment time with primary key `(person_id, item)`. Profile completeness is derived rather than stored. The feature includes its generated additive migration, snapshot and journal entry.
-
-## Portal project collaboration
-
-The additive project migration adds projects.internal (default false), a unique nullable legacy_department_project_id, project_tasks.blocked_reason, project_files and project_file_deletions. It copies existing portal-local department rows with new canonical IDs and retains source IDs separately. A metadata-delete trigger queues byte cleanup, including parent cascades. Project stages are upcoming/active/on_hold/completed; tasks are pending/blocked/completed, using existing text columns without rebuilding tables.
-
-## Portal notifications and meeting follow-through
-
-The additive generated migration adds meets.agenda/notes, meet_action_items with primary key (meet_id, task_id), and notifications with recipient/task references, kind, optional actor/comment/due date, creation/read times, unique recipient/dedupe key and inbox/task indexes. Parent task/meet deletion cascades links; task deletion cascades notifications. Notices retain 180 days of history.

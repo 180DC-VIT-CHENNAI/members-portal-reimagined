@@ -21,6 +21,8 @@ This directory records decisions that future agents should understand before cha
 
 | ADR-009 | `009-portal-newsletter.md` | DECIDED FOR FRESH PORTAL | Newsletter content/subscribers share the Void D1 and transactional queue; Google permissioned editing, email double opt-in, portal archive and safe test/broadcast separation. |
 
+| ADR-010 | `010-portal-collaboration.md` | DECIDED FOR IMPLEMENTATION | Canonical internal projects, transactional in-app notices, onboarding, meeting task links and contextual files using existing D1/R2/cron infrastructure. |
+
 ## How to add a new ADR
 
 Create a new file under `docs/architecture/decisions/` named `NNN-short-title.md` with:

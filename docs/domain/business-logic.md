@@ -1,5 +1,17 @@
 # Business Logic — 180DC VIT Chennai Platform
 
+## Portal onboarding and collaboration
+
+- Invitations validate their complete input before writing. Person, optional tenure, queued invitation and audit are atomic. Import dry runs never queue mail. Invitation links use the canonical production portal, not an arbitrary browser Origin.
+- Onboarding is a nonblocking checklist. Profile progress is derived; read and hide actions are explicit and person-owned. Optional phone and registration fields never gate progress.
+- Assigning work and posting a comment atomically create deduplicated in-app notices for relevant other people. An hourly job at minute 5 UTC creates deadline notices for visible open/blocked tasks due today or tomorrow; repeated runs do not duplicate them. Current access filters labels, paging and unread counts.
+- Client and department work use the same project workspace. Department project managers can manage internal work only when their grant covers every linked department. Converting internal work into publishable work requires the ordinary project-management grant. Completing internal work never publishes it.
+- The additive migration copies only existing portal-local department records and keeps the source table and old identifiers for compatibility. No legacy Worker records are imported.
+- Task blocking requires a reason; unblock/complete clears it and retains version checks and history. Today includes blocked work and applies visibility before its result limit.
+- Meeting managers edit plain-text agendas/notes without sending announcements. Action items link existing tasks; viewers see a linked task only if they already have access to its project. Meeting access never grants project access.
+- Private project/task files use the existing storage adapter and shared type/size policy, but never shared-file listing or guessed shared download routes. Management rights are checked again on every mutation.
+- Team instances open on Roster; staffing and progression are advanced views, not separate services.
+
 ## Void portal letter studio rules
 
 - Current Google principals and `letters.manage`/`letters.send` replace the standalone OTP allowlist. Admins hold both globally, directors for their department. Positions and typed team labels never grant access.
@@ -47,8 +59,8 @@ These rules apply to the separate `apps/portal` deployment.
 
 These rules apply to the separate `apps/portal` deployment.
 
-- A project belongs to one or more departments, may be tied to a term, and is `active` or `completed`. Completed projects are public: their name, client and description are listed on the landing page.
-- People see a project when a `projects.view` grant (or a project management grant) covers one of its departments, or when they are named on it. Everyone else gets 404 for it.
+- A project belongs to one or more departments, may be tied to a term, and is upcoming, active, on hold or completed. Only completed non-internal projects are public: their name, client and description are listed on the landing page.
+- Client-project visibility follows `projects.view` or project-management grants over its departments, or named membership. Internal work first requires workspace-read authority, department-project management over all linked departments, or explicit named membership. Client-only management grants cannot establish internal eligibility. Everyone else gets 404.
 - Editing, completing, reopening or deleting a project needs `projects.manage` covering all of its departments. Admins hold it globally; a department-scoped grant reaches only projects wholly in that department. Naming people and managing tasks need `projects.members.manage` or `projects.tasks.manage` covering any one of its departments; directors hold these for their own department. Being named on a project never grants management, whatever the role on it.
 - Creating a project emails its departments' leads, meaning the people in those departments who manage tasks there (not the creator). Naming someone on a project emails them.
 - Tasks can only be assigned to people with access who can see the project. The assignee or a task manager marks a task done or open again; task managers create, edit, reassign and remove tasks. Every change raises the task's version, and an edit or status change based on an older version is refused with 409.
@@ -407,15 +419,3 @@ Project task scheduling: leads who can manage the project may set/clear task cal
 Project leads can reassign or unassign tasks together with scheduling edits in the web task-details editor. The old owner stops receiving the task in Today and loses owned-task completion permission; the new owner receives the same task with its due date/priority and can complete it. Assignment requires active account and project access, checked again by the write. Assigning a task does not itself grant project access. The editor captures previous values when opened; conflicts retain the draft and offer Reload task before a fresh edit. Delayed task requests are ignored after an account/project change. Native task-detail editing, blockers, boards and collaboration remain pending.
 
 Members with current project read permission can review a task's scoped history in the web task list, load older events and refresh. It covers recorded creation, individual status changes, bulk completion, scheduling and combined owner/date/priority edits. Missing historical events are described as unavailable rather than invented. Only relevant task fields and actor display names are returned; unrelated audit details and emails stay private. Access-denial refreshes clear displayed history, including non-JSON denials. Native history UI remains pending.
-
-## Portal invitations and onboarding
-
-Validate role, active department, matching active position and current term before writing. Save invitees, tenures, audit and email campaign in one D1 batch. Google sign-in uses the invited email, without passwords or registry tokens. Checklist progress comes from saved public profile fields and permission-filtered read acknowledgments; dismissal is per person and never blocks access.
-
-## Portal project collaboration
-
-Consolidation copies portal-local department work into canonical internal projects, retaining source rows and old IDs without importing legacy Worker data. Workspace authority or named membership establishes internal eligibility; client-management grants alone do not. Completion never publishes internal work. Blocking requires a reason, and unblocking/completion clears it while retaining optimistic versions and history. Attachment permissions are rechecked per request; metadata cascades enqueue primary-object deletion.
-
-## Portal notifications and meeting follow-through
-
-Task assignment/comment notices are deduplicated and commit atomically with the originating mutation. Deadline reminders cover visible pending/blocked tasks due today/tomorrow UTC. Reads, unread counts and cursors filter by current project access, so revocation removes visibility. Meeting managers edit plain-text agenda/notes and link existing tasks; viewers only receive task labels for projects they can already see. The meet-link hiding window remains unchanged.

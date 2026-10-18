@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           stamp=$(date -u +%Y-%m-%dT%H%MZ)
-          for db in members-portal-reimagined-db members-portal-reimagined-newsletter; do
+          for db in 180dc-portal-db members-portal-reimagined-db members-portal-reimagined-newsletter; do
             npx --yes wrangler@4 d1 export "$db" --remote --output "${db}.sql"
             gzip -9 "${db}.sql"
             rclone copyto "${db}.sql.gz" "b2:${B2_BUCKET}/d1/${db}/${stamp}.sql.gz"
