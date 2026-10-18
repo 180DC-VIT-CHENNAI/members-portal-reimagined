@@ -1,5 +1,23 @@
 # API Contract — 180DC VIT Chennai Platform
 
+## Portal collaboration and onboarding
+
+All routes below use the current Google personnel session. Hidden projects/tasks are 404; access is rechecked on every request.
+
+- `POST /api/people` validates the active department, role, optional active position and current term before writing. Person, tenure, invitation campaign and audit commit atomically. Returns 201 `{id, status: 'invited', campaignId}`; no direct mail is sent. CSV import retains per-row outcomes and dry-run behavior and adds a `campaignId` for the newly invited addresses.
+- `GET /api/onboarding` returns `{items, complete, dismissed, visible}`. Profile completion derives from public profile fields; phone and registration number are optional. `POST /api/onboarding/acknowledgments` accepts `{item: 'department_read' | 'resources_read' | 'checklist_dismissed'}` and returns the updated checklist. A person can acknowledge only the read items currently available to them; retries preserve the first acknowledgment time.
+- `GET /api/notifications` returns `{notifications, nextBefore}`, newest first, 30/page, with optional `before` positive-integer cursor and `unread=1`. Notifications cover assignment, comments and upcoming task deadlines. Rows carry current task/project labels and status, actor name, creation/read times and relevant comment/due-date identifiers, never another person's inbox. `GET /api/notifications/count` returns `{unread, capped}`, capped at 99. Authorization is applied before pagination/count bounds.
+- `POST /api/notifications/read` accepts `{ids: number[]}` (1-50) or `{upTo: number}` and marks only the caller's notifications read. Returns the current unread count. Inbox responses are private/no-store.
+- `PATCH /api/meets/:id` accepts optional nullable `agenda` (5000 characters) and `notes` (10000), manager-only, 60 writes/hour. Empty strings clear the field; no email is sent. `GET /api/meets` additionally returns these fields and permission-filtered `actionItems`.
+- `POST /api/meets/:id/action-items` accepts `{projectId, taskId}` and requires meet management plus project visibility. New links return 201, existing links 200 with `linked: false`. `DELETE /api/meets/:id/action-items/:taskId` needs the same rights and never deletes the task. Hidden action items are omitted entirely from listings.
+- `GET`/`POST /api/projects/:id/files` and `/api/projects/:id/tasks/:taskId/files` list/upload private contextual attachments. Multipart uploads use `file`; the shared file extension policy and 25 MiB limit apply. Lists return `{files, limit, canUpload, canDelete}` and hold at most 100 per scope. Upload/delete requires task-management rights; read/download follows project visibility. `GET .../files/:fileId/download` is attachment-only, private/no-store; `DELETE .../files/:fileId` returns 204. Every task/file must match the requested project and exact scope.
+
+Projects additionally accept `internal?: boolean` (default false for existing API compatibility), and use `upcoming`, `active`, `on_hold`, `completed` stages. On internal projects, `departments.projects.manage` covering all departments grants management; that alone cannot convert a project into publishable client work. Internal reads require workspace-read/management rights or explicit project membership, preserving the old department tracker audience rather than granting access from `projects.view` alone. The old department create/status routes now operate on canonical internal projects, and migrated old IDs remain resolvable. Public project lists include only completed non-internal projects.
+
+Task status bodies additionally accept `blocked`, with a nonblank single-line `blockedReason` (up to 500 characters). Clearing a block or completing clears the reason. Today includes pending and blocked work on active visible projects; its 101-row database bound follows authorization and the same status/date/priority ordering as project tasks. Assignment/comment notifications are committed with their originating mutation, not sent in a separate best-effort write.
+
+Deleting file metadata, including a project/task cascade, atomically records a byte-deletion intent. The five-minute file cleanup cron deletes primary R2 objects in batches of 100 and then removes those intents; a failed operation leaves work retryable. Backup/version retention is independent of primary object cleanup.
+
 ## Void portal letters contract (slice 9)
 
 These routes use current Google personnel sessions, not legacy Letter Studio OTPs. `letters.manage` is global for admin and department-scoped for director; `letters.send` uses the same defaults. Permissions remain configurable through personnel roles/grants.
@@ -52,16 +70,16 @@ The new `apps/portal` deployment uses Google sessions and named permissions, not
 ## Void portal projects contract (separate deployment)
 
 - `GET /api/projects`: signed in. Every project the caller can see, newest first: project fields plus `termLabel`, `departments: [{id, name}]`, `myRole` (their role if named on it), `tasks: {total, completed}` and `access: {view, manage, manageMembers, manageTasks}`.
-- `POST /api/projects`: `{name (1–255), client? (≤255), description? (≤5000), termId?, deadline? (YYYY-MM-DD, a real date), departmentIds (1–20)}`. Needs `projects.manage` covering every department. Unknown departments or terms are 400. Queues a `New project: …` email to the departments' leads and returns 201 `{id, notified}`. 60 writes/hour per client.
+- `POST /api/projects`: `{name (1–255), client? (≤255), description? (≤5000), termId?, deadline? (YYYY-MM-DD, a real date), departmentIds (1–20), internal?}`. Needs `projects.manage` covering every department, or `departments.projects.manage` covering every department for internal work. Unknown departments or terms are 400. Queues a `New project: …` email to the departments' leads and returns 201 `{id, notified}`. 60 writes/hour per client.
 - `GET /api/projects/:id`: the project with `termLabel`, `departments`, `members: [{id, personId, role, fullName, photoKey, status}]`, `tasks` (open first, then by due date, priority and age; each with `version`, `assigneeName` and `canUpdateStatus`) and `access`. Hidden or missing projects are 404.
-- `PATCH /api/projects/:id`: any of the creation fields. Needs `projects.manage` over all current departments, and over the new ones when `departmentIds` changes. `DELETE /api/projects/:id` and `PUT /api/projects/:id/status` (`{status: 'active' | 'completed'}`) need the same; setting the current status again returns `changed: false`.
+- `PATCH /api/projects/:id`: any of the creation fields. Needs project management over all current departments, and over the new ones when `departmentIds` changes; internal-work grants cannot make a project publishable. `DELETE /api/projects/:id` and `PUT /api/projects/:id/status` (`{status: 'upcoming' | 'active' | 'on_hold' | 'completed'}`) need the same management right; setting the current status again returns `changed: false`.
 - `GET /api/projects/:id/people`: for people who manage the project's members or tasks. Everyone with access: `{id, fullName, departmentId, member, canSee}`.
 - `POST /api/projects/:id/members` `{personId, role (1–80)}`: `projects.members.manage` covering one of the project's departments. The person must have access (400 `person_without_access`); 409 `already_member`. Queues an `Added to … as …` email unless they added themselves. `DELETE /api/projects/:id/members/:memberId` removes the entry (404 when missing); their tasks stay assigned.
 - `POST /api/projects/:id/tasks` `{title (1–255), description? (≤2000), assigneeId?, dueDate?, priority? ('low' | 'normal' | 'high' | 'urgent', default 'normal')}`: `projects.tasks.manage` covering one of the project's departments. The assignee must have access and be able to see the project (400 `assignee_cannot_see_project`). 201 `{id}`. 300 task writes/hour per client.
 - `PATCH /api/projects/:id/tasks/:taskId` `{version, …fields}`: task managers. Returns `{version, changed}`; a stale `version` is 409 `task_changed`. `DELETE` removes the task.
-- `PUT /api/projects/:id/tasks/:taskId/status` `{status: 'pending' | 'completed'}`: the assignee or a task manager; sets or clears `completedAt`; 409 `task_changed` if the task changed after it was read.
+- `PUT /api/projects/:id/tasks/:taskId/status` `{status: 'pending' | 'blocked' | 'completed', blockedReason?}`: the assignee or a task manager; blocking requires a nonblank reason, and unblocking/completion clears it. Sets or clears `completedAt`; 409 `task_changed` if the task changed after it was read.
 - `POST /api/projects/:id/complete-tasks`: task managers; completes every open task and returns `{completed}`.
-- `GET /api/content/projects`: public, 100/minute. Completed projects only: `{id, name, client, description, completedAt}`.
+- `GET /api/content/projects`: public, 100/minute. Completed non-internal projects only: `{id, name, client, description, completedAt}`.
 
 ## Void portal task activity and Today (slice 5b)
 
@@ -229,7 +247,6 @@ Session responses carry `Cache-Control: private, no-store`. Bearer auth accepts 
 | GET | `/api/club-meets` | member | List club-wide meets. |
 | POST | `/api/club-meets` | director | Schedule a club-wide meet and notify members. |
 | DELETE | `/api/club-meets/:id` | director | Delete a club-wide meet. |
-
 ## Inter-department meets
 
 | Method | Path | Auth | Description |
@@ -452,21 +469,3 @@ Owner, date and priority update atomically with a `task_details_changed` before/
 `GET /api/projects/:id/tasks/:taskId/history?cursor=...` requires current project read access and verifies the task belongs to that project. Inaccessible/missing/mismatched resources return 404; invalid cursors return 400. Returns `{ success, data, nextCursor }` with up to 50 events, newest first. Each event exposes ID, action, creation time, current actor name (or Former member) and selected before/after owner/date/priority/status fields. Actor email and arbitrary audit details are excluded. Events must match both the task target and recorded project ID. Pagination uses an opaque cursor with timestamp and append sequence; same-second events retain insertion order. Successful responses are private/no-store.
 
 Creation records `task_created` with initial owner, date, priority and pending status in the same transaction as insertion. Bulk completion records one `task_status_changed` event for each pending task in the same transaction as the status update; already-completed tasks retain timestamps and receive no new event on a retry. Legacy events not recorded by earlier versions cannot be reconstructed from this endpoint.
-
-## Portal invitations and onboarding
-
-POST /api/people and POST /api/imports/people atomically save valid invitees and their queued invitation campaign; dry-run imports do not write or queue mail. GET /api/onboarding returns {items, complete, dismissed, visible}. POST /api/onboarding/acknowledgments accepts {item: department_read | resources_read | checklist_dismissed}; read acknowledgments require current access and retries retain the first timestamp.
-
-## Portal project collaboration
-
-Projects accept internal?: boolean and stages upcoming, active, on_hold and completed. Internal management requires departments.projects.manage over all linked departments; client-only permissions cannot establish internal visibility or convert internal work into publishable work. Existing department create/status routes resolve canonical projects and retained old IDs.
-
-Task status accepts blocked with a nonblank single-line blockedReason of at most 500 characters; pending/completed clears it. Today includes visible pending/blocked work on active projects with authorization before the 101-row bound.
-
-GET/POST /api/projects/:id/files and /api/projects/:id/tasks/:taskId/files list/upload private attachments (multipart file, shared type policy, 25 MiB, 100 per scope). GET .../files/:fileId/download serves private/no-store downloads; DELETE .../files/:fileId returns 204. Upload/deletion requires task management; reads follow current project access and exact scope.
-
-## Portal notifications and meeting follow-through
-
-GET /api/notifications returns {notifications, nextBefore}, newest first, 30/page, with before cursor and unread=1 filter. GET /api/notifications/count returns {unread, capped}, capped at 99 after authorization. POST /api/notifications/read accepts ids (1-50 positive integers) or upTo and marks only the caller inbox. Responses are private/no-store.
-
-PATCH /api/meets/:id accepts optional nullable agenda (5000 characters) and notes (10000), manager-only, 60 writes/hour, no announcement. GET /api/meets includes these fields and permission-filtered actionItems. POST /api/meets/:id/action-items accepts {projectId, taskId}, requires meet management and project visibility, and returns 201 for a new link or 200 for a replay. DELETE /api/meets/:id/action-items/:taskId unlinks without deleting the task.

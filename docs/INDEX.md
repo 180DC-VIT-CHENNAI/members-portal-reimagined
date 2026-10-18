@@ -9,6 +9,7 @@ This repository is documented as an agent-first knowledge system. Start with `AG
 | `AGENTS.md` | Primary entry point, project mode, commands, hazards, update rules. |
 | `README.md` | High-level overview, quick start, and links to the docs tree. |
 | `docs/product/product-spec.md` | Product capabilities, actors, and current/target scope. |
+| `docs/product/legacy-product-spec.md` | Historical token/OTP-era capabilities; not the live portal specification. |
 | `docs/domain/business-logic.md` | Domain behavior by capability: actors, rules, workflows, state changes. |
 | `docs/domain/invariants.md` | Properties that must never become false, with enforcement and verification notes. |
 | `docs/architecture/system-architecture.md` | Runtime architecture, components, request flows, and data flow. |

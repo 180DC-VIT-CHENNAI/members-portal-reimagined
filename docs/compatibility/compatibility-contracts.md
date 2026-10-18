@@ -1,5 +1,11 @@
 # Compatibility Contracts — 180DC VIT Chennai Platform
 
+## COMP-PORTAL-WORK-01 Additive collaboration
+
+Existing project/task URLs and Google sessions remain valid. Existing task status requests for `pending`/`completed` remain valid; `blocked` requires a reason. Existing project creation defaults to non-internal, preserving publication semantics.
+
+The portal's old department create/status routes operate on canonical internal projects. Existing portal department records are copied without deleting source rows, and their old IDs resolve through `legacy_department_project_id`. This does not import records from the legacy Worker. No registry token, OTP or old session gains access.
+
 ## COMP-PORTAL-LETTERS-01 Official documents in the fresh portal
 
 The `/letters` surface remains, but authenticates with the existing Google personnel session and named permissions. New APIs live under `/api/letters`; legacy `/api/letter-studio/*` and OTP credentials remain confined to the old Worker. No credentials or old PDFs are imported.

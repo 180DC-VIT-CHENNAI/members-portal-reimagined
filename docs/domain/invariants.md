@@ -1,5 +1,16 @@
 # Invariants — 180DC VIT Chennai Platform
 
+## Portal collaboration invariants
+
+- **PORTAL-INVITE-01:** A rejected invitation creates no person, tenure, campaign or audit. A successful invitation commits all applicable records together.
+- **PORTAL-INBOX-01:** Assignment/comment notices commit with the mutation and deduplicate across retries. Only a notice's recipient marks it read; revoked project access removes all labels and counts before result limits.
+- **PORTAL-INTERNAL-01:** An internal project never appears publicly, even when completed. A department-workspace grant cannot make it publishable or reshape joint work without covering every department.
+- **PORTAL-INTERNAL-02:** Consolidating old department work does not widen its audience to every department member. Internal work requires workspace-read/management authority or explicit project membership; Today, files, meeting action items and inbox follow the same current policy.
+- **PORTAL-BLOCKED-01:** Blocking requires a nonblank reason, completion/unblocking clears it, and optimistic versions still reject stale changes.
+- **PORTAL-ACTION-01:** Meeting action-item links confer no project permissions; inaccessible task/project identifiers and labels are omitted.
+- **PORTAL-FILE-01:** Contextual file reads inherit current project access; every file/task must match its URL scope. Neither contextual files nor letter PDFs are reachable through shared-file APIs.
+- **PORTAL-FILE-02:** Concurrent uploads cannot exceed 100 files per scope. Metadata deletion atomically queues primary R2-byte cleanup; failed cleanup leaves the deletion intent for retry.
+
 ## Void portal letter studio invariants
 
 - **PORTAL-LETTERS-01:** Read/save/send authority uses current personnel grants and an explicit saved department, never a free-text team, position, document title or old OTP credential. Letter files cannot be read through public/shared-file routes.
@@ -35,7 +46,7 @@ Invariants are properties that must never become false while the system is runni
 
 - **PORTAL-PROJECTS-01:** Being named on a project only grants seeing it. Managing a project always comes from a grant covering its departments: `projects.manage` must cover all of them; `projects.members.manage` and `projects.tasks.manage` any of them. Enforced in `apps/portal/src/server/project-rules.ts`; covered by `project-rules.test.ts` and `tests/e2e/projects.test.mjs`.
 - **PORTAL-PROJECTS-02:** A task is only assigned to someone who can see its project, and every task edit or status change applies to the exact version it was based on (otherwise 409, nothing written).
-- **PORTAL-PROJECTS-03:** Only completed projects are public, and only their id, name, client, description and completion time.
+- **PORTAL-PROJECTS-03:** Only completed non-internal projects are public, and only their id, name, client, description and completion time.
 
 - **PORTAL-PROJECTS-04:** A comment request is unique per author/request UUID; only identical, undeleted retries replay. Removal erases its body. Creation/removal and their audit entry either both commit or neither does. Covered by failure-injected D1 trigger tests in `task-activity.test.mjs`.
 - **PORTAL-PROJECTS-05:** Task comments/history require current project access and correct task parentage. History exposes only allow-listed values, never comment text, raw descriptions or raw audit details. Cursor ordering remains stable for entries with identical timestamps.

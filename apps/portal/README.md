@@ -1,5 +1,17 @@
 # apps/portal — 180DC members portal (Void rewrite)
 
+## Collaboration and onboarding
+
+Inviting a person validates all references before atomically saving their personnel record, optional tenure, audit and queued invitation email. CSV dry runs never send or queue mail. Invitations contain a Google sign-in link, not a password or registry token. Today shows a nonblocking first-login checklist with derived profile progress and explicit read acknowledgments.
+
+Tasks can be blocked with a required reason, then unblocked or completed through the existing versioned status flow. Today applies project visibility, ordering and its 101-row bound in SQL. `/notifications` is a small unread inbox for assignments, comments and tasks due today/tomorrow UTC; source mutations and notices commit together. The hourly reminder cron is `5 * * * *`.
+
+Department and client work use the same project workspace. `internal` projects never publish; the migration copies existing portal-local department tracker rows without dropping them, preserving their old IDs for compatibility. This is not a legacy Worker data import. Department pages link to canonical projects, and team instances open on Roster.
+
+Meets support manager-edited agendas and notes and links to existing project tasks, filtered by the viewer's current project access. Project/task files live privately under `CLUB_FILES/project-files/`; shared-file APIs cannot reach them. Uploads reuse the shared 25 MiB file policy, with an atomic 100-file cap per scope. Metadata deletion, including parent cascades, queues primary-byte cleanup through a D1 trigger; `*/5 * * * *` drains at most 100 keys and retains failed work for retry.
+
+The backup workflow includes `180dc-portal-db`; see [offline restore verification](../../docs/operations/BACKUP_B2.md#portal-recovery-drill). No new provider, bucket, secret or separate queue service is needed. Full request shapes are in the collaboration section of [API contracts](../../docs/contracts/api-contract.md).
+
 ## Letter Studio
 
 `/letters` uses existing Google personnel sessions and global/department `letters.manage` and `letters.send` grants. Admins hold both globally, directors for their department. Use the role/grant editor rather than creating a separate letter OTP allowlist.
@@ -140,7 +152,7 @@ To add a permission:
 | `POST /api/departments/:id/instructions`, `DELETE /api/departments/:id/instructions/:instructionId` | `departments.instructions.manage` for that department |
 | `GET /api/departments/:id/overview` | `departments.workspace.view` for that department: documents, instructions and department projects |
 | `POST /api/departments/:id/documents`, `DELETE /api/departments/:id/documents/:documentId` | `departments.documents.manage` for that department (links only; http(s) URLs) |
-| `POST /api/departments/:id/projects`, `PUT /api/departments/:id/projects/:projectId/status` | `departments.projects.manage` for that department. This tracker is separate from club-wide projects. |
+| `POST /api/departments/:id/projects`, `PUT /api/departments/:id/projects/:projectId/status` | Compatibility routes for canonical internal projects. Management must cover all linked departments; migrated source IDs remain resolvable. |
 | `GET /api/content/case-studies`, `GET /api/content/partners`, `GET /api/content/team-members` | public (rate limited 100/min per IP). Team lists active/on-leave people with an open current-term tenure; public fields only. |
 | `POST /api/consulting-request` | public (1 per hour per IP) |
 | `GET /api/consulting-requests`, `DELETE /api/consulting-requests/:id`, `POST /api/consulting-requests/:id/accept`, `POST /api/consulting-requests/:id/reject` | `consulting.manage`. Decisions and replies are recorded even if mail cannot be sent; `emailSent` reports acceptance by Cloudflare. Client replies go to the deciding admin (Reply-To). |
@@ -151,19 +163,19 @@ To add a permission:
 | `POST /api/meets` | `{kind, title, scheduledAt, meetLink?, description?, departmentIds?}`. `club` needs global `meets.club.manage` and no departments; `department` needs `meets.department.manage` for exactly one department; `inter_department` needs global `meets.inter_department.manage` and one or more departments. Queues an announcement to the audience (active and on-leave people; club-wide mail leaves out advisory members without a department) and returns 201 `{id, campaignId, queued}`. 60/hour. |
 | `DELETE /api/meets/:id` | the manage permission for that meet; 404 if missing. Announcements already queued still go out. 60/hour. |
 | `POST /api/meets/:id/notify` | the manage permission for that meet; queues a new announcement, without the link once the meet is a day past. 10/hour per client. |
-| `GET /api/projects` | signed in. Projects the caller can see, newest first, with departments, task progress, the caller's role on each (`myRole`) and their rights (`access`). A project is visible through `projects.view` (or a project management grant) covering one of its departments, or by being named on it. |
-| `POST /api/projects` | `projects.manage` covering every selected department. `{name, client?, description?, termId?, deadline?, departmentIds}`; emails the departments' leads (people there with `projects.tasks.manage`). 201 `{id, notified}`. 60/hour. |
+| `GET /api/projects` | signed in. Authorized projects, newest first, with departments, task progress, `myRole` and `access`. Client-project grants alone never open internal work: internal eligibility requires workspace authority or explicit named membership. |
+| `POST /api/projects` | `{name, client?, description?, termId?, deadline?, departmentIds, internal?}`. Project management covers every selected department; eligible internal department managers may create internal work. Only authorized department leads are emailed. 201 `{id, notified}`. 60/hour. |
 | `GET /api/projects/:id` | visible projects only (404 otherwise): details, departments, people, tasks (each with `version`, a live comment count (`comments`) and `canUpdateStatus`) and `access`. |
-| `PATCH /api/projects/:id`, `DELETE /api/projects/:id`, `PUT /api/projects/:id/status` | `projects.manage` covering all the project's departments (and any new ones on PATCH). DELETE removes its tasks and people too. `status` is `active` or `completed`; completed projects are public. |
+| `PATCH /api/projects/:id`, `DELETE /api/projects/:id`, `PUT /api/projects/:id/status` | Management covering all linked departments, after internal eligibility checks. Stages: `upcoming`, `active`, `on_hold`, `completed`. Only completed non-internal work publishes. DELETE also removes child metadata and queues attachment-byte cleanup. |
 | `GET /api/projects/:id/people` | `projects.members.manage` or `projects.tasks.manage` on the project. Everyone with access, with `member` and `canSee`, for the pickers. |
 | `POST /api/projects/:id/members`, `DELETE /api/projects/:id/members/:memberId` | `projects.members.manage` covering one of its departments. `{personId, role}`; the person must have access; 409 if already on it; emails them. |
 | `POST /api/projects/:id/tasks`, `PATCH`/`DELETE /api/projects/:id/tasks/:taskId`, `POST /api/projects/:id/complete-tasks` | `projects.tasks.manage` covering one of its departments. `{title, description?, assigneeId?, dueDate?, priority?}`; assignees must be able to see the project. PATCH needs the task's current `version` (409 otherwise). 300/hour. |
-| `PUT /api/projects/:id/tasks/:taskId/status` | the assignee or a task manager. `{status: 'pending' \| 'completed'}`; 409 if the task changed meanwhile. |
+| `PUT /api/projects/:id/tasks/:taskId/status` | the assignee or an eligible task manager. `{status: 'pending' \| 'blocked' \| 'completed', blockedReason?}`; blocking requires a nonblank reason (up to 500 characters). 409 if the task changed meanwhile. |
 | `GET /api/projects/:id/tasks/:taskId/comments`, `GET /api/projects/:id/tasks/:taskId/history` | anyone who can currently see the project; 404 for hidden projects or wrong task parentage. Newest first, 50/page; `?before=<nextBefore>` loads older entries. Private, no-store; 120 reads/minute per endpoint. History exposes allow-listed fields, never comment text or raw audit details. |
 | `POST /api/projects/:id/tasks/:taskId/comments` | any project reader. `{requestId: UUID, body: plain text (1-4000 raw characters, trimmed)}`. A retry with the same author/request id, task and text replays the original 201 result; changed or removed requests are 409. 30 writes/minute. Comment and audit insert atomically. |
 | `DELETE /api/projects/:id/tasks/:taskId/comments/:commentId` | comment author or project task manager. Erases the text and retains a removed marker; repeating is a no-op. Removal and audit are atomic. Shares the comment write limit. |
-| `GET /api/today` | signed in, 60/minute. `generatedAt`, up to 100 open assigned tasks on visible active projects, up to 20 relevant meets in the next seven days, three announcements and permission-scoped attention counts, with overflow flags. Private, no-store. |
-| `GET /api/content/projects` | public. Completed projects `{id, name, client, description, completedAt}`, most recently completed first. 100/minute. |
+| `GET /api/today` | signed in, 60/minute. Up to 100 pending/blocked assigned tasks on visible active projects, bounded after authorization in SQL; up to 20 relevant meets, three announcements, scoped attention counts and overflow flags. Private, no-store. |
+| `GET /api/content/projects` | public. Completed non-internal projects `{id, name, client, description, completedAt}`, most recently completed first. 100/minute. |
 | `GET /api/team-instances` | `team_instances.view` or `team_instances.manage` (advisory members hold neither). Instances whose departments the caller's grants cover, newest first, with `departments`, `stats {teams, placements, short}` and `access {view, staff, configure}`. |
 | `POST /api/team-instances` | `team_instances.manage` covering every selected department. `{name, description?, groupLabel? (default "Company"), departmentIds, levels? (1-20 names; blanks become "Level N")}`. 201 `{id}`. 120 writes/hour per client, shared by every instance, group, team and outside-person write. |
 | `GET /api/team-instances/:id` | visible instances only (404 otherwise): departments, levels, groups with their teams, teams in no group, each team's people (members, then outside people) with `count`, `short` and `full`, the outside-people register (emails only for staff), `stats` and `access`. |
@@ -180,15 +192,3 @@ To add a permission:
 | `POST /api/case-studies/upload-image`, `upload-source`, `upload-document` (multipart); `DELETE /api/case-studies/delete-image` | `content.publish`. `upload-document` turns a PDF or DOCX into sanitized HTML and stores nothing. |
 | `GET /api/case-studies/images/*` | public (200/min per IP): `images/` and `source/` keys of `CASE_STUDIES` |
 | `GET /api/gallery-cdn/*` | public, cached for a year: photos in the `GALLERY_CDN` bucket listed by `src/data/galleryManifest.json` |
-
-## Invitations and first-login checklist
-
-Invitations validate all references before atomically saving personnel, optional tenure, audit and queued Google-only invitation email. CSV dry runs do not queue mail. Today shows a nonblocking first-login checklist; public profile completeness is derived, read items are acknowledged explicitly, and phone/registration number remain optional.
-
-## Project collaboration
-
-Department and client work share the canonical project workspace. Internal work never publishes and requires workspace authority or explicit membership. Tasks support required blocker reasons; Today applies visibility and ordering before its 101-row database bound. Private project/task attachments inherit project permissions and use the existing 25 MiB file policy. Metadata deletion queues primary-byte cleanup, drained every five minutes. Team instances open on Roster.
-
-## Notifications and meeting follow-through
-
-The unread inbox covers assignment, comments and deadlines today/tomorrow UTC, with an hourly reminder cron at minute 5. Source mutations and notices commit together; current project access filters labels and counts. Meeting managers can edit agendas/notes and link existing tasks without sending announcements; meeting access never grants access to a project.

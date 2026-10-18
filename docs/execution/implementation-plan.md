@@ -6,6 +6,8 @@ Active web work is the Void portal rewrite in `apps/portal`, delivered as PRs to
 
 ## Target state
 
+For the live portal, the collaboration increment adds atomic emailed invitations, derived onboarding, blocked tasks, a permission-aware inbox, meeting follow-through and contextual files. It consolidates portal department work additively into internal projects and defaults team instances to Roster. Keep one Worker, one portal D1, the existing email queue and configured storage adapter. The service-extraction target below describes the historical legacy system, not required new infrastructure.
+
 The platform should have:
 
 1. A clean separation of concerns:
