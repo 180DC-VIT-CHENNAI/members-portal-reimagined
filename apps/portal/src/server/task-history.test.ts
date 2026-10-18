@@ -21,6 +21,9 @@ test('only known task fields with valid values survive', () => {
 test('status changes carry only the status; comment events expose nothing', () => {
   const status = taskHistoryEvent(row('task.status', { projectId: 'p', from: 'pending', to: 'completed', bulk: true }, null), new Map());
   assert.deepEqual([status.from, status.to, status.bulk, status.actorName], [{ status: 'pending' }, { status: 'completed' }, true, 'System']);
+  const blocked = taskHistoryEvent(row('task.status', { projectId: 'p', from: 'pending', to: 'blocked', blockedReason: 'Waiting on client' }), new Map());
+  assert.deepEqual([blocked.from, blocked.to], [{ status: 'pending' }, { status: 'blocked' }]);
+  assert.ok(!JSON.stringify(blocked).includes('Waiting on client'));
   const comment = taskHistoryEvent(row('task.comment', { projectId: 'p', commentId: 9 }), new Map());
   assert.deepEqual([comment.from, comment.to, comment.bulk], [{}, {}, false]);
   assert.ok(!JSON.stringify(comment).includes('commentId'));

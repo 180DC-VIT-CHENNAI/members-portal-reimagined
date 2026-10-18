@@ -184,3 +184,7 @@ To add a permission:
 ## Invitations and first-login checklist
 
 Invitations validate all references before atomically saving personnel, optional tenure, audit and queued Google-only invitation email. CSV dry runs do not queue mail. Today shows a nonblocking first-login checklist; public profile completeness is derived, read items are acknowledged explicitly, and phone/registration number remain optional.
+
+## Project collaboration
+
+Department and client work share the canonical project workspace. Internal work never publishes and requires workspace authority or explicit membership. Tasks support required blocker reasons; Today applies visibility and ordering before its 101-row database bound. Private project/task attachments inherit project permissions and use the existing 25 MiB file policy. Metadata deletion queues primary-byte cleanup, drained every five minutes. Team instances open on Roster.

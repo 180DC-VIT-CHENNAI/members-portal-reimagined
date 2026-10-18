@@ -3,7 +3,7 @@ import type { TaskPriority, TaskStatus } from '@schema';
 /** Audit actions shown as a task's history. */
 export const TASK_HISTORY_ACTIONS = ['task.create', 'task.update', 'task.status', 'task.comment', 'task.comment.remove'] as const;
 
-const STATUSES: readonly string[] = ['pending', 'completed'] satisfies TaskStatus[];
+const STATUSES: readonly string[] = ['pending', 'blocked', 'completed'] satisfies TaskStatus[];
 const PRIORITIES: readonly string[] = ['low', 'normal', 'high', 'urgent'] satisfies TaskPriority[];
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const isStatus = (value: unknown): value is TaskStatus => STATUSES.some((status) => status === value);

@@ -167,6 +167,54 @@ test('completing all tasks closes open ones once and keeps earlier completion ti
   assert.equal((await director.del('/api/projects/' + project + '/tasks/' + second)).status, 404);
 });
 
+test('blocking a task needs a reason; unblocking, completing and reopening keep the version rules', async () => {
+  const p = (await create(admin, { name: 'Blocked checks' })).json.id;
+  const id = (await addTask(director, p, { assigneeId: ids.member })).json.id;
+  const status = (client, body) => client.put('/api/projects/' + p + '/tasks/' + id + '/status', body);
+  assert.equal((await status(member, { status: 'blocked' })).status, 400);
+  assert.equal((await status(member, { status: 'blocked', blockedReason: '   ' })).status, 400);
+  assert.equal((await status(member, { status: 'paused' })).status, 400);
+  assert.equal((await status(colleague, { status: 'blocked', blockedReason: 'Not mine' })).status, 403);
+  assert.deepEqual((await status(member, { status: 'blocked', blockedReason: '  Waiting on\n the client  ' })).json, { version: 2, changed: true });
+  let current = await task(p, id);
+  assert.deepEqual([current.status, current.blockedReason, current.completedAt], ['blocked', 'Waiting on the client', null]);
+  assert.deepEqual((await status(member, { status: 'blocked', blockedReason: 'Waiting on the client' })).json, { version: 2, changed: false });
+  assert.deepEqual((await status(director, { status: 'blocked', blockedReason: 'Waiting on data' })).json, { version: 3, changed: true });
+  assert.equal((await director.patch('/api/projects/' + p + '/tasks/' + id, { version: 2, priority: 'high' })).status, 409);
+  assert.equal((await task(p, id)).blockedReason, 'Waiting on data');
+
+  assert.deepEqual((await status(member, { status: 'pending', blockedReason: 'ignored' })).json, { version: 4, changed: true });
+  current = await task(p, id);
+  assert.deepEqual([current.status, current.blockedReason], ['pending', null]);
+  await status(member, { status: 'blocked', blockedReason: 'Again' });
+  assert.deepEqual((await status(member, { status: 'completed' })).json, { version: 6, changed: true });
+  current = await task(p, id);
+  assert.deepEqual([current.status, current.blockedReason, Boolean(current.completedAt)], ['completed', null, true]);
+  assert.deepEqual((await status(member, { status: 'pending' })).json, { version: 7, changed: true });
+
+  await status(member, { status: 'blocked', blockedReason: 'Last one' });
+  const open = (await addTask(director, p, { title: 'Still open' })).json.id;
+  const res = await director.post('/api/projects/' + p + '/complete-tasks', {});
+  assert.deepEqual(res.json, { completed: 2 });
+  current = await task(p, id);
+  assert.deepEqual([current.status, current.blockedReason, current.version], ['completed', null, 9]);
+  const audit = portal.db
+    .prepare("SELECT json_extract(details, '$.from') AS f, json_extract(details, '$.to') AS t, json_extract(details, '$.blockedReason') AS r, json_extract(details, '$.bulk') AS b FROM audit_log WHERE action = 'task.status' AND target_id = ? ORDER BY id")
+    .all(id)
+    .map(({ f, t, r, b }) => [f, t, r, b]);
+  assert.deepEqual(audit, [
+    ['pending', 'blocked', 'Waiting on the client', null],
+    ['blocked', 'blocked', 'Waiting on data', null],
+    ['blocked', 'pending', null, null],
+    ['pending', 'blocked', 'Again', null],
+    ['blocked', 'completed', null, null],
+    ['completed', 'pending', null, null],
+    ['pending', 'blocked', 'Last one', null],
+    ['blocked', 'completed', null, 1],
+  ]);
+  assert.equal(portal.db.prepare("SELECT json_extract(details, '$.from') AS f FROM audit_log WHERE action = 'task.status' AND target_id = ?").get(open).f, 'pending');
+});
+
 test('the people picker lists everyone with access and whether they can see the project', async () => {
   const people = await director.get('/api/projects/' + project + '/people');
   assert.equal(people.status, 200, people.text);

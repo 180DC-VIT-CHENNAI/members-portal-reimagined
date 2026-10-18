@@ -30,8 +30,15 @@ type Fetcher = (request: Request) => Promise<Response>;
 
 const META_HEADER = 'x-amz-meta-r2-custom';
 
-export function b2ConfigFromEnv(env: any): B2Config | null {
-  const { B2_S3_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APPLICATION_KEY, B2_READ_KEY_ID, B2_READ_APPLICATION_KEY } = env ?? {};
+export function b2ConfigFromEnv(env: {
+  readonly B2_S3_ENDPOINT?: string;
+  readonly B2_BUCKET?: string;
+  readonly B2_KEY_ID?: string;
+  readonly B2_APPLICATION_KEY?: string;
+  readonly B2_READ_KEY_ID?: string;
+  readonly B2_READ_APPLICATION_KEY?: string;
+}): B2Config | null {
+  const { B2_S3_ENDPOINT, B2_BUCKET, B2_KEY_ID, B2_APPLICATION_KEY, B2_READ_KEY_ID, B2_READ_APPLICATION_KEY } = env;
   if (!B2_S3_ENDPOINT || !B2_BUCKET || !B2_KEY_ID || !B2_APPLICATION_KEY) return null;
   return {
     endpoint: String(B2_S3_ENDPOINT).replace(/\/+$/, ''),

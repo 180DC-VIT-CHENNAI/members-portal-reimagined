@@ -456,3 +456,11 @@ Creation records `task_created` with initial owner, date, priority and pending s
 ## Portal invitations and onboarding
 
 POST /api/people and POST /api/imports/people atomically save valid invitees and their queued invitation campaign; dry-run imports do not write or queue mail. GET /api/onboarding returns {items, complete, dismissed, visible}. POST /api/onboarding/acknowledgments accepts {item: department_read | resources_read | checklist_dismissed}; read acknowledgments require current access and retries retain the first timestamp.
+
+## Portal project collaboration
+
+Projects accept internal?: boolean and stages upcoming, active, on_hold and completed. Internal management requires departments.projects.manage over all linked departments; client-only permissions cannot establish internal visibility or convert internal work into publishable work. Existing department create/status routes resolve canonical projects and retained old IDs.
+
+Task status accepts blocked with a nonblank single-line blockedReason of at most 500 characters; pending/completed clears it. Today includes visible pending/blocked work on active projects with authorization before the 101-row bound.
+
+GET/POST /api/projects/:id/files and /api/projects/:id/tasks/:taskId/files list/upload private attachments (multipart file, shared type policy, 25 MiB, 100 per scope). GET .../files/:fileId/download serves private/no-store downloads; DELETE .../files/:fileId returns 204. Upload/deletion requires task management; reads follow current project access and exact scope.

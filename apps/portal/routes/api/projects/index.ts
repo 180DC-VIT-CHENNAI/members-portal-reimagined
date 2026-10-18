@@ -16,7 +16,8 @@ export const GET = defineHandler(async (c) => listProjects(await requirePrincipa
 export const POST = defineHandler.withValidator({ body: v.object(projectFields) })(async (c, { body }) => {
   const actor = await requirePrincipal(c);
   const departmentIds = [...new Set(body.departmentIds)];
-  if (!projectAccess(actor.permissions, departmentIds, false).manage) forbidden();
+  const internal = body.internal ?? false;
+  if (!projectAccess(actor.permissions, departmentIds, false, internal).manage) forbidden();
   await rateLimit(c, 'projects_write', 60, 3600);
   await requireKnown(departmentIds, body.termId);
   const project = {
@@ -26,6 +27,7 @@ export const POST = defineHandler.withValidator({ body: v.object(projectFields) 
     description: body.description || null,
     termId: body.termId ?? null,
     deadline: body.deadline ?? null,
+    internal,
   };
   await db.batch([
     db.insert(projects).values({ ...project, createdBy: actor.person.id }),

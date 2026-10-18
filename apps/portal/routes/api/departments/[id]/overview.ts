@@ -1,16 +1,17 @@
-import { departmentDocuments, departmentInstructions, departmentProjects, people } from '@schema';
+import { departmentDocuments, departmentInstructions, people } from '@schema';
 import { defineHandler } from 'void';
 import { db, desc, eq } from 'void/db';
 import { departmentOr404 } from '../../../../src/server/departments';
 import { requirePermission } from '../../../../src/server/guard';
 import { idParam } from '../../../../src/server/http';
+import { listProjects } from '../../../../src/server/projects';
 
 /** A department's workspace: documents, instructions and its own projects, newest first. */
 export const GET = defineHandler(async (c) => {
   const departmentId = idParam(c);
-  await requirePermission(c, 'departments.workspace.view', departmentId);
+  const principal = await requirePermission(c, 'departments.workspace.view', departmentId);
   const department = await departmentOr404(departmentId);
-  const [documents, instructions, projects] = await Promise.all([
+  const [documents, instructions, work] = await Promise.all([
     db
       .select({
         id: departmentDocuments.id,
@@ -38,20 +39,7 @@ export const GET = defineHandler(async (c) => {
       .leftJoin(people, eq(people.id, departmentInstructions.createdBy))
       .where(eq(departmentInstructions.departmentId, departmentId))
       .orderBy(desc(departmentInstructions.createdAt), desc(departmentInstructions.id)),
-    db
-      .select({
-        id: departmentProjects.id,
-        name: departmentProjects.name,
-        description: departmentProjects.description,
-        status: departmentProjects.status,
-        deadline: departmentProjects.deadline,
-        createdAt: departmentProjects.createdAt,
-        authorName: people.fullName,
-      })
-      .from(departmentProjects)
-      .leftJoin(people, eq(people.id, departmentProjects.createdBy))
-      .where(eq(departmentProjects.departmentId, departmentId))
-      .orderBy(desc(departmentProjects.createdAt), desc(departmentProjects.id)),
+    listProjects(principal).then((rows) => rows.filter((project) => project.departments.some((department) => department.id === departmentId))),
   ]);
-  return { department, documents, instructions, projects };
+  return { department, documents, instructions, projects: work };
 });

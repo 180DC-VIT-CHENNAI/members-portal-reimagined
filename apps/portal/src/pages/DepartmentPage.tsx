@@ -1,5 +1,4 @@
 import { type FormEvent, useState } from 'react';
-import { Icon } from '../components/icons.tsx';
 import {
   Avatar,
   Button,
@@ -21,13 +20,6 @@ import { formatDate, formatDateTime, isHttpsUrl, isStatus } from '../lib/format.
 import { useSession } from '../lib/session.tsx';
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
-const PROJECT_STATUSES = ['upcoming', 'active', 'completed', 'on_hold'] as const;
-const PROJECT_STATUS_LABEL: Record<(typeof PROJECT_STATUSES)[number], string> = {
-  upcoming: 'Upcoming',
-  active: 'Active',
-  completed: 'Completed',
-  on_hold: 'On hold',
-};
 const PRIORITY_TONE: Record<(typeof PRIORITIES)[number], string> = { low: '', medium: '', high: 'badge-warning', urgent: 'badge-error' };
 
 /** A department's members, instructions and (for its leads) documents and projects. */
@@ -238,9 +230,13 @@ function Workspace({ departmentId }: { departmentId: string }) {
   return (
     <>
       <ProblemAlert problem={problem} />
-      <Card title="Projects" description="This department's own tracker (separate from club-wide projects).">
+      <Card title="Projects" description="The same project workspace, filtered to this department.">
         <div className="stack">
-          {manageProjects && <NewProject departmentId={departmentId} onAdded={overview.reload} />}
+          {manageProjects && (
+            <Button icon="plus" onClick={() => navigate(`/projects/new?department=${encodeURIComponent(departmentId)}&internal=1`)}>
+              New department project
+            </Button>
+          )}
           {projects.length === 0 ? (
             <EmptyState icon="briefcase" title="No department projects yet" />
           ) : (
@@ -248,37 +244,10 @@ function Workspace({ departmentId }: { departmentId: string }) {
               {projects.map((p) => (
                 <li key={p.id} className="row-between">
                   <span className="person-cell-text">
-                    <strong>{p.name}</strong>
+                    <Link to={`/projects/${p.id}`}><strong>{p.name}</strong></Link>
                     <span className="caption muted">{[p.description, p.deadline && `Due ${formatDate(p.deadline)}`].filter(Boolean).join(' · ')}</span>
                   </span>
-                  {manageProjects ? (
-                    <div className="select-wrap">
-                      <select
-                        className="select"
-                        aria-label={`Status of ${p.name}`}
-                        value={p.status}
-                        disabled={busy === p.id}
-                        onChange={(e) =>
-                          run(p.id, () =>
-                            api('/api/departments/:id/projects/:projectId/status', {
-                              method: 'PUT',
-                              params: { id: departmentId, projectId: p.id },
-                              body: { status: e.target.value as (typeof PROJECT_STATUSES)[number] },
-                            }),
-                          )
-                        }
-                      >
-                        {PROJECT_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {PROJECT_STATUS_LABEL[s]}
-                          </option>
-                        ))}
-                      </select>
-                      <Icon name="chevronDown" size={16} className="select-chevron" />
-                    </div>
-                  ) : (
-                    <span className="badge">{PROJECT_STATUS_LABEL[p.status]}</span>
-                  )}
+                  <span className="badge">{p.status.replace('_', ' ')}</span>
                 </li>
               ))}
             </ul>
@@ -322,42 +291,6 @@ function Workspace({ departmentId }: { departmentId: string }) {
         </div>
       </Card>
     </>
-  );
-}
-
-function NewProject({ departmentId, onAdded }: { departmentId: string; onAdded: () => void }) {
-  const [name, setName] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<ApiProblem | null>(null);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setProblem(null);
-    try {
-      await api('/api/departments/:id/projects', { method: 'POST', params: { id: departmentId }, body: { name, deadline: deadline || null } });
-      setName('');
-      setDeadline('');
-      onAdded();
-    } catch (err) {
-      setProblem(problemFrom(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <form className="form" onSubmit={submit}>
-      <div className="form-grid">
-        <TextField label="Project name" value={name} onChange={(e) => setName(e.target.value)} error={problem?.fields.name} required maxLength={255} />
-        <TextField label="Deadline" type="date" optional value={deadline} onChange={(e) => setDeadline(e.target.value)} error={problem?.fields.deadline} />
-      </div>
-      <ProblemAlert problem={problem} fieldsShown={['name', 'deadline']} />
-      <div className="form-actions">
-        <Button type="submit" variant="primary" icon="plus" busy={busy} disabled={!name.trim()}>
-          Add project
-        </Button>
-      </div>
-    </form>
   );
 }
 

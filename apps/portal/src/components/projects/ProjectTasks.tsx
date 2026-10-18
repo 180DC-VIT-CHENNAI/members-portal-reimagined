@@ -4,7 +4,7 @@ import { api, problemFrom } from '../../lib/api.ts';
 import type { ApiProblem } from '../../lib/errors.ts';
 import { formatDate } from '../../lib/format.ts';
 import type { Candidate, Project, Task } from '../../lib/project-client.ts';
-import { NewTask, TaskEditor, PRIORITY_LABEL, PRIORITY_TONE } from './TaskForms.tsx';
+import { BlockTask, NewTask, TaskEditor, PRIORITY_LABEL, PRIORITY_TONE } from './TaskForms.tsx';
 import { TaskActivity } from './TaskActivity.tsx';
 
 export function ProjectTasks({ project, assignable, onChange }: { project: Project; assignable: Candidate[]; onChange: () => void }) {
@@ -13,8 +13,11 @@ export function ProjectTasks({ project, assignable, onChange }: { project: Proje
   const [problem, setProblem] = useState<ApiProblem | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Task | null>(null);
+  const [blocking, setBlocking] = useState<string | null>(null);
   const done = project.tasks.filter((t) => t.status === 'completed').length;
+  const blocked = project.tasks.filter((t) => t.status === 'blocked').length;
   const editingTask = project.tasks.find((t) => t.id === editing) ?? null;
+  const blockingTask = project.tasks.find((t) => t.id === blocking) ?? null;
 
   const act = async (key: string, action: () => Promise<unknown>) => {
     setBusy(key);
@@ -30,11 +33,13 @@ export function ProjectTasks({ project, assignable, onChange }: { project: Proje
     }
   };
   const params = (taskId: string) => ({ id: project.id, taskId });
+  const setStatus = (taskId: string, status: 'pending' | 'completed') =>
+    act(taskId, () => api('/api/projects/:id/tasks/:taskId/status', { method: 'PUT', params: params(taskId), body: { status } }));
 
   return (
     <Card
       title="Tasks"
-      description={project.tasks.length ? `${done} of ${project.tasks.length} done.` : 'Nothing to do yet.'}
+      description={project.tasks.length ? `${done} of ${project.tasks.length} done${blocked ? `, ${blocked} blocked` : ''}.` : 'Nothing to do yet.'}
       actions={
         manage &&
         done < project.tasks.length && (
@@ -61,52 +66,65 @@ export function ProjectTasks({ project, assignable, onChange }: { project: Proje
                     type="checkbox"
                     checked={t.status === 'completed'}
                     disabled={!t.canUpdateStatus || busy === t.id}
-                    aria-label={t.status === 'pending' ? `Mark "${t.title}" done` : `Reopen "${t.title}"`}
-                    onChange={() =>
-                      act(t.id, () =>
-                        api('/api/projects/:id/tasks/:taskId/status', {
-                          method: 'PUT',
-                          params: params(t.id),
-                          body: { status: t.status === 'pending' ? 'completed' : 'pending' },
-                        }),
-                      )
-                    }
+                    aria-label={t.status === 'completed' ? `Reopen "${t.title}"` : `Mark "${t.title}" done`}
+                    onChange={() => setStatus(t.id, t.status === 'completed' ? 'pending' : 'completed')}
                   />
                 </label>
                 <div className="stack-sm">
                   <div className="cluster">
                     <strong className={t.status === 'completed' ? 'task-done' : undefined}>{t.title}</strong>
+                    {t.status === 'blocked' && <span className="badge badge-warning">Blocked</span>}
                     {t.priority !== 'normal' && <span className={`badge ${PRIORITY_TONE[t.priority]}`}>{PRIORITY_LABEL[t.priority]}</span>}
                   </div>
+                  {t.status === 'blocked' && t.blockedReason && <p className="pre-wrap">Blocked: {t.blockedReason}</p>}
                   {t.description && <p className="pre-wrap">{t.description}</p>}
                   <p className="caption muted">
                     {t.assigneeName ?? 'Unassigned'}
                     {t.dueDate && ` · Due ${formatDate(t.dueDate)}`}
                     {t.completedAt && ` · Done ${formatDate(t.completedAt)}`}
                   </p>
-                  {manage && (
+                  {(manage || (t.canUpdateStatus && t.status !== 'completed')) && (
                     <div className="cluster">
-                      <Button
-                        size="sm"
-                        icon="pencil"
-                        onClick={() => {
-                          setProblem(null);
-                          setEditing(t.id);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="danger-quiet"
-                        icon="trash"
-                        onClick={() => {
-                          setProblem(null);
-                          setRemoving(t);
-                        }}
-                      >
-                        Remove
-                      </Button>
+                      {t.canUpdateStatus && t.status === 'pending' && (
+                        <Button size="sm" icon="alert" onClick={() => { setProblem(null); setBlocking(t.id); }}>
+                          Mark blocked
+                        </Button>
+                      )}
+                      {t.canUpdateStatus && t.status === 'blocked' && (
+                        <>
+                          <Button size="sm" icon="history" busy={busy === t.id} onClick={() => setStatus(t.id, 'pending')}>
+                            Unblock
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setProblem(null); setBlocking(t.id); }}>
+                            Change reason
+                          </Button>
+                        </>
+                      )}
+                      {manage && (
+                        <>
+                          <Button
+                            size="sm"
+                            icon="pencil"
+                            onClick={() => {
+                              setProblem(null);
+                              setEditing(t.id);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger-quiet"
+                            icon="trash"
+                            onClick={() => {
+                              setProblem(null);
+                              setRemoving(t);
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </>
+                      )}
                     </div>
                   )}
                   <TaskActivity projectId={project.id} taskId={t.id} count={t.comments} onChange={onChange} />
@@ -128,6 +146,19 @@ export function ProjectTasks({ project, assignable, onChange }: { project: Proje
           }}
           onConflict={onChange}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {blockingTask && (
+        <BlockTask
+          key={blockingTask.id}
+          projectId={project.id}
+          task={blockingTask}
+          onSaved={() => {
+            setBlocking(null);
+            onChange();
+          }}
+          onConflict={onChange}
+          onClose={() => setBlocking(null)}
         />
       )}
       <ConfirmDialog

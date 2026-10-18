@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react';
 import { BackLink, Button, Card, EmptyState, ErrorState, LoadingBlock, PageHeader, ProblemAlert, SelectField, TextAreaField, TextField } from '../components/ui.tsx';
 import { api, lookups, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
-import { navigate } from '../lib/router.tsx';
+import { navigate, useLocation } from '../lib/router.tsx';
 import { useSession } from '../lib/session.tsx';
 
 const loadProject = (id: string) => api('/api/projects/:id', { params: { id } });
@@ -13,6 +13,8 @@ type Term = { id: string; label: string; isCurrent: boolean };
 /** Create a project, or edit the one with `id`. */
 export function ProjectFormPage({ id }: { id?: string }) {
   const { can } = useSession();
+  const { query } = useLocation();
+  const requestedInternal = query.get('internal') === '1';
   const project = useLoad(() => (id ? loadProject(id) : Promise.resolve(null)), [id]);
   const departments = useLoad(() => lookups.departments(), []);
   const terms = useLoad(() => lookups.terms(), []);
@@ -21,15 +23,15 @@ export function ProjectFormPage({ id }: { id?: string }) {
   if (problem) return <ErrorState problem={problem} onRetry={() => [project, departments, terms].forEach((load) => load.reload())} />;
   if (project.data === undefined || !departments.data || !terms.data) return <LoadingBlock />;
   const existing = project.data;
-  const allowed = existing ? existing.access.manage : can('projects.manage');
-  const choices = departments.data.filter((d) => (d.active || existing?.departments.some((x) => x.id === d.id)) && can('projects.manage', d.id));
+  const allowed = existing ? existing.access.manage : can('projects.manage') || can('departments.projects.manage');
+  const choices = departments.data.filter((d) => (d.active || existing?.departments.some((x) => x.id === d.id)) && (can('projects.manage', d.id) || can('departments.projects.manage', d.id)));
 
   return (
     <div className="page page-narrow">
       <BackLink to={existing ? `/projects/${existing.id}` : '/projects'}>{existing ? existing.name : 'Projects'}</BackLink>
       <PageHeader overline="Projects" title={existing ? 'Edit project' : 'New project'} />
       {allowed ? (
-        <ProjectForm key={existing?.id ?? 'new'} existing={existing} departments={choices} terms={terms.data} />
+        <ProjectForm key={existing?.id ?? 'new'} existing={existing} departments={choices} terms={terms.data} initialDepartment={query.get('department')} initialInternal={requestedInternal || !can('projects.manage')} />
       ) : (
         <EmptyState icon="clipboard" title={existing ? "You can't edit this project" : "You can't create projects"} />
       )}
@@ -37,14 +39,16 @@ export function ProjectFormPage({ id }: { id?: string }) {
   );
 }
 
-function ProjectForm({ existing, departments, terms }: { existing: Project | null; departments: Choice[]; terms: Term[] }) {
+function ProjectForm({ existing, departments, terms, initialDepartment, initialInternal }: { existing: Project | null; departments: Choice[]; terms: Term[]; initialDepartment: string | null; initialInternal: boolean }) {
+  const { can } = useSession();
+  const [internal, setInternal] = useState(existing?.internal ?? initialInternal);
   const [name, setName] = useState(existing?.name ?? '');
   const [client, setClient] = useState(existing?.client ?? '');
   const [termId, setTermId] = useState(existing ? (existing.termId ?? '') : (terms.find((t) => t.isCurrent)?.id ?? ''));
   const [deadline, setDeadline] = useState(existing?.deadline ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
   const [selected, setSelected] = useState<string[]>(
-    existing ? existing.departments.map((d) => d.id) : departments.length === 1 ? departments.map((d) => d.id) : [],
+    existing ? existing.departments.map((d) => d.id) : initialDepartment && departments.some((department) => department.id === initialDepartment) ? [initialDepartment] : departments.length === 1 ? departments.map((d) => d.id) : [],
   );
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | null>(null);
@@ -61,14 +65,15 @@ function ProjectForm({ existing, departments, terms }: { existing: Project | nul
       deadline: deadline || null,
       description: description.trim() || null,
       departmentIds: selected,
+      internal,
     };
     try {
       if (existing) {
         await api('/api/projects/:id', { method: 'PATCH', params: { id: existing.id }, body });
         navigate(back);
       } else {
-        // Void infers `never` for `c.json(body, 201)` responses; the route returns `{ id, notified }`.
-        const created = (await api('/api/projects', { method: 'POST', body })) as unknown as { id: string };
+        // Void 1.1 infers never for JSON 201 responses; the endpoint returns this shape.
+        const created: { id: string } = await api('/api/projects', { method: 'POST', body });
         navigate(`/projects/${created.id}`);
       }
     } catch (err) {
@@ -82,6 +87,10 @@ function ProjectForm({ existing, departments, terms }: { existing: Project | nul
       <form className="form" onSubmit={submit}>
         <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} error={problem?.fields.name} required maxLength={255} />
         <TextField label="Client" optional value={client} onChange={(e) => setClient(e.target.value)} error={problem?.fields.client} maxLength={255} />
+        <label className="check">
+          <input type="checkbox" checked={internal} onChange={(event) => setInternal(event.target.checked)} disabled={!can('projects.manage')} />
+          Internal work - never listed on the public site
+        </label>
         <div className="form-grid">
           <SelectField label="Term" value={termId} onChange={(e) => setTermId(e.target.value)}>
             <option value="">No term</option>
@@ -109,7 +118,7 @@ function ProjectForm({ existing, departments, terms }: { existing: Project | nul
         <TextAreaField
           label="Description"
           optional
-          hint="Shown on the public site, with the name and client, once the project is completed."
+          hint={internal ? 'Visible only to people with access to this project.' : 'Shown on the public site, with the name and client, once the project is completed.'}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           error={problem?.fields.description}

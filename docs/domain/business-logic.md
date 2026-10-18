@@ -411,3 +411,7 @@ Members with current project read permission can review a task's scoped history 
 ## Portal invitations and onboarding
 
 Validate role, active department, matching active position and current term before writing. Save invitees, tenures, audit and email campaign in one D1 batch. Google sign-in uses the invited email, without passwords or registry tokens. Checklist progress comes from saved public profile fields and permission-filtered read acknowledgments; dismissal is per person and never blocks access.
+
+## Portal project collaboration
+
+Consolidation copies portal-local department work into canonical internal projects, retaining source rows and old IDs without importing legacy Worker data. Workspace authority or named membership establishes internal eligibility; client-management grants alone do not. Completion never publishes internal work. Blocking requires a reason, and unblocking/completion clears it while retaining optimistic versions and history. Attachment permissions are rechecked per request; metadata cascades enqueue primary-object deletion.

@@ -3,18 +3,14 @@ import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'void
 import { departments, terms } from './org';
 import { people } from './people';
 
-export const PROJECT_STATUSES = ['active', 'completed'] as const;
+export const PROJECT_STATUSES = ['upcoming', 'active', 'completed', 'on_hold'] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
-export const TASK_STATUSES = ['pending', 'completed'] as const;
+export const TASK_STATUSES = ['pending', 'blocked', 'completed'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
-/**
- * Client projects with tasks (slice 5), separate from the lightweight
- * department_projects tracker. Completed projects are listed on the public
- * site with their name, client and description.
- */
+/** Client and internal projects. Only completed non-internal work is public. */
 export const projects = sqliteTable(
   'projects',
   {
@@ -26,11 +22,18 @@ export const projects = sqliteTable(
     /** YYYY-MM-DD. */
     deadline: text('deadline'),
     status: text('status', { enum: PROJECT_STATUSES }).notNull().default('active'),
+    /** A department's own internal project, which its department-project managers may run. */
+    internal: integer('internal', { mode: 'boolean' }).notNull().default(false),
+    /** The department_projects row this project was copied from, if any. */
+    legacyDepartmentProjectId: text('legacy_department_project_id'),
     completedAt: text('completed_at'),
     createdBy: text('created_by'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
-  (t) => [index('projects_status').on(t.status, t.completedAt)],
+  (t) => [
+    index('projects_status').on(t.status, t.completedAt),
+    uniqueIndex('projects_legacy_department_project').on(t.legacyDepartmentProjectId),
+  ],
 );
 
 /** The departments a project belongs to (one or more). */
@@ -80,6 +83,8 @@ export const projectTasks = sqliteTable(
     description: text('description'),
     assigneeId: text('assignee_id').references(() => people.id),
     status: text('status', { enum: TASK_STATUSES }).notNull().default('pending'),
+    /** Why a blocked task is stuck; set only while it is blocked. */
+    blockedReason: text('blocked_reason'),
     /** YYYY-MM-DD. */
     dueDate: text('due_date'),
     priority: text('priority', { enum: TASK_PRIORITIES }).notNull().default('normal'),
