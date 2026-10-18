@@ -11,7 +11,11 @@ const REQUIRED_TABLES = [
 
 /** Restore a trusted portal SQL export in memory, never into a live database. */
 export function verifyPortalBackup(sql) {
-  const db = new DatabaseSync(':memory:');
+  // node:sqlite enforces foreign keys by default, but a D1 export inserts rows
+  // in table order (e.g. Better Auth `session` before `user`), so restore with
+  // enforcement off, as SQLite's own .dump does; foreign_key_check below still
+  // rejects any reference that is broken once everything is loaded.
+  const db = new DatabaseSync(':memory:', { enableForeignKeyConstraints: false });
   try {
     db.exec(sql);
     const integrity = db.prepare('PRAGMA integrity_check').all();

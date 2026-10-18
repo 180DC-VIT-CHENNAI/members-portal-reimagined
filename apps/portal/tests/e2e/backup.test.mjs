@@ -10,6 +10,18 @@ test('a complete SQL export restores offline with integrity and foreign-key chec
   assert.deepEqual(verifyPortalBackup(sql), { integrity: 'ok', foreignKeys: 'ok', tables: 8, people: 1, roles: 1 });
 });
 
+test('a D1 export that loads a child table before its parent still restores', () => {
+  // The live export loads Better Auth `session` rows before the `user` table exists.
+  const sql = `PRAGMA defer_foreign_keys=TRUE;
+    CREATE TABLE session (id TEXT PRIMARY KEY, userId TEXT NOT NULL REFERENCES user(id));
+    INSERT INTO session VALUES ('s', 'u');
+    CREATE TABLE user (id TEXT PRIMARY KEY);
+    INSERT INTO user VALUES ('u');
+    ${schema} INSERT INTO access_roles VALUES ('admin');`;
+  assert.equal(verifyPortalBackup(sql).foreignKeys, 'ok');
+  assert.throws(() => verifyPortalBackup(sql.replace("VALUES ('u');", "VALUES ('other');")), /broken foreign keys/);
+});
+
 test('legacy or incomplete exports cannot pass as portal backups', () => {
   assert.throws(() => verifyPortalBackup('CREATE TABLE users (id TEXT);'), /missing/);
   assert.throws(() => verifyPortalBackup(schema), /no access roles/);
