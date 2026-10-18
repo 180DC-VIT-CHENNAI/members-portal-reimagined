@@ -2,7 +2,7 @@
 
 This plan describes the target state and a safe path to reach it. It is not a fixed schedule; it is a dependency map for agents and maintainers.
 
-For the `reimagined` branch, the active sponsor-authorised roadmap is [Unified platform delivery plan](unified-platform-plan.md). It targets the complete web/Android product on Srijan's personal Cloudflare account and evaluates PlanetScale. The extraction roadmap below is historical guidance, not a prerequisite to build every placeholder service.
+Active web work is the Void portal rewrite in `apps/portal`, delivered as PRs to origin `main`: see [ADR-007](../architecture/decisions/007-void-portal-rewrite.md) and the [portal port plan](portal-port-plan.md). The earlier [unified platform delivery plan](unified-platform-plan.md) (web/Android on Srijan's personal Cloudflare account) predates that decision. The extraction roadmap below is historical guidance, not a prerequisite to build every placeholder service.
 
 ## Target state
 

@@ -10,6 +10,8 @@ Email is scheduled by `apps/portal/crons/email.ts` every minute and sent through
 
 `EMAIL_TEST_MODE` is a local-test setting only; never provision it on the deployed Worker. Production builds disable capture regardless of its value, and the `.dev.ts` outbox/drain routes are excluded. `ENVIRONMENT=production` also disables capture in development runtime tests. See [portal setup and email operations](../../apps/portal/README.md#email).
 
+Domain cutover needs the user's explicit approval. Before it, the Google OAuth client must allow `https://180dc.vitcc.org/api/auth/callback/google`, and the people and public content the site needs must exist in the portal (it launches blank). The old Worker's repo-root `wrangler.jsonc` still declares `180dc.vitcc.org` as a custom domain, and Workers Builds redeploys it on every push to `main`. So the same change that adds the route to `cloudflare.routes` in `apps/portal/void.config.ts` must remove it from `wrangler.jsonc`, and the domain must be moved in one step rather than left for two racing deploys to settle. Keep the old Worker deployed for rollback (move the domain back and revert the config change). Retiring it is a separate, approved step; its D1 and R2 data stay where they are.
+
 Newsletter data for the fresh portal stays in its Void-managed D1 (ADR-009), with generated migrations applied by CI. No newsletter OTP or `NEWSLETTER_DB` binding is provisioned. Mail links use the portal request origin; use a stable public hostname for live broadcasts and consider previously issued links before changing it. No legacy data or credentials are migrated.
 
 ### Personal deployment on reimagined
