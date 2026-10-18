@@ -81,7 +81,9 @@ jobs:
             if [ "$db" = 180dc-portal-db ]; then
               # Restores the export into in-memory SQLite: integrity_check, foreign keys,
               # required tables. A failed check stops the job before upload.
-              echo "verify ${db} $(node scripts/verify-portal-backup.mjs "${db}.sql")" >> "$manifest"
+              # Assign first: a failure inside echo "$(...)" would not stop the job.
+              verified=$(node scripts/verify-portal-backup.mjs "${db}.sql")
+              echo "verify ${db} ${verified}" >> "$manifest"
             fi
             gzip -9 "${db}.sql"
             rclone copyto "${db}.sql.gz" "b2:${B2_BUCKET}/d1/${db}/${stamp}.sql.gz"
