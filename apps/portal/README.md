@@ -17,8 +17,8 @@ All newsletter data is in this portal's Void-managed D1; do not connect it to le
 Source uploads are limited to 20 MiB; files up to 3 MiB are also attached, larger sources are linked. Required attachment failures stop the campaign. The existing minute queue adds per-recipient unsubscribe links/headers, skips late unsubscribes/erasures, and publishes real issues only after a completed campaign has an accepted message. Email queue retries remain the delivery-recovery surface.
 
 The rewrite of the members portal as a [Void](https://void.cloud) app in SPA + API mode. See
-[ADR-007](../../docs/architecture/decisions/007-void-portal-rewrite.md). Production still runs `apps/admin-api` +
-`apps/frontend` until the cutover PR.
+[ADR-007](../../docs/architecture/decisions/007-void-portal-rewrite.md). It has served production
+(`180dc.vitcc.org`) since the cutover; `apps/admin-api` + `apps/frontend` remain only for rollback.
 
 Void's version-matched docs live in `node_modules/void/docs/`. The `void` agent skill points at them.
 
@@ -69,7 +69,7 @@ Setup (once):
 - The first deploy runs from one machine. Commit the `void.lock.json` it writes, then set the repo variable `PORTAL_DEPLOY=enabled`. The deploy job fails if a deploy changes `void.lock.json` without the change being committed.
 - Readiness is checked on the new version's preview URL, so `workers_dev` and `preview_urls` are on and CI sets `CLOUDFLARE_WORKERS_SUBDOMAIN=srijan-guchhait`. On a brand-new Worker these settings only apply after the first activation. If the first `void deploy` stops because a preview URL is missing, run `pnpm -w exec wrangler triggers deploy -c "$PWD/.void-wrangler.jsonc"` once, then deploy again.
 
-The portal is live at https://180dc-portal.srijan-guchhait.workers.dev. Its D1 database is `180dc-portal-db`. Production (180dc.vitcc.org) stays on the old Worker until the cutover.
+The portal is live at https://180dc.vitcc.org (also https://180dc-portal.srijan-guchhait.workers.dev). Its D1 database is `180dc-portal-db`. Send live broadcasts from `180dc.vitcc.org`, because mail links use the sending request's origin.
 
 Static files are served by Workers Assets and do not invoke the Worker. Only `/api/*` and `/__void/*` run it. Do not add files under `middleware/`: any global middleware makes Void run the Worker before every asset. Resolve per-request state in `src/server/guard.ts` instead.
 

@@ -4,7 +4,7 @@ This file is the primary entry point for any coding agent working on the `180dc-
 
 ## Active Void rewrite (`apps/portal`)
 
-For new development, start with `apps/portal/README.md` and `docs/execution/portal-port-plan.md`. The portal is a separate production-quality Void app; the legacy `apps/admin-api` / `apps/frontend` deployment stays live until the user approves domain cutover. Launch with blank data: do not import legacy records, sessions, tokens or R2 objects.
+For new development, start with `apps/portal/README.md` and `docs/execution/portal-port-plan.md`. The portal is a separate production-quality Void app; since the domain cutover it serves `180dc.vitcc.org`, and the legacy `apps/admin-api` / `apps/frontend` Worker (`members-portal-reimagined`) stays deployed without a domain for rollback until its retirement is approved. Never re-add that custom domain to the repo-root `wrangler.jsonc`: Wrangler overrides domain conflicts in non-interactive CI, so the old Worker's next build would take it back. Launch with blank data: do not import legacy records, sessions, tokens or R2 objects.
 
 - Use feature PRs to **origin main only**. Do not push, promote releases or open PRs to upstream for this rewrite. `reimagined` is reserved for the junior-consultant problem-statement document.
 - Portal auth is Better Auth Google-only, invite-gated through personnel email. There are no registry-token or OTP editor credentials. Titles/positions never grant access; use the named role/personal permission system.

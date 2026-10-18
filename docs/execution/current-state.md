@@ -2,7 +2,7 @@
 
 ## Fresh Void portal rollout
 
-The new `apps/portal` is a modular Void SPA/API deployed independently through origin-main CI to `180dc-portal`. The legacy Worker still owns `180dc.vitcc.org` until the explicit cutover. Start portal work with `apps/portal/README.md` and `docs/execution/portal-port-plan.md`; the implementation inventory below primarily describes the legacy system.
+The new `apps/portal` is a modular Void SPA/API deployed independently through origin-main CI to `180dc-portal`. Since the approved cutover the portal serves `180dc.vitcc.org`; the legacy Worker stays deployed without a domain for rollback until its retirement is approved. Start portal work with `apps/portal/README.md` and `docs/execution/portal-port-plan.md`; the implementation inventory below primarily describes the legacy system.
 
 The portal port covers Google-only personnel identity/lifecycle, positions/terms and granular access; public content and administration; shared files/gallery; department workspaces; queued Cloudflare Email Sending; meets; projects, versioned tasks and comments/history; Today; team-instance staffing/progression; The Catalyst subscriptions/editor/archive/events; and private immutable Letter Studio documents with queued delivery history. Legacy OTP/registry credentials are not recreated.
 

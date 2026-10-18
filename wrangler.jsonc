@@ -15,7 +15,8 @@
   "compatibility_flags": ["nodejs_compat", "assets_navigation_prefers_asset_serving"],
   "workers_dev": false,
   "preview_urls": true,
-  "routes": [{ "pattern": "180dc.vitcc.org", "custom_domain": true }],
+  // No routes: 180dc.vitcc.org moved to the 180dc-portal Worker (apps/portal).
+  // Re-adding the custom domain here would take it back on the next deploy.
   "assets": {
     "directory": "./apps/frontend/dist",
     "not_found_handling": "single-page-application",
