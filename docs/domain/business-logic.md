@@ -1,5 +1,15 @@
 # Business Logic — 180DC VIT Chennai Platform
 
+## Shared mailbox review and dispatch
+
+Mailbox capabilities are independent resource grants. Manager/admin status never silently grants inbox reads or send authority, and a person cannot grant themselves mailbox capabilities. Current personnel status and grant validity are enforced on reads and again on dispatch.
+
+A saved draft is a frozen revision. Submission identifies that revision; approval records its content digest and policy version and requires the reviewer's approve/send rights. A distinct reviewer is required by default, including when the last editor has broad rights. Editing creates a new snapshot and cancels any pending send authorization. The first release always requires approval, even if a policy record predates that restriction.
+
+Sending writes a stable, idempotent intent. The dispatcher loads required private attachment bytes, verifies their digests, then atomically claims an eligible intent while rechecking author/reviewer/sender grants, personnel status, mailbox state, current approval and policy and both pause switches. One claim produces one automatic provider attempt. A crash/exception after a provider call begins is uncertain, never an automatic replay. Acceptance is not inbox delivery.
+
+Live business transport is disabled by default. Cloudflare is restricted to existing correspondence replies, not prospecting; that adapter cannot send until the approved shared address is present in the sender binding. Capture transport is development-only. Existing transactional mail and newsletter workflows keep their separate permissions/identities.
+
 ## Portal onboarding and collaboration
 
 - Invitations validate their complete input before writing. Person, optional tenure, queued invitation and audit are atomic. Import dry runs never queue mail. Invitation links use the canonical production portal, not an arbitrary browser Origin.

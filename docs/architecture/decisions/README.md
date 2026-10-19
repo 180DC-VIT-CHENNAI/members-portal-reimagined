@@ -23,6 +23,8 @@ This directory records decisions that future agents should understand before cha
 
 | ADR-010 | `010-portal-collaboration.md` | DECIDED FOR IMPLEMENTATION | Canonical internal projects, transactional in-app notices, onboarding, meeting task links and contextual files using existing D1/R2/cron infrastructure. |
 
+| ADR-011 | `011-shared-mailbox-review.md` | DECIDED FOR IMPLEMENTATION | Independent mailbox ACLs, frozen approval snapshots, dispatch revalidation and no automatic replay of uncertain sends. New business transports remain disabled. |
+
 ## How to add a new ADR
 
 Create a new file under `docs/architecture/decisions/` named `NNN-short-title.md` with:

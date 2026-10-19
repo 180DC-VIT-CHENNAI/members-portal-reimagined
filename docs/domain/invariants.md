@@ -1,5 +1,15 @@
 # Invariants — 180DC VIT Chennai Platform
 
+## Shared mailbox invariants
+
+- **MAIL-ACL-01:** Every mailbox read, draft, attachment, send status and audit request checks the exact mailbox's current grants; administrators/managers do not implicitly receive body access, and self-grants are forbidden.
+- **MAIL-REVIEW-01:** Approval binds a frozen revision/digest and mailbox-policy version, with current approve/send rights. Changing any reviewed field invalidates approval and cancels unsent intents.
+- **MAIL-DISPATCH-01:** Only one atomic claim may start an intent. Revoked/deactivated actors, retired mailboxes, stale approval, changed attachment bytes and pause switches prevent dispatch.
+- **MAIL-OUTCOME-01:** Accepted is never called delivered. Unknown, partially accepted or interrupted sends are never automatically replayed.
+- **MAIL-IDENTITY-01:** From and Reply-To come from the server's mailbox record. Drafting capability never confers global email permission. Cloudflare business transport only permits existing correspondence replies; new live mailboxes remain disabled.
+
+Covered by `apps/portal/tests/e2e/mailboxes.test.mjs` and `src/server/mailboxes/rules.test.ts`.
+
 ## Portal collaboration invariants
 
 - **PORTAL-INVITE-01:** A rejected invitation creates no person, tenure, campaign or audit. A successful invitation commits all applicable records together.
