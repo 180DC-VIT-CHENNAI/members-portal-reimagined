@@ -1,5 +1,24 @@
 # Data Model — 180DC VIT Chennai Platform
 
+## Void portal shared-mailbox schema
+
+`apps/portal/db/schema/mailboxes.ts`, additive migration `20261019070215_damp_kitty_pryde.sql` and its generated snapshot:
+
+| Table | Key / constraint | Purpose |
+|---|---|---|
+| `mailboxes` | UUID, unique normalized address | Explicit functional identity, active/disabled/retired status, versioned policy, signature, transport and pause state. New transport is disabled. |
+| `mailbox_memberships` | `(mailbox_id, person_id, capability)` | One explicit capability per row, validity interval and grant actor. Server checks active personnel too. |
+| `mail_uploads` | UUID, mailbox/person FKs | Private `CLUB_FILES/mail-files/<mailbox>/<uuid>` object key, filename/MIME/size and SHA-256. |
+| `mail_drafts` | UUID, mailbox/creator FKs | Revision, current snapshot, last/approved review and active intent pointers. |
+| `mail_draft_snapshots` | UUID, unique `(draft_id, revision)` | Frozen From/To/CC/BCC, content, signature, attachment manifest/digests, category and content hash. Nullable conversation/template references reserve subsequent module contracts. |
+| `mail_reviews` | UUID, draft/snapshot/reviewer FKs | Decision, exact digest, policy version, comments and timestamp. |
+| `mail_send_intents` | UUID, unique idempotency key; one noncancelled intent per draft | Approved snapshot/review, schedule, queue state, atomic claim token, attempt counter and provider result. |
+| `mail_send_attempts` | UUID, unique `(intent_id, attempt_no)` | Provider, started/final outcome and provider/error identity. Interrupted attempts are retained as uncertain. |
+| `mail_audit` | Append ID, mailbox/actor FKs | Action/target and safe metadata, without message bodies. |
+| `mail_outbound_switch` | Singleton `id=1` | Audited emergency pause independent of site maintenance. |
+
+The migration only adds tables/indexes and the admin's `mailboxes.admin` grant; it neither imports legacy records nor changes existing system-email, newsletter or Letter Studio tables. Object/message retention remains explicit: there is no automatic deletion of historical sends or private mailbox bytes.
+
 ## Portal collaboration migration
 
 The generated additive migrations are `20261018224102_stiff_purple_man.sql` (onboarding), `20261018224557_mature_spacker_dave.sql` (project collaboration) and `20261018224922_bent_living_tribunal.sql` (notifications and meeting follow-through). The project migration includes reviewed data-copy statements that consolidate only existing portal-local department work.

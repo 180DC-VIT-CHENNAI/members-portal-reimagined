@@ -54,6 +54,9 @@ import { NewsletterFormPage } from './pages/NewsletterFormPage.tsx';
 import { NewsletterEventPage } from './pages/NewsletterEventPage.tsx';
 import { NewslettersPage, NewsletterArticlePage } from './pages/public/NewslettersPage.tsx';
 import { NewsletterSubscribersPage } from './pages/admin/NewsletterSubscribersPage.tsx';
+import { MailboxesPage } from './pages/mail/MailboxesPage.tsx';
+import { MailboxPage } from './pages/mail/MailboxPage.tsx';
+import { DraftPage } from './pages/mail/DraftPage.tsx';
 
 const LetterStudioPage = lazy(() => import('./pages/letters/LetterStudioPage.tsx').then((module) => ({ default: module.LetterStudioPage })));
 
@@ -154,6 +157,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
   const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean; tab?: boolean }> = [
     { to: '/today', label: 'Today', icon: 'checkCircle', show: true, active: path === '/today' },
     { to: '/notifications', label: 'Notifications', icon: 'inbox', show: true, active: path === '/notifications', tab: false },
+    { to: '/mailboxes', label: 'Shared mailboxes', icon: 'inbox', show: true, active: path.startsWith('/mailboxes'), tab: false },
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people', tab: false },
     // On phones the header avatar links to the profile.
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}`, tab: false },
@@ -271,6 +275,15 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/login') return <Redirect to={next && next.startsWith('/') && !next.startsWith('//') ? next : home} />;
   if (path === '/today') return <TodayPage />;
   if (path === '/notifications') return <NotificationsPage />;
+  if (path === '/mailboxes') return <MailboxesPage />;
+  const composeMail = matchPath('/mailboxes/:id/compose', path);
+  if (composeMail) return <DraftPage key={path} id={composeMail.id} />;
+  const editMail = matchPath('/mailboxes/:id/drafts/:draftId/edit', path);
+  if (editMail) return <DraftPage key={path} id={editMail.id} draftId={editMail.draftId} edit />;
+  const mailDraft = matchPath('/mailboxes/:id/drafts/:draftId', path);
+  if (mailDraft) return <DraftPage key={path} id={mailDraft.id} draftId={mailDraft.draftId} />;
+  const mailbox = matchPath('/mailboxes/:id', path);
+  if (mailbox) return <MailboxPage key={path} id={mailbox.id} />;
   if (path === '/people') return <DirectoryPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/meets') return <MeetsPage />;

@@ -40,6 +40,7 @@ export const PERMISSIONS = {
   'email.view': 'Inspect the global email queue and delivery records',
   'email.manage': 'Retry failed email campaigns',
   'email.send': 'Send email globally or to permitted departments',
+  'mailboxes.admin': 'Create shared mailboxes and assign managers (no implicit message access)',
   'departments.members.view': "See a department's current members",
   'departments.instructions.view': "Read a department's instructions",
   'departments.workspace.view': "See a department's workspace overview (documents, instructions, projects)",

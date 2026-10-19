@@ -1,5 +1,26 @@
 # API Contract — 180DC VIT Chennai Platform
 
+## Void portal shared mailboxes
+
+These routes use the current Google personnel session and mailbox-local capabilities, not titles or the global `email.send` permission. An inaccessible mailbox/object is 404; a forbidden operation on a readable mailbox is 403. Read responses are private/no-store.
+
+- `GET /api/mailboxes`: `{mailboxes: [{mailbox}]}`, at most 100 assigned mailboxes. Platform administrators do not receive universal inbox visibility.
+- `POST /api/mailboxes`: global `mailboxes.admin`; `{address, displayName, managerId, purpose?}` returns 201 `{id}`. The manager must be another invited/active/on-leave person. Creates a disabled transport and an explicit `mailbox.manage` grant, no DNS or mailbox-provider resource. 20/hour.
+- `GET /api/mailboxes/:id`: mailbox definition and the caller's current capabilities.
+- `PATCH /api/mailboxes/:id`: `mailbox.manage`; optional `status`, `outboundAdapter`, `approvalRequired`, `requireDistinctReviewer`, `repliesOnly`, `signature`, `outboundPaused`, `categoryPolicy`. A change increments the policy version; old approvals cannot dispatch. Capture transport is development-only. Approval remains mandatory for this initial policy.
+- `GET /api/mailboxes/:id/members`: `mailbox.manage`, bounded capability rows with member names. `PUT .../members/:personId` replaces explicit `{capabilities, validUntil?}`; `DELETE` removes them. Managers or global mailbox administrators may change another person's grants, never their own. Grants do not imply each other. 60 management requests/hour.
+- `GET /api/mailboxes/:id/drafts?before=<id>`: `mailbox.read`, 50 rows descending by ID; pass the last ID to read the next page. `POST` requires `mailbox.draft.create` and accepts `{to: string[], cc?: string[], bcc?: string[], subject, text, attachmentIds?, category?}`; returns 201 `{id, revision: 1}`. At most 50 distinct addresses across To/CC/BCC. Arbitrary From, conversation and object-key fields are rejected.
+- `GET .../drafts/:draftId`: current frozen snapshot plus review history. `PATCH` accepts the creation fields plus the expected `revision`; own/any editing capabilities apply. Returns a new revision, invalidates approval and cancels unsent queued/scheduled intents; stale edits or terminal states are 409. `DELETE` cancels an editable draft/intent and refuses one already sending.
+- `POST .../drafts/:draftId/submit`: `{revision}`, `mailbox.draft.submit`; own drafts or explicit edit-any capability.
+- `POST .../drafts/:draftId/review`: `{revision, decision: 'approved'|'changes_requested'|'rejected', comments?}`. Requires review; approval additionally needs approve and send. The submitted revision, digest and mailbox-policy version are bound to the review. A distinct reviewer is required by default.
+- `POST .../drafts/:draftId/send` or `/schedule`: `{revision, idempotencyKey, scheduledAt?: ISO timestamp|null}`, `mailbox.send`. Requires current approval; returns `{id, state}` for a durable intent, not provider acceptance. Idempotency keys are 8–128 ASCII letters/digits/underscore/hyphen. Identical completed submissions return the same intent; conflicts and duplicate active sends are 409.
+- `GET /api/mailboxes/:id/sends/:intentId`: `mailbox.read`, intent and at most 50 attempts. The minute cron revalidates approvals, current sender/reviewer/author grants, person/mailbox status, pause switches and attachment bytes before an atomic claim. Uncertain outcomes are never automatically retried.
+- `POST /api/mailboxes/:id/attachments`: multipart `file`, `mailbox.draft.create`, 30/hour; approved shared-file extensions, at most 3 MiB raw attachments per message. Returns `{id, filename, bytes, digest}`. `GET .../attachments/:fileId` requires mailbox read and exact mailbox/file ownership; attachment-only, private/no-store, nosniff.
+- `GET /api/mailboxes/:id/audit?before=<positive integer>`: `mailbox.audit`, 50 metadata-only events, descending ID. Audit capability does not grant body access.
+- `GET`/`PUT /api/admin/mail-outbound`: global `mailboxes.admin`; `{paused: boolean}` emergency shared-mail switch, independent of portal maintenance.
+
+Draft writes are limited to 60/hour, workflow actions to 100/hour, draft lists to 120/minute. Existing `/api/send-email`, letters and newsletters retain their own permissions and `noreply` identity; mailbox drafting never grants a bypass into those routes.
+
 ## Portal collaboration and onboarding
 
 All routes below use the current Google personnel session. Hidden projects/tasks are 404; access is rechecked on every request.

@@ -1,5 +1,17 @@
 # apps/portal — 180DC members portal (Void rewrite)
 
+## Shared mailboxes
+
+`/mailboxes` is separate from the global system-email composer. Mailbox-local grants independently control reading, drafting, editing, submission, review, approval, sending, assignment, management and audit. A manager has no implicit message access; platform `mailboxes.admin` can create a mailbox with a different manager and recover another person's access, never grant themselves inbox rights.
+
+Saving creates an immutable revision containing the normalized To/CC/BCC, server-selected From, subject, message, signature, attachment checksums and content digest. Submission freezes that revision. Approval requires review, approve and send capabilities and, by default, a different reviewer. An edit invalidates approval and cancels a pending intent. Every dispatch rechecks current grants, membership status, mailbox policy and the exact approved snapshot in its atomic claim.
+
+New mailboxes have outbound transport disabled. Development capture is never available in production. The Cloudflare adapter is replies-only and rejects outreach or an unthreaded message; the production sender binding remains restricted to `noreply` until the separately approved inbound-pilot configuration. This package makes no DNS or routing changes and enables no live shared-mail sending.
+
+The minute cron records `accepted`, `failed` or `outcome_unknown`, never invented delivery confirmation. An interrupted claim becomes uncertain after 15 minutes and is not automatically resent. A global `/api/admin/mail-outbound` pause is independent of general maintenance mode. Private attachments use `CLUB_FILES/mail-files/` and cannot be reached through the shared file library; total raw attachments are capped at 3 MiB and checked again before dispatch.
+
+See ADR-011 and the shared-mailbox API contract. Inbound conversations, routing, CRM links and Template Studio are subsequent packages, not features of this increment.
+
 ## Collaboration and onboarding
 
 Inviting a person validates all references before atomically saving their personnel record, optional tenure, audit and queued invitation email. CSV dry runs never send or queue mail. Invitations contain a Google sign-in link, not a password or registry token. Today shows a nonblocking first-login checklist with derived profile progress and explicit read acknowledgments.
