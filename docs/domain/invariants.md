@@ -1,5 +1,14 @@
 # Invariants — 180DC VIT Chennai Platform
 
+## CRM invariants
+
+- **CRM-ACL-01:** Every CRM list, search, count, detail and mutation applies the caller's live owner/grant/admin visibility; hidden records are 404 and never confirmed by duplicate checks.
+- **CRM-PRIV-01:** Contact email, phone, consent and notes are returned only with organisation- or contact-level access.
+- **CRM-FLOW-01:** One opportunity per consulting request and one engagement per opportunity; won only through proposal acceptance; decided proposals and frozen versions never change.
+- **CRM-CASE-01:** Closeout never writes public `case_studies`; a draft needs explicit case-study consent.
+
+Covered by `apps/portal/tests/e2e/crm.test.mjs` and `src/server/crm/rules.test.ts`.
+
 ## Shared mailbox invariants
 
 - **MAIL-ACL-01:** Every mailbox read, draft, attachment, send status and audit request checks the exact mailbox's current grants; administrators/managers do not implicitly receive body access, and self-grants are forbidden.

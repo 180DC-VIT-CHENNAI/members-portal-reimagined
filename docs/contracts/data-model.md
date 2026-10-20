@@ -1,5 +1,21 @@
 # Data Model — 180DC VIT Chennai Platform
 
+## Void portal CRM schema
+
+`apps/portal/db/schema/crm.ts`, additive migration `20261019163901_dark_madripoor.sql` and its snapshot. The migration also seeds the default stages and the admin/director/member CRM grants.
+
+| Table | Key | Purpose |
+| --- | --- | --- |
+| `crm_stages` | text id | Configurable pipeline stages: label, kind (open/won/lost), order, active. |
+| `crm_organizations` | UUID | Name, website and normalised `domain` (dedupe), industry, geography, tags, lifecycle, owner, source, `merged_into_id`. |
+| `crm_contacts` | UUID, organisation FK | Name, role, business email (lower-cased), phone, consent, do-not-contact, preferred channel, restricted notes, `merged_into_id`. |
+| `crm_opportunities` | UUID, organisation/stage FKs | Owner, source, priority, primary contact, next action and due date, lost reason/note, closed time; unique `consulting_request_id`. |
+| `crm_record_access` | unique (record_type, record_id, person_id) | Explicit collaborator/co-owner grants on an organisation, opportunity or contact. |
+| `crm_touchpoints` | UUID, organisation FK | Meeting/email/call/note/milestone on an organisation, optional contact and opportunity; email keeps only `external_ref`. |
+| `crm_proposals` / `crm_proposal_versions` | UUID; unique (proposal_id, version) | Status draft/sent/accepted/declined and current version; versions hold scope, objectives, timeline, deliverables and `frozen_at`. |
+| `crm_engagements` | UUID; unique opportunity and project | Accepted work: proposal, canonical project, client owner, lead, confidentiality, status, closeout checklist, feedback, case-study consent. |
+| `crm_case_study_drafts` | UUID; unique engagement | Internal draft created at closeout only with consent; never copied to `case_studies`. |
+
 ## Void portal shared-mailbox schema
 
 `apps/portal/db/schema/mailboxes.ts`, additive migration `20261019070215_damp_kitty_pryde.sql` and its generated snapshot:

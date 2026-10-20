@@ -1,5 +1,9 @@
 # Business Logic — 180DC VIT Chennai Platform
 
+## CRM pipeline and intake
+
+CRM visibility is per record: owner, explicit grant (an organisation grant covers its children) or `crm.admin`. Contact private fields need organisation or contact access. Consulting-request conversion is idempotent through the unique opportunity link and reuses organisations by normalised domain and contacts by email. Won is reached only by accepting a sent proposal, which creates one engagement and its project in one batch; closeout requires the checklist, and a case-study draft exists only with consent and is never published.
+
 ## Shared mailbox review and dispatch
 
 Mailbox capabilities are independent resource grants. Manager/admin status never silently grants inbox reads or send authority, and a person cannot grant themselves mailbox capabilities. Current personnel status and grant validity are enforced on reads and again on dispatch.

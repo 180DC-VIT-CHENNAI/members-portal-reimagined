@@ -1,5 +1,24 @@
 # API Contract — 180DC VIT Chennai Platform
 
+## Void portal CRM
+
+Every route needs a personnel session and `crm.view` (403 otherwise). Records the caller cannot see are 404 (`organization_not_found`, `opportunity_not_found`, `contact_not_found`, `proposal_not_found`, `engagement_not_found`) and are excluded from every list, search and count; known-but-forbidden changes are 403. Writes need `crm.manage` plus edit access on the record and share a 300/hour `crm_write` limit. Reads are private/no-store.
+
+- `GET /api/crm/summary`: `{stages, counts}`; counts per stage of visible opportunities only.
+- `GET /api/crm/stages`; `POST /api/crm/stages` `{id, label, kind?, sortOrder?, active?}` and `PATCH /api/crm/stages/:id`: `crm.admin`. Won/lost stages cannot be retired.
+- `GET /api/crm/organizations?q=`: visible, unmerged organisations (max 200). `POST`: `crm.manage`; `{name, website?, industry?, geography?, tags?, lifecycle?, source?}` returns 201 `{id}`, or 409 `{error: 'duplicate_organization', id}` when a visible organisation has the same normalised domain (an invisible one is never revealed).
+- `GET|PATCH /api/crm/organizations/:id`: detail with contacts (private fields only with organisation access), opportunities, touchpoints, engagements and `access`. Changing `ownerId` needs grant rights; the new owner must have `crm.view`.
+- `POST /api/crm/organizations/:id/contacts`, `POST /api/crm/organizations/:id/opportunities` (`primaryContactId` must belong to that organisation).
+- `GET|POST|DELETE /api/crm/{organizations|opportunities|contacts}/:id/access`: owner (or co-owner grant) and `crm.admin` only; `{personId, role?: 'collaborator'|'owner'}`. Grantees must have `crm.view`.
+- `GET /api/crm/contacts?q=`: contacts whose private fields the caller may read. `GET|PATCH /api/crm/contacts/:id`.
+- `GET /api/crm/opportunities?q=`; `GET|PATCH /api/crm/opportunities/:id`; `POST .../stage` `{stageId, lostReason?, lostNote?}` (lost needs a reason code; won only through proposal acceptance; won is final).
+- `GET /api/crm/next-steps`: the caller's own open opportunities with a next step due today or earlier (UTC), with `overdue`.
+- `POST /api/crm/touchpoints` `{kind: meeting|email|call|note|milestone, organizationId?|opportunityId?, contactId?, summary, notes?, externalRef?, occurredAt}`; email requires `externalRef` and rejects `notes`.
+- `POST /api/crm/opportunities/:id/proposals` `{title, scope, objectives?, timeline?, deliverables?}`; `POST /api/crm/proposals/:id/versions` freezes earlier versions and returns to draft; `POST .../status` `{status: 'sent'|'declined'}`; `POST .../accept` `{departmentIds, leadId, confidentiality?, deadline?}` returns 201 `{engagementId, projectId}` (also needs project-manage rights; 409 when not sent or already engaged).
+- `GET /api/crm/engagements`, `GET /api/crm/engagements/:id`, `PATCH .../closeout` (checklist, feedback, case-study consent), `POST .../close` returns `{closed, caseStudyDraftId}`.
+- `GET /api/crm/duplicates`, `POST /api/crm/organizations/:id/merge` and `POST /api/crm/contacts/:id/merge` `{sourceId}`: `crm.admin`.
+- `POST /api/consulting-requests/:id/convert`: `consulting.manage` and `crm.manage`; `{organizationId, contactId, opportunityId, created}`; `created` is true only the first time, later calls return the same ids.
+
 ## Void portal shared mailboxes
 
 These routes use the current Google personnel session and mailbox-local capabilities, not titles or the global `email.send` permission. An inaccessible mailbox/object is 404; a forbidden operation on a readable mailbox is 403. Read responses are private/no-store.
