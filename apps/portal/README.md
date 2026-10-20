@@ -1,5 +1,17 @@
 # apps/portal — 180DC members portal (Void rewrite)
 
+## Clients (CRM)
+
+`/crm` is the client pipeline: a stage board and list of opportunities, my overdue next steps, organisation pages (contacts, opportunities, touchpoints, access), opportunity pages (stage, next step, touchpoints, proposals) and engagement pages with the closeout checklist. The nav entry shows only with `crm.view`.
+
+Access is per record, never by title. A member sees an organisation, contact or opportunity only as `crm.admin`, its owner, or someone explicitly granted that record (an organisation grant covers its contacts and opportunities). Contact email, phone, consent and restricted notes need organisation- or contact-level access; an opportunity-only grant shows names only. Hidden records answer 404 on details and are absent from lists, search, counts and the engagement list; a known record the caller may see but not change answers 403. Grants and ownership are read live, so a revocation or ownership handover takes effect on the next request.
+
+Seeded roles: admin gets `crm.view`, `crm.manage` and `crm.admin`; director gets `crm.view` and `crm.manage`; member gets `crm.view` (they see only what they are given). Default stages are lead, qualified, discovery, proposal, won and lost; CRM admins add, relabel, reorder or retire open stages.
+
+Flows: "Open in CRM" on a consulting request (needs `consulting.manage` and `crm.manage`) creates or reuses the organisation (by normalised website/email domain), contact (by email) and opportunity; converting again returns the same records. Lost needs a reason code; won is reached only by accepting a sent proposal, which freezes its versions and creates one engagement plus its canonical project (needs project-manage rights for the chosen departments). Closing an engagement requires deliverables accepted, files archived and knowledge transfer; with the client's case-study consent it adds an internal `crm_case_study_drafts` row and never publishes to `case_studies`. CRM admins see duplicate groups and merge organisations or contacts, re-pointing their children and grants.
+
+Email touchpoints keep a subject and an opaque `external_ref` only, never a message body. CRM does not read the shared-mailbox tables yet; linking mailbox conversations to CRM records is a follow-up, as is a client-facing guest workspace.
+
 ## Shared mailboxes
 
 `/mailboxes` is separate from the global system-email composer. Mailbox-local grants independently control reading, drafting, editing, submission, review, approval, sending, assignment, management and audit. A manager has no implicit message access; platform `mailboxes.admin` can create a mailbox with a different manager and recover another person's access, never grant themselves inbox rights.

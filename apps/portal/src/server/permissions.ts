@@ -48,6 +48,9 @@ export const PERMISSIONS = {
   'departments.instructions.manage': "Post and remove a department's instructions",
   'departments.projects.manage': "Add department projects and change their status",
   'site.maintenance': 'Turn maintenance mode on or off (and keep access while it is on)',
+  'crm.view': 'Open the CRM and see the client records you own or were granted',
+  'crm.manage': 'Create and edit client organisations, contacts, opportunities, proposals and engagements you can see',
+  'crm.admin': 'See every client record, configure pipeline stages and merge duplicates',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
