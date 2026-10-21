@@ -5,6 +5,7 @@ import { CLUB_FILE_FIELDS, CLUB_FILE_TYPES, clubFileProblem, fileExtension, isSh
 import { requirePermission } from '../../../src/server/guard';
 import { badRequest } from '../../../src/server/http';
 import { rateLimit } from '../../../src/server/rate-limit';
+import { initializeDocument } from '../../../src/server/document-access';
 
 /** Upload one file (multipart: file, category, optional event/project/meeting details). */
 export const POST = defineHandler(async (c) => {
@@ -33,6 +34,7 @@ export const POST = defineHandler(async (c) => {
     if (typeof value === 'string' && value.trim()) metadata[field] = value.trim().slice(0, max);
   }
   await bucket(c, 'CLUB_FILES').put(key, await file.arrayBuffer(), { httpMetadata: { contentType }, customMetadata: metadata });
+  await initializeDocument(c, { id, projectFileId: null, sharedKey: key, key, fileName: metadata.fileName, contentType, uploadedBy: actor.person.id, createdAt: metadata.createdAt });
   await audit(actor.person.id, 'club_file.upload', 'club_file', id, { fileName: metadata.fileName, category });
   return c.json({ id, key }, 201);
 });
