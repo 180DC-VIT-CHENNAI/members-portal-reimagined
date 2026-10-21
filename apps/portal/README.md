@@ -22,7 +22,17 @@ New mailboxes have outbound transport disabled. Development capture is never ava
 
 The minute cron records `accepted`, `failed` or `outcome_unknown`, never invented delivery confirmation. An interrupted claim becomes uncertain after 15 minutes and is not automatically resent. A global `/api/admin/mail-outbound` pause is independent of general maintenance mode. Private attachments use `CLUB_FILES/mail-files/` and cannot be reached through the shared file library; total raw attachments are capped at 3 MiB and checked again before dispatch.
 
-See ADR-011 and the shared-mailbox API contract. Inbound conversations, routing, CRM links and Template Studio are subsequent packages, not features of this increment.
+See ADR-011 and the shared-mailbox API contract.
+
+### Shared mailbox inbox
+
+Inbound mail arrives through the Worker's Void email handler (`email/_default.ts`). It is accepted only for an `active` mailbox whose manager has turned on **Accept incoming mail** (`inbound_enabled`); every other recipient is refused at SMTP time. The original MIME is stored privately in `CLUB_FILES/mail-raw/` before any metadata is written. Duplicate or relayed redeliveries are recognized by raw and content identity. Messages thread by RFC headers or reply subject, but only within the mailbox and only from an existing participant.
+
+The mailbox page shows Inbox, Assigned to me, Unassigned, Archive and Search beside the draft folders (Drafts, Needs approval, Scheduled, Sent, Needs attention). In a conversation, members with `mailbox.assign` set the assignee, status, priority, tags and reply-due time. Assigners and drafters can add internal notes, and drafters can open a reply draft that goes through the same review gate. HTML renders sanitized in a sandboxed frame with remote images blocked until requested. Unparseable or dangerous mail goes to a manager-only quarantine with header inspection, release and delete. Read state is per member, and the nav badge counts unread conversations in mailboxes you can read now.
+
+Incoming messages, assignment changes and submitted email reviews create durable, recipient-scoped notices in `/notifications`, using its existing combined badge, authentication and read-acknowledgment pattern. Mail notice rows contain identifiers and event kinds, never subjects, senders or bodies. Lists/counts recheck live read access; review notices additionally require current review access and a still-submitted draft. Quarantine creates no reader notice until released. Mail notices currently have no category preference, quiet delivery, push or digest.
+
+This repository creates no Email Routing rule: `email.from` and `cloudflare.addresses` stay unset. Routing `technical@180dc.vitcc.org` to the Worker is a separate owner action. There is no local inbound trigger, so e2e tests feed fixture MIME through the development-only `POST /api/dev/ingest-mail` route (requires `EMAIL_TEST_MODE=capture` and `INBOUND_TEST_INGEST=1`). Unit tests drive the handler with `createInboundTestHarness`. See ADR-012. Uncovered spec requirements include CRM linking, team assignment, due-for-reply reminder delivery (only a count exists), templates/rich-text composition, explicit submitted-revision reopening, ownership transfer and fully paginated operator/history lists. The coverage ledger records these as gaps, not completed capabilities.
 
 ## Internal messaging
 

@@ -51,6 +51,23 @@ The migration only adds tables/indexes and the admin's `mailboxes.admin` grant; 
 
 The migration only adds tables and indexes, plus the `admin` role's global `chat.moderate` grant. Existing `notifications` rows, columns and queries are unchanged: the new `message_mention` kind lives only in `message_notifications`.
 
+## Void portal shared-mailbox inbox schema
+
+`apps/portal/db/schema/mail-inbox.ts`, additive migration `20261021131411_omniscient_shadowcat.sql` and its snapshot, generated on top of A3's `20261021124937_noisy_husk.sql`. The migration also adds `mailboxes.inbound_enabled` (default 0, so existing mailboxes keep refusing mail).
+
+| Table | Key | Purpose |
+|-------|-----|---------|
+| `mail_conversations` | UUID, mailbox FK | Canonical thread: subject and normalized reply-subject key, status (open/pending/closed), priority, tags JSON, assignee, reply-due time, reserved `crm_contact_id`, last message/inbound times. |
+| `mail_messages` | UUID, mailbox and nullable conversation FK | Inbound or accepted/uncertain outbound message: status (received/quarantined/accepted/outcome_unknown), quarantine reason, RFC/provider IDs, In-Reply-To/References, envelope, From/To/CC/Reply-To JSON, subject, text (≤100k chars), private HTML and raw object keys, raw SHA-256/size and advisory auth headers. Unique `outbound_id` (send intent) prevents a double record. |
+| `mail_attachments` | UUID, mailbox/message FKs | Private object key, sanitized filename, MIME, size, SHA-256, content ID/inline flag, allowed/quarantined status. |
+| `mail_inbound_events` | UUID; unique `(mailbox_id, raw_sha256)` and `(mailbox_id, content_key)` | Delivery identity used for deduplication; kept after a quarantined message is deleted. |
+| `mail_conversation_participants` | `(conversation_id, address)` | External addresses allowed to thread into, and be replied to from, a conversation. |
+| `mail_conversation_reads` | `(conversation_id, person_id)` | Per-member read time compared with `last_inbound_at`. |
+| `mail_conversation_notes` | UUID | Internal notes with author and time; never sent. |
+| `mail_notifications` | Integer ID; unique recipient/dedupe key | Incoming message, assignment and email-review events for `/notifications`. Mailbox plus nullable conversation/draft FKs; no sender, subject or body. Live mailbox ACLs filter every list/count; review notices additionally require review permission and a still-submitted draft. |
+
+Objects: `CLUB_FILES/mail-raw/<mailbox>/<sha256>` (original MIME) and `CLUB_FILES/mail-inbound/<mailbox>/<message>/…` (HTML stored as text/plain, attachments as octet-stream). No automatic retention deletion yet.
+
 ## Portal collaboration migration
 
 The generated additive migrations are `20261018224102_stiff_purple_man.sql` (onboarding), `20261018224557_mature_spacker_dave.sql` (project collaboration) and `20261018224922_bent_living_tribunal.sql` (notifications and meeting follow-through). The project migration includes reviewed data-copy statements that consolidate only existing portal-local department work.
