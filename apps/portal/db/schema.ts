@@ -15,3 +15,4 @@ export * from './schema/project-files';
 export * from './schema/mailboxes';
 export * from './schema/crm';
 export * from './schema/messaging';
+export * from './schema/mail-inbox';

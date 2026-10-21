@@ -7,6 +7,7 @@ import { atomic, auditStatement, GRANT_SQL, requireCapability, statement } from 
 import { draftFor } from './drafts';
 import { canonicalContent, digest } from './rules';
 import { reviewInput } from './validation';
+import { notifyReview } from './notices';
 
 export async function submitDraft(actor: Principal, mailboxId: string, draftId: string, revision: number) {
   const loaded = await draftFor(actor, mailboxId, draftId);
@@ -61,6 +62,7 @@ async function recordReview(input: {
       SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM mail_drafts WHERE id=? AND last_review_id=?)`,
     [reviewId, loaded.draft.id, loaded.snapshot.id, loaded.snapshot.contentHash, loaded.mailbox.policyVersion,
       actor.person.id, input.decision, input.comments, loaded.draft.id, reviewId]),
+    ...(input.decision === 'submitted' ? [notifyReview(loaded.draft.id, reviewId, actor.person.id)] : []),
     auditStatement({ mailboxId: loaded.mailbox.id, actorId: actor.person.id, action: `mail.${input.decision}`, targetId: loaded.draft.id,
       condition: { sql: 'EXISTS(SELECT 1 FROM mail_reviews WHERE id=?)', values: [reviewId] } }),
   ]);

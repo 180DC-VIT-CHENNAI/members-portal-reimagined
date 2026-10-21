@@ -7,15 +7,22 @@ import type { Principal } from '../principal';
 import { atomic, auditStatement, mailboxFor, requireCapability, statement } from './access';
 import { isUniqueViolation } from '../invitations';
 import { policyInput, membershipInput, mailboxInput } from './validation';
+import { inboxCounts } from './inbox-read';
 
 export async function listMailboxes(actor: Principal) {
-  return db.select({ mailbox: mailboxes }).from(mailboxes)
+  const rows = await db.select({ mailbox: mailboxes }).from(mailboxes)
     .where(sql`EXISTS (SELECT 1 FROM ${mailboxMemberships}
       WHERE ${mailboxMemberships.mailboxId} = ${mailboxes.id}
         AND ${mailboxMemberships.personId} = ${actor.person.id}
         AND julianday(${mailboxMemberships.validFrom}) <= julianday('now')
         AND (${mailboxMemberships.validUntil} IS NULL OR julianday(${mailboxMemberships.validUntil}) > julianday('now'))
     )`).limit(100);
+  const result = [];
+  for (const row of rows) {
+    const access = await mailboxFor(actor, row.mailbox.id);
+    result.push({ ...row, unread: access.capabilities.includes('mailbox.read') ? (await inboxCounts(actor, row.mailbox.id)).unread : null });
+  }
+  return result;
 }
 
 export async function createMailbox(actor: Principal, input: v.InferOutput<typeof mailboxInput>) {
