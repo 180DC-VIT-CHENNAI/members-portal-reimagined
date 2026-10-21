@@ -114,6 +114,12 @@ All spacing derives from a base of **4px**.
 
 ## 5. Components
 
+### Portal messaging
+- Conversation rows reuse portal canvas/soft surfaces, hairline borders, 12px corners and existing badge tokens. Messages use a 16px padded reading column; own messages have a soft green wash, not a second accent palette.
+- Inline message actions stay keyboard/touch reachable (44px minimum targets); reaction selection uses accent text/wash plus `aria-pressed`. Message text wraps and preserves line breaks without interpreting HTML.
+- Composer and settings reuse `TextAreaField`, `SelectField`, `Card`, `Button` and modal primitives. The document owns scrolling; no nested fixed-height chat pane or sticky composer obscures mobile navigation. No new motion or type tokens.
+- Screens follow system light/dark tokens at phone and desktop widths; empty/error/loading states remain visible. Mentions link to profiles, deletion preserves an accessible tombstone.
+
 ### Button (Primary)
 - **Structure**: `<a>` or `<button>` with nested trailing-icon circle for CTAs
 - **Variants**: primary (green bg), ghost (transparent, green border), text (no bg, green text)

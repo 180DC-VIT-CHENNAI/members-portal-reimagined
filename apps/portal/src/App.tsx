@@ -4,6 +4,11 @@ import logo from './assets/logo.png';
 import { Icon, type IconName } from './components/icons.tsx';
 import { Avatar, ErrorState, LoadingBlock } from './components/ui.tsx';
 import { NotificationLink } from './components/NotificationLink.tsx';
+import { MessagesLink } from './components/MessagesLink.tsx';
+import { MessagesPage } from './pages/MessagesPage.tsx';
+import { ConversationPage } from './pages/ConversationPage.tsx';
+import { NotificationPreferencesPage } from './pages/NotificationPreferencesPage.tsx';
+import { MessageReportsPage } from './pages/admin/MessageReportsPage.tsx';
 import { can, type PermissionMap, visibleAdminTools } from './lib/access.ts';
 import { api, clearCache, onUnauthorized, problemFrom } from './lib/api.ts';
 import type { ApiProblem } from './lib/errors.ts';
@@ -161,6 +166,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
   // Phones show the first four entries as tabs and the rest under More; `tab: false` sends an entry straight to More.
   const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean; tab?: boolean }> = [
     { to: '/today', label: 'Today', icon: 'checkCircle', show: true, active: path === '/today' },
+    { to: '/messages', label: 'Messages', icon: 'messageSquare', show: true, active: path.startsWith('/messages') },
     { to: '/notifications', label: 'Notifications', icon: 'inbox', show: true, active: path === '/notifications', tab: false },
     { to: '/mailboxes', label: 'Shared mailboxes', icon: 'inbox', show: true, active: path.startsWith('/mailboxes'), tab: false },
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people', tab: false },
@@ -230,7 +236,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
                 .filter((item) => item.show)
                 .map((item) => (
                   <li key={item.to}>
-                    {item.to === '/notifications' ? <NotificationLink active={item.active} /> : <Link to={item.to} className="nav-link" aria-current={item.active ? 'page' : undefined}>
+                    {item.to === '/messages' ? <MessagesLink active={item.active} /> : item.to === '/notifications' ? <NotificationLink active={item.active} /> : <Link to={item.to} className="nav-link" aria-current={item.active ? 'page' : undefined}>
                       <Icon name={item.icon} size={18} />
                       {item.label}
                     </Link>}
@@ -259,7 +265,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
         </main>
         <nav className="tabbar" aria-label="Main">
           {tabs.map((item) => (
-            <Link key={item.to} to={item.to} className="tab" aria-current={item.active ? 'page' : undefined}>
+            item.to === '/messages' ? <MessagesLink key={item.to} active={item.active} className="tab" /> : <Link key={item.to} to={item.to} className="tab" aria-current={item.active ? 'page' : undefined}>
               <Icon name={item.icon} size={20} />
               {item.label}
             </Link>
@@ -298,6 +304,11 @@ function route(path: string, home: string, next: string | null) {
   if (crmOpportunity) return <OpportunityPage key={path} id={crmOpportunity.id} />;
   const crmEngagement = matchPath('/crm/engagements/:id', path);
   if (crmEngagement) return <EngagementPage key={path} id={crmEngagement.id} />;
+  if (path === '/notifications/preferences') return <NotificationPreferencesPage />;
+  if (path === '/messages') return <MessagesPage />;
+  const conversation = matchPath('/messages/:id', path);
+  if (conversation) return <ConversationPage key={conversation.id} id={conversation.id} />;
+  if (path === '/admin/message-reports') return <MessageReportsPage />;
   if (path === '/people') return <DirectoryPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/meets') return <MeetsPage />;

@@ -3,7 +3,8 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'void/schema-d1';
 import { people } from './people';
 import { projectTasks } from './projects';
 
-export const NOTIFICATION_KINDS = ['task_assigned', 'task_comment', 'task_due'] as const;
+export const TASK_NOTIFICATION_KINDS = ['task_assigned', 'task_comment', 'task_due'] as const;
+export const NOTIFICATION_KINDS = [...TASK_NOTIFICATION_KINDS, 'message_mention'] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 /**
@@ -20,7 +21,7 @@ export const notifications = sqliteTable(
     recipientId: text('recipient_id')
       .notNull()
       .references(() => people.id),
-    kind: text('kind', { enum: NOTIFICATION_KINDS }).notNull(),
+    kind: text('kind', { enum: TASK_NOTIFICATION_KINDS }).notNull(),
     projectId: text('project_id').notNull(),
     taskId: text('task_id')
       .notNull()

@@ -47,6 +47,7 @@ export const PERMISSIONS = {
   'departments.documents.manage': "Add and remove a department's documents",
   'departments.instructions.manage': "Post and remove a department's instructions",
   'departments.projects.manage': "Add department projects and change their status",
+  'chat.moderate': 'Review reported messages and remove them',
   'site.maintenance': 'Turn maintenance mode on or off (and keep access while it is on)',
   'crm.view': 'Open the CRM and see the client records you own or were granted',
   'crm.manage': 'Create and edit client organisations, contacts, opportunities, proposals and engagements you can see',

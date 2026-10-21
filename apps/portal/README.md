@@ -24,6 +24,16 @@ The minute cron records `accepted`, `failed` or `outcome_unknown`, never invente
 
 See ADR-011 and the shared-mailbox API contract. Inbound conversations, routing, CRM links and Template Studio are subsequent packages, not features of this increment.
 
+## Internal messaging
+
+`/messages` lists the conversations a member can read now: direct conversations, their department's channel and the channels of projects they can see. Unread badges (capped at 99) appear in the list and in the navigation. Direct messages start from a person's profile and only between two current `active`/`on_leave` members; once the other person leaves the club the conversation becomes read-only. Department pages and project pages open their channel. Department channels follow home department or `departments.workspace.view`; project channels reuse `visibleProjects`, the same rule as the project list. Every list, count, search, mention notice and detail read evaluates the access predicate again, so a person who moves department, leaves a project or becomes alumni loses access on the next request. An inaccessible conversation is 404, never a hint that it exists.
+
+Messages are plain text with `@[Name](personId)` mentions. Authors can edit for 15 minutes after sending; deleting leaves a tombstone with the body erased and its reactions, search hit and mention notices removed. Sends are idempotent per `requestId`. A mention creates a notice only for mentioned people who can read the conversation at that moment, have not muted it and have not turned off mention notices. Members can report someone else's message; holders of `chat.moderate` (seeded to `admin`) review reports at `/admin/message-reports` and can dismiss or remove them. Removal is audited without the message text.
+
+`/notifications/preferences` stores, per category (`mentions`, `tasks`), in-app on/off, an email-digest opt-in (default off) and quiet hours. In-app task and mention notice creation respects the in-app switch. In-app notices are pull-based, so quiet hours are stored for later delivery channels and suppress nothing yet. **Email digests are not sent:** the opt-in is stored only. A digest would be metered Cloudflare Email Sending and needs its own governed package.
+
+The browser polls instead of holding a live connection: an open conversation every 10 s, the list and nav badge every 30 s, only while the tab is visible. Club-scale traffic fits D1 reads comfortably, and polling needs no Durable Object, WebSocket binding or new billing surface. A move to Durable State/WebSockets is the follow-up if message volume or latency needs change.
+
 ## Collaboration and onboarding
 
 Inviting a person validates all references before atomically saving their personnel record, optional tenure, audit and queued invitation email. CSV dry runs never send or queue mail. Invitations contain a Google sign-in link, not a password or registry token. Today shows a nonblocking first-login checklist with derived profile progress and explicit read acknowledgments.

@@ -19,6 +19,15 @@ Covered by `apps/portal/tests/e2e/crm.test.mjs` and `src/server/crm/rules.test.t
 
 Covered by `apps/portal/tests/e2e/mailboxes.test.mjs` and `src/server/mailboxes/rules.test.ts`.
 
+## Internal messaging invariants
+
+- **CHAT-ACL-01:** Every conversation list, unread count, search, mention notice, detail and mutation evaluates current access. Direct conversations need a participant row; department channels need home department or `departments.workspace.view`; project channels need `visibleProjects`. A caller who cannot read a conversation gets 404 and never sees it counted.
+- **CHAT-DM-01:** A new direct conversation needs two distinct current active/on-leave members. When one leaves, the other can read the history but cannot send; the leaver has no session.
+- **CHAT-EDIT-01:** Only the author edits, only within 15 minutes, and never after deletion. A tombstone erases the body and removes its reactions, search hit and mention notices.
+- **CHAT-NOTICE-01:** A mention notice is created at most once per recipient and message, only for someone who can read the conversation at that moment, has not muted it and has not turned off mention notices. No message email is sent.
+
+Covered by `apps/portal/tests/e2e/messaging.test.mjs` and `src/server/messaging-rules.test.ts`.
+
 ## Portal collaboration invariants
 
 - **PORTAL-INVITE-01:** A rejected invitation creates no person, tenure, campaign or audit. A successful invitation commits all applicable records together.

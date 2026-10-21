@@ -3,6 +3,7 @@ import { BackLink, Button, ConfirmDialog, ErrorState, LoadingBlock, PageHeader, 
 import { ProjectTasks } from '../components/projects/ProjectTasks.tsx';
 import { ProjectMembers } from '../components/projects/ProjectMembers.tsx';
 import { ProjectFiles } from '../components/projects/ProjectFiles.tsx';
+import { ConversationButton } from '../components/messages/ConversationButton.tsx';
 import { api, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
 import { formatDate, plural } from '../lib/format.ts';
@@ -83,6 +84,7 @@ export function ProjectPage({ id }: { id: string }) {
         }
       />
       <div className="stack">
+        <ConversationButton target={{ projectId: id }} />
         <div className="cluster">
           <span className={p.status === 'completed' ? 'badge badge-success' : 'badge'}>{p.status.replace('_', ' ')}</span>
           {p.internal && <span className="badge">Internal</span>}

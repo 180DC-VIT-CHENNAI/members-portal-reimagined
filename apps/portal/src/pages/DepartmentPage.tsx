@@ -18,13 +18,14 @@ import { api, lookups, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
 import { formatDate, formatDateTime, isHttpsUrl, isStatus } from '../lib/format.ts';
 import { useSession } from '../lib/session.tsx';
+import { ConversationButton } from '../components/messages/ConversationButton.tsx';
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 const PRIORITY_TONE: Record<(typeof PRIORITIES)[number], string> = { low: '', medium: '', high: 'badge-warning', urgent: 'badge-error' };
 
 /** A department's members, instructions and (for its leads) documents and projects. */
 export function DepartmentPage({ id }: { id: string }) {
-  const { can } = useSession();
+  const { can, me } = useSession();
   const departments = useLoad(() => lookups.departments(), []);
   const visible = (departments.data ?? []).filter(
     (d) => can('departments.members.view', d.id) || can('departments.instructions.view', d.id) || can('departments.workspace.view', d.id),
@@ -55,6 +56,7 @@ export function DepartmentPage({ id }: { id: string }) {
         <EmptyState icon="users" title="You don't have access to this department" />
       ) : (
         <div className="stack">
+          {(me.departmentId === id || can('departments.workspace.view', id)) && <ConversationButton target={{ departmentId: id }} />}
           {can('departments.instructions.view', id) && <Instructions departmentId={id} manage={can('departments.instructions.manage', id)} />}
           {can('departments.workspace.view', id) && <Workspace departmentId={id} />}
           {can('departments.members.view', id) && <Members departmentId={id} />}

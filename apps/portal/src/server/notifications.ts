@@ -6,8 +6,12 @@ import { COUNT_LIMIT, departmentsByProject, PAGE_SIZE, reminderDates } from './n
 import { ACTIVE_STATUSES, loadActivePrincipals, type Principal } from './principal';
 import { projectAccess } from './project-rules';
 import { visibleProjects } from './project-visibility';
+import { unreadMentionRows } from './messaging/notices';
 
 const ACTIVE = sql.raw(ACTIVE_STATUSES.map((status) => `'${status}'`).join(', '));
+/** Recipient filter for task notices: the person has not turned off in-app task notices. */
+const wantsTaskNotices = (personId: SQL) =>
+  sql`not exists (select 1 from notification_preferences np where np.person_id = ${personId} and np.category = 'tasks' and np.in_app = 0)`;
 
 /**
  * Batch item placed IMMEDIATELY after the task insert or version-guarded
@@ -23,7 +27,7 @@ export function notifyTaskAssigned(input: { taskId: string; version: number; ass
     FROM project_tasks t
     JOIN people p ON p.id = t.assignee_id AND p.status IN (${ACTIVE})
     WHERE changes() = 1 AND t.id = ${input.taskId} AND t.version = ${input.version} AND t.assignee_id = ${input.assigneeId}
-      AND t.assignee_id <> ${input.actorId}
+      AND t.assignee_id <> ${input.actorId} AND ${wantsTaskNotices(sql`t.assignee_id`)}
     `).onConflictDoNothing({ target: [notifications.recipientId, notifications.dedupeKey] });
 }
 
@@ -45,6 +49,7 @@ export function notifyTaskComment(input: { authorId: string; requestId: string }
       OR p.id IN (SELECT o.author_id FROM task_comments o WHERE o.task_id = c.task_id AND o.id < c.id AND o.deleted_at IS NULL)
     )
     WHERE changes() = 1 AND c.author_id = ${input.authorId} AND c.request_id = ${input.requestId} AND c.deleted_at IS NULL
+      AND ${wantsTaskNotices(sql`p.id`)}
     `).onConflictDoNothing({ target: [notifications.recipientId, notifications.dedupeKey] });
 }
 
@@ -87,8 +92,9 @@ export async function inbox(principal: Principal, query: v.InferOutput<typeof in
   return { notifications: page, nextBefore: rows.length > PAGE_SIZE ? (page.at(-1)?.id ?? null) : null };
 }
 
-/** Unread notices the caller can see, counting at most 99 (`capped` means "99+"). */
+/** Unread task and mention notices the caller can see, counting at most 99 (`capped` means "99+"). */
 export async function unreadCount(principal: Principal) {
+  const mentions = await unreadMentionRows(principal, COUNT_LIMIT + 1);
   const rows = await db
     .select({ id: notifications.id })
     .from(notifications)
@@ -96,7 +102,8 @@ export async function unreadCount(principal: Principal) {
     .innerJoin(projects, eq(projects.id, projectTasks.projectId))
     .where(mine(principal, isNull(notifications.readAt)))
     .limit(COUNT_LIMIT + 1);
-  return { unread: Math.min(rows.length, COUNT_LIMIT), capped: rows.length > COUNT_LIMIT };
+  const total = rows.length + mentions;
+  return { unread: Math.min(total, COUNT_LIMIT), capped: total > COUNT_LIMIT };
 }
 
 const notificationId = v.pipe(v.number(), v.integer(), v.minValue(1));
@@ -160,6 +167,7 @@ export async function queueDueReminders(now: Date): Promise<number> {
           isNotNull(projectTasks.assigneeId),
           eq(projects.status, 'active'),
           inArray(people.status, [...ACTIVE_STATUSES]),
+          wantsTaskNotices(sql`${people.id}`),
           sql`not exists (select 1 from ${notifications} where ${notifications.recipientId} = ${people.id}
             and ${notifications.dedupeKey} = 'due:' || ${projectTasks.id} || ':' || ${projectTasks.dueDate})`,
         ),
