@@ -16,6 +16,22 @@
 | `crm_engagements` | UUID; unique opportunity and project | Accepted work: proposal, canonical project, client owner, lead, confidentiality, status, closeout checklist, feedback, case-study consent. |
 | `crm_case_study_drafts` | UUID; unique engagement | Internal draft created at closeout only with consent; never copied to `case_studies`. |
 
+## Void portal documents and knowledge schema
+
+`apps/portal/db/schema/documents.ts`, `knowledge.ts` and additive migration `20261021130410_adorable_true_believers.sql`:
+
+| Table | Key | Notes |
+|---|---|---|
+| `documents` | file ID (project file or shared club file) | `project_file_id` (cascade) or `shared_key`, owner, `retention_until`, `legal_hold`, `archived`, `review_status`, current `revision`. |
+| `document_versions` | UUID; unique `(document_id, number)`, unique `key` | Immutable bytes in `CLUB_FILES`, file name, type, size, SHA-256 `checksum`, uploader, `restored_from`. Trigger `document_versions_enqueue_delete` queues the key in `project_file_deletions`. |
+| `document_shares` | UUID; unique `token_hash` | Frozen `version_id`, creator, `expires_at`, `max_downloads`, `downloads`, `require_sign_in`, `revoked_at`. Tokens are never stored. |
+| `knowledge_articles` | UUID; unique `slug` | `scope` global/department, `department_id`, status, owner, JSON `tags`, optional project/task/meet IDs, optimistic `revision`. |
+| `knowledge_revisions` | autoincrement; unique `(article_id, number)` | JSON snapshot of each saved revision and its editor. |
+
+The migration grants `knowledge.view` to every role, and `knowledge.edit`/`knowledge.publish` globally to admins and per department to directors.
+
+The `documents_legal_hold_delete` trigger aborts deletion of held document rows, including cascades from files, tasks and projects, before versions can be queued for byte cleanup.
+
 ## Void portal shared-mailbox schema
 
 `apps/portal/db/schema/mailboxes.ts`, additive migration `20261019070215_damp_kitty_pryde.sql` and its generated snapshot:
