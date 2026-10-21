@@ -1,5 +1,9 @@
 # Business Logic — 180DC VIT Chennai Platform
 
+## Member lifecycle
+
+Every status change appends to `person_status_history` with actor, reason and effective date. Promotions are proposed (`people.edit`) and approved by a different holder of `people.promotions.approve` for the position's department; approval adds the tenure, opens an access review and queues a notice, and never touches access. Offboarding (`people.offboard`) moves a person to alumni or removed and runs every registered cleanup step in one batch: work and CRM ownership go to an active successor, tenures end, grants (personal, shared mailbox, CRM record) and sessions are removed, and a handover record is kept.
+
 ## CRM pipeline and intake
 
 CRM visibility is per record: owner, explicit grant (an organisation grant covers its children) or `crm.admin`. Contact private fields need organisation or contact access. Consulting-request conversion is idempotent through the unique opportunity link and reuses organisations by normalised domain and contacts by email. Won is reached only by accepting a sent proposal, which creates one engagement and its project in one batch; closeout requires the checklist, and a case-study draft exists only with consent and is never published.

@@ -18,6 +18,24 @@ Every route needs a personnel session and `crm.view` (403 otherwise). Records th
 - `GET /api/crm/engagements`, `GET /api/crm/engagements/:id`, `PATCH .../closeout` (checklist, feedback, case-study consent), `POST .../close` returns `{closed, caseStudyDraftId}`.
 - `GET /api/crm/duplicates`, `POST /api/crm/organizations/:id/merge` and `POST /api/crm/contacts/:id/merge` `{sourceId}`: `crm.admin`.
 - `POST /api/consulting-requests/:id/convert`: `consulting.manage` and `crm.manage`; `{organizationId, contactId, opportunityId, created}`; `created` is true only the first time, later calls return the same ids.
+## Void portal member lifecycle
+
+Google personnel session on every route. Hidden people/proposals/items are 404; a known but forbidden action is 403.
+
+- `GET /api/people/:id/status`: status history, oldest first (`fromStatus, toStatus, reason, effectiveOn, actorPersonId, createdAt`); the person or `people.lifecycle` for their department. `POST` additively accepts `reason?` (or the older `note?`) and `effectiveOn?: YYYY-MM-DD` (default today; a future date is 400).
+- `GET /api/people/:id` adds `memberships` (secondary departments), `tenures[].reportsToPersonId` and `accessReviews` (open reviews; only for viewers who see grants). `GET /api/people?department=` also matches secondary memberships in force today.
+- `POST /api/people/:id/memberships`: `people.edit` for the secondary department; `{departmentId, note?, validFrom?, validUntil?}` returns 201. Primary department is 400; an open duplicate is 409. `DELETE .../memberships/:membershipId` ends it today and keeps the row.
+- `GET /api/promotions?person=&status=`: proposals the viewer may see (the person, the proposer, `people.edit` or `people.promotions.approve` holders for the position), each with `canDecide` and `canWithdraw`. `GET /api/promotions/:id` is 404 when not visible.
+- `POST /api/promotions`: `people.edit` for the position's department (else the person's); `{personId, positionId, termId?, startsOn?, rationale, letterDocumentId?}` returns 201 with `status: 'pending'`.
+- `POST /api/promotions/:id/decision`: `{action: 'approve'|'reject'|'withdraw', note?}`. Approve/reject need `people.promotions.approve` for the position; the proposer and the person concerned get 403. Withdraw is the proposer's. Approval returns `{status: 'approved', tenureId}` and creates the tenure, an open access review, a `promotion` email-queue campaign to the person and an audit entry; access roles and grants are unchanged. A decided proposal is 409.
+- `GET /api/access-reviews?status=&person=`: `people.grants`. `POST /api/access-reviews/:id/review` closes one; your own is 403.
+- `PATCH /api/tenures/:id`: `{reportsToPersonId: string|null}`, `people.edit` for the position; a cycle in that term is 400.
+- `GET /api/org-chart?term=`: `people.view`; the term's tenures with position, holder and `reportsToPersonId` (current term by default).
+- `GET /api/people/:id/offboard`: `people.offboard` for the person's department; `{status, steps: [{key, label, count, items}], needsSuccessor, records}`. `POST` `{status: 'alumni'|'removed', successorId?, reason, effectiveOn?, handover?: [{item, done}]}` returns `{id, status, changed, summary: {tasks, projects, tenures, grants, sessions, mailboxes, crm}, recordId}`. The `crm` step moves owned CRM organisations/opportunities, engagement owner/lead roles and owner-role record grants to the successor and deletes the leaver's CRM record grants, with audit entries. Yourself, an inactive successor or a missing successor when work exists is 400. Re-running returns `changed: false` and writes nothing.
+- `GET/POST /api/onboarding/policies`, `PATCH /api/onboarding/policies/:id` (`active: false` retires): `onboarding.manage`. Active policies appear in `GET /api/onboarding` and are acknowledged through the existing acknowledgment route.
+- `GET /api/terms/:id/handover`: `terms.manage` sees every item, others only their own. `POST` `{title, ownerPersonId?}` and `DELETE /api/handover-items/:id`: `terms.manage`. `PATCH /api/handover-items/:id` `{done?, title?, ownerPersonId?}`: owners may only tick; others' items are 404.
+
+New permission keys: `people.promotions.approve` and `people.offboard` (admin global, director department), `onboarding.manage` (admin).
 
 ## Void portal documents and knowledge
 
