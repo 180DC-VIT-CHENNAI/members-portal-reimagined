@@ -11,6 +11,7 @@ export const mailboxInput = v.strictObject({
 });
 export const policyInput = v.strictObject({
   status: v.optional(v.picklist(MAILBOX_STATUSES)),
+  inboundEnabled: v.optional(v.boolean()),
   outboundAdapter: v.optional(v.picklist(MAIL_ADAPTERS)),
   approvalRequired: v.optional(v.literal(true)),
   requireDistinctReviewer: v.optional(v.boolean()),

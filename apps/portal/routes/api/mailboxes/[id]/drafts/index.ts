@@ -14,5 +14,5 @@ export const GET = defineHandler.withValidator({ query: draftQuery })(async (c, 
 export const POST = defineHandler.withValidator({ body: draftInput })(async (c, { body }) => {
   const actor = await requirePrincipal(c);
   await rateLimit(c, 'mailbox_drafts', 60, 3600);
-  return c.json(await createDraft(actor, idParam(c), body), 201);
+  return c.json(await createDraft(actor, idParam(c), { body, conversationId: null }), 201);
 });

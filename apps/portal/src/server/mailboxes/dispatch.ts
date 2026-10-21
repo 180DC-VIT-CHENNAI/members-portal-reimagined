@@ -6,6 +6,8 @@ import { emailQuota, emailTestMode } from '../email/send';
 import { atomic, auditStatement, GRANT_SQL, statement } from './access';
 import { canonicalContent, digest } from './rules';
 import { mailboxTransport, type TransportOutcome } from './transport';
+import { replyRecipientsAllowed } from './reply-policy';
+import { sentThreadStatements } from './sent-thread';
 
 /** A claim whose execution vanished is uncertain, never automatically replayed. */
 async function recoverAbandoned() {
@@ -19,7 +21,7 @@ async function recoverAbandoned() {
   ]);
 }
 
-async function finish(input: { readonly intentId: string; readonly claimToken: string; readonly outcome: TransportOutcome }) {
+async function finish(input: { readonly intentId: string; readonly claimToken: string; readonly outcome: TransportOutcome; readonly snapshot: typeof mailDraftSnapshots.$inferSelect }) {
   const { outcome } = input;
   await atomic([
     statement(`UPDATE mail_send_intents SET state=?,provider_message_id=?,last_error=? WHERE id=? AND state='sending' AND claim_token=?`,
@@ -33,6 +35,7 @@ async function finish(input: { readonly intentId: string; readonly claimToken: s
     statement(`INSERT INTO mail_audit (mailbox_id,actor_id,action,target_id,safe_metadata)
       SELECT mailbox_id,NULL,?,id,'{}' FROM mail_send_intents WHERE id=? AND claim_token=? AND state=?`,
     [`mail.${outcome.state}`, input.intentId, input.claimToken, outcome.state]),
+    ...sentThreadStatements(input),
   ]);
 }
 
@@ -76,9 +79,12 @@ async function dispatchOne(row: DispatchRow) {
   const paused = await statement('SELECT 1 FROM mail_outbound_switch WHERE id=1 AND paused=1').first();
   if (paused || mailbox.outboundPaused) return;
   const contentHash = await digest(canonicalContent(snapshot));
-  const replyAllowed = !mailbox.repliesOnly || snapshot.conversationId !== null;
+  const validReply = snapshot.conversationId !== null && await replyRecipientsAllowed({
+    mailboxId: mailbox.id, conversationId: snapshot.conversationId, recipients: snapshot.recipients,
+  });
+  const replyAllowed = !mailbox.repliesOnly || validReply;
   const adapterAllowed = mailbox.outboundAdapter === 'cloudflare' || (mailbox.outboundAdapter === 'capture' && emailTestMode() === 'capture');
-  const cloudflareAllowed = mailbox.outboundAdapter !== 'cloudflare' || (snapshot.category === 'correspondence' && snapshot.conversationId !== null);
+  const cloudflareAllowed = mailbox.outboundAdapter !== 'cloudflare' || (snapshot.category === 'correspondence' && validReply);
   const staticValid = mailbox.status === 'active' && mailbox.policyVersion === review.policyVersion &&
     snapshot.contentHash === contentHash && review.contentHash === contentHash &&
     snapshot.fromAddress === mailbox.address && mailbox.categoryPolicy.includes(snapshot.category) &&
@@ -144,7 +150,7 @@ async function dispatchOne(row: DispatchRow) {
       outcome = { state: 'outcome_unknown', messageId: null, code: 'PROVIDER_EXCEPTION' };
     }
     if (outcome.state === 'failed') keepReservation = false;
-    await finish({ intentId: intent.id, claimToken: token, outcome });
+    await finish({ intentId: intent.id, claimToken: token, outcome, snapshot });
   } finally {
     if (!keepReservation) {
       await db.update(emailHourCount).set({ count: sql`max(0,${emailHourCount.count}-1)` }).where(eq(emailHourCount.hour, quota.hour));

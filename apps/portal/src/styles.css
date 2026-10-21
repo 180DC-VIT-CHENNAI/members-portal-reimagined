@@ -2681,3 +2681,19 @@ code,
 .letter-form-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
 .letter-preview-viewport { position: relative; width: 100%; overflow: hidden; }
 .letter-preview-scaled { position: absolute; top: 0; left: 0; transform-origin: top left; }
+
+/* Shared mailbox messages: sanitized HTML runs in a script-less sandboxed frame. */
+.mail-frame {
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid var(--border, #d7dfd9);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.mail-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin: 0;
+}

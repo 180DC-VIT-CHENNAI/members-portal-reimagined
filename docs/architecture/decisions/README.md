@@ -25,6 +25,8 @@ This directory records decisions that future agents should understand before cha
 
 | ADR-011 | `011-shared-mailbox-review.md` | DECIDED FOR IMPLEMENTATION | Independent mailbox ACLs, frozen approval snapshots, dispatch revalidation and no automatic replay of uncertain sends. New business transports remain disabled. |
 
+| ADR-012 | `012-shared-mailbox-inbound.md` | DECIDED FOR IMPLEMENTATION | Void email handler stores raw MIME privately, dedupes by raw/content identity, threads only within a mailbox and known participants, quarantines unsafe mail; no routing rule is created from the repo. |
+
 ## How to add a new ADR
 
 Create a new file under `docs/architecture/decisions/` named `NNN-short-title.md` with:

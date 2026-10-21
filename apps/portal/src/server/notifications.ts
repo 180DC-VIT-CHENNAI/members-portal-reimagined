@@ -7,6 +7,7 @@ import { ACTIVE_STATUSES, loadActivePrincipals, type Principal } from './princip
 import { projectAccess } from './project-rules';
 import { visibleProjects } from './project-visibility';
 import { unreadMentionRows } from './messaging/notices';
+import { unreadMailNoticeRows } from './mailboxes/notices';
 
 const ACTIVE = sql.raw(ACTIVE_STATUSES.map((status) => `'${status}'`).join(', '));
 /** Recipient filter for task notices: the person has not turned off in-app task notices. */
@@ -102,7 +103,8 @@ export async function unreadCount(principal: Principal) {
     .innerJoin(projects, eq(projects.id, projectTasks.projectId))
     .where(mine(principal, isNull(notifications.readAt)))
     .limit(COUNT_LIMIT + 1);
-  const total = rows.length + mentions;
+  const mail = await unreadMailNoticeRows(principal, COUNT_LIMIT + 1);
+  const total = rows.length + mentions + mail;
   return { unread: Math.min(total, COUNT_LIMIT), capped: total > COUNT_LIMIT };
 }
 

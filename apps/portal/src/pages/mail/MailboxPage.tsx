@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { BackLink, Button, Card, EmptyState, ErrorState, LoadingBlock, PageHeader } from '../../components/ui.tsx';
 import { api, useLoad } from '../../lib/api.ts';
 import { Link } from '../../lib/router.tsx';
+import { InboxCard } from './InboxCard.tsx';
 import { MailboxManagement } from './MailboxManagement.tsx';
+import { QuarantineCard } from './QuarantineCard.tsx';
 import type { MailFolder } from '../../server/mailboxes/types.ts';
 
 const folders = [
@@ -27,7 +29,10 @@ export function MailboxPage({ id }: { readonly id: string }) {
         <Link className="btn btn-primary" to={`/mailboxes/${id}/compose`}>New draft</Link> : undefined
     } />
     <p className="muted">Sending {access.mailbox.outboundPaused ? 'paused' : access.mailbox.outboundAdapter === 'disabled' ? 'not enabled' : 'requires a current approval'}. Acceptance is not confirmed inbox delivery.</p>
+    <p className="muted">Incoming mail {access.mailbox.inboundEnabled ? 'is accepted' : 'is refused'} for this address.</p>
+    {access.capabilities.includes('mailbox.read') && <InboxCard id={id} />}
     {access.capabilities.includes('mailbox.read') && <DraftFolders id={id} />}
+    {access.capabilities.includes('mailbox.manage') && <QuarantineCard id={id} />}
     {access.capabilities.includes('mailbox.manage') && <MailboxManagement id={id} mailbox={access.mailbox} onChanged={load.reload} />}
     {access.capabilities.includes('mailbox.audit') && <Audit id={id} />}
   </div>;
@@ -42,7 +47,7 @@ function DraftFolders({ id }: { readonly id: string }) {
   if (!load.data || load.loading) return <LoadingBlock />;
   const items = load.data.drafts;
   const nextBefore = load.data.nextBefore;
-  return <Card title="Messages" actions={<Button onClick={load.reload}>Refresh</Button>}>
+  return <Card title="Drafts and sending" actions={<Button onClick={load.reload}>Refresh</Button>}>
     <div className="cluster" role="group" aria-label="Draft folders">
       {folders.map((f) => <Button key={f.id} size="sm" aria-pressed={f.id === folder} variant={f.id === folder ? 'primary' : 'secondary'} onClick={() => { setFolder(f.id); setCursors([undefined]); }}>{f.label}</Button>)}
     </div>

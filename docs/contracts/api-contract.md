@@ -38,6 +38,25 @@ These routes use the current Google personnel session and mailbox-local capabili
 - `GET /api/mailboxes/:id/audit?before=<positive integer>`: `mailbox.audit`, 50 metadata-only events, descending ID. Audit capability does not grant body access.
 - `GET`/`PUT /api/admin/mail-outbound`: global `mailboxes.admin`; `{paused: boolean}` emergency shared-mail switch, independent of portal maintenance.
 
+### Shared mailbox inbox
+
+All routes below require a current `mailbox.read` grant unless stated otherwise. Unknown or inaccessible mailboxes, conversations, messages and attachments return 404; quarantined messages are invisible outside the quarantine routes. Responses are private/no-store.
+
+- `PATCH /api/mailboxes/:id` also accepts `inboundEnabled: boolean` (`mailbox.manage`). Inbound mail is refused unless the mailbox is `active` and enabled.
+- `GET /api/mailboxes` rows include `unread` (open conversations unread by the caller, or `null` without read access). `GET /api/mailboxes/unread` returns `{unread, capped}` across mailboxes the caller can read now (capped at 99).
+- `GET /api/mailboxes/:id/counts`: `{inbox, assigned, unassigned, unread, overdue}`, where `overdue` counts open conversations assigned to the caller whose reply-due time has passed.
+- `GET /api/mailboxes/:id/conversations?view=inbox|assigned|unassigned|archive|search&q=&before=<conversationId>`: 50 conversations by last message, newest first, with `nextBefore`. `archive` lists closed conversations; `search` matches subject, text and sender within this mailbox only (LIKE-escaped, max 200 chars). 120/minute.
+- `GET /api/mailboxes/:id/conversations/:conversationId?before=<messageId>`: the conversation, the caller's capabilities, the latest 50 messages (identities, text, auth signals, attachment metadata) and 50 internal notes.
+- `PATCH .../conversations/:conversationId`: `mailbox.assign`; any of `{status: open|pending|closed, priority: low|normal|high|urgent, assignedTo: personId|null, tags: string[≤10], dueForReplyAt: ISO|null}`. Assignees must be active/on-leave people with current `mailbox.read`, otherwise 400. 120/hour.
+- `POST .../conversations/:conversationId/read`: records the caller's read time. `POST .../notes`: `{body}` (≤4000), `mailbox.assign` or `mailbox.draft.create`, returns 201 `{id}`. `POST .../reply`: `{messageId}` of an inbound message, `mailbox.draft.create`; returns 201 `{id, revision}` for a draft bound to the conversation and addressed to the message's Reply-To/From. Drafts bound to a conversation in a replies-only or Cloudflare-adapter mailbox may address only thread participants.
+- `GET .../messages/:messageId/body?remote=1`: `{text, document, remoteBlocked}`. `document` is rebuilt passive HTML with its own CSP, for a sandboxed frame; remote images appear only with `remote=1`.
+- `GET .../attachments/:attachmentId`: attachment download (`application/octet-stream`, `Content-Disposition: attachment`). Attachments still under quarantine return 403.
+- `GET /api/mailboxes/:id/assignees`: `mailbox.assign`; people who can currently be assigned.
+- `GET /api/mailboxes/:id/quarantine`: `mailbox.manage`; 50 held messages `{id, subject, from, receivedAt, reason, size}`. `GET .../quarantine/:messageId` returns the first 64 KiB of raw headers as text. `POST .../quarantine/:messageId/release` threads the message into the inbox (blocked attachments stay blocked); `DELETE` removes its stored bytes and row. 60/hour, audited.
+- Inbound delivery is not an HTTP API. The Worker `email()` handler is the only production entry point. `POST /api/dev/ingest-mail?from=&to=` (raw MIME body) exists only in development builds with `EMAIL_TEST_MODE=capture` and `INBOUND_TEST_INGEST=1`.
+- `GET /api/notifications/mail?before=<numericNoticeId>&unread=1`: `{notices, nextBefore}`, 30 recipient-owned mail events per page. Each has `id`, `kind` (`mail_reply`, `mail_assigned`, `mail_review`), mailbox ID/name, conversation or draft ID, created/read times; no sender, subject or body. Lists and the existing combined `/api/notifications/count` recheck current mailbox-read grants. Review notices also require current review permission and a still-submitted draft.
+- `POST /api/notifications/mail/read`: `{ids: number[1..50]}` or `{upTo: number}`. Acknowledges only the caller's own notices and returns the combined unread count. Both routes require a personnel session, are private/no-store and reuse notification read/write limits (120/minute). Incoming acceptance/release, assignment changes and review submission write notices in their source transaction; duplicate inbound events and unchanged assignments add none.
+
 Draft writes are limited to 60/hour, workflow actions to 100/hour, draft lists to 120/minute. Existing `/api/send-email`, letters and newsletters retain their own permissions and `noreply` identity; mailbox drafting never grants a bypass into those routes.
 
 ## Void portal internal messaging
