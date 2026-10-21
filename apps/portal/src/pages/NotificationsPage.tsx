@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NOTIFICATIONS_CHANGED } from '../components/NotificationLink.tsx';
+import { MentionNotices } from '../components/messages/MentionNotices.tsx';
 import { Button, EmptyState, ErrorState, LoadingBlock, PageHeader, ProblemAlert } from '../components/ui.tsx';
 import { api, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
@@ -75,27 +76,30 @@ export function NotificationsPage() {
   return (
     <div className="page page-narrow">
       <PageHeader
-        overline="Projects"
+        overline="Inbox"
         title="Notifications"
-        lede="Tasks assigned to you, comments on your tasks and deadlines due today or tomorrow."
+        lede="Message mentions, task assignments, comments and approaching deadlines."
         actions={
           <div className="cluster">
+            <Link className="btn btn-ghost btn-sm" to="/notifications/preferences">Preferences</Link>
             <Button size="sm" variant={unreadOnly ? 'primary' : 'secondary'} onClick={() => setUnreadOnly((value) => !value)} aria-pressed={unreadOnly}>
               Unread only
             </Button>
             <Button size="sm" icon="check" busy={busy === 'all'} disabled={!items.some((item) => !item.readAt)} onClick={markAll}>
-              Mark all read
+              Mark tasks read
             </Button>
           </div>
         }
       />
       <ProblemAlert problem={problem} />
+      <MentionNotices unreadOnly={unreadOnly} />
+      <h2>Task notices</h2>
       {first.problem ? (
         <ErrorState problem={first.problem} onRetry={first.reload} />
       ) : !first.data ? (
         <LoadingBlock />
       ) : items.length === 0 ? (
-        <EmptyState icon="inbox" title={unreadOnly ? 'No unread notifications' : 'No notifications yet'}>
+        <EmptyState icon="inbox" title={unreadOnly ? 'No unread task notices' : 'No task notices yet'}>
           <Link to="/projects">Go to your projects</Link>
         </EmptyState>
       ) : (

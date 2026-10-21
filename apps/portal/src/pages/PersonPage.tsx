@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Icon } from '../components/icons.tsx';
+import { ConversationButton } from '../components/messages/ConversationButton.tsx';
 import {
   Alert,
   Avatar,
@@ -72,6 +73,7 @@ export function PersonPage({ id }: { id: string }) {
               <h1>{p.fullName}</h1>
               <p className="muted wrap-anywhere">{p.email}</p>
               <StatusBadge status={p.status} />
+              {!self && (p.status === 'active' || p.status === 'on_leave') && <ConversationButton target={{ personId: p.id }} />}
               <dl className="summary-list">
                 <div>
                   <dt>Department</dt>
