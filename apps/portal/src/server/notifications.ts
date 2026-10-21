@@ -7,6 +7,8 @@ import { ACTIVE_STATUSES, loadActivePrincipals, type Principal } from './princip
 import { projectAccess } from './project-rules';
 import { visibleProjects } from './project-visibility';
 import { unreadMentionRows } from './messaging/notices';
+import { preferencesFor } from './messaging/preferences';
+import { quietHoursActive } from './messaging-rules';
 
 const ACTIVE = sql.raw(ACTIVE_STATUSES.map((status) => `'${status}'`).join(', '));
 /** Recipient filter for task notices: the person has not turned off in-app task notices. */
@@ -92,16 +94,21 @@ export async function inbox(principal: Principal, query: v.InferOutput<typeof in
   return { notifications: page, nextBefore: rows.length > PAGE_SIZE ? (page.at(-1)?.id ?? null) : null };
 }
 
-/** Unread task and mention notices the caller can see, counting at most 99 (`capped` means "99+"). */
+/** Quiet categories leave the badge, not the durable inbox. Access is still checked on every count. */
 export async function unreadCount(principal: Principal) {
-  const mentions = await unreadMentionRows(principal, COUNT_LIMIT + 1);
-  const rows = await db
+  const { preferences } = await preferencesFor(principal);
+  const now = new Date();
+  const enabled = new Set(preferences
+    .filter((pref) => pref.inApp && !quietHoursActive(pref.quietStart, pref.quietEnd, now))
+    .map((pref) => pref.category));
+  const mentions = enabled.has('mentions') ? await unreadMentionRows(principal, COUNT_LIMIT + 1) : 0;
+  const rows = enabled.has('tasks') ? await db
     .select({ id: notifications.id })
     .from(notifications)
     .innerJoin(projectTasks, eq(projectTasks.id, notifications.taskId))
     .innerJoin(projects, eq(projects.id, projectTasks.projectId))
     .where(mine(principal, isNull(notifications.readAt)))
-    .limit(COUNT_LIMIT + 1);
+    .limit(COUNT_LIMIT + 1) : [];
   const total = rows.length + mentions;
   return { unread: Math.min(total, COUNT_LIMIT), capped: total > COUNT_LIMIT };
 }
