@@ -35,6 +35,22 @@
 
 The migration only adds tables/indexes and the admin's `mailboxes.admin` grant; it neither imports legacy records nor changes existing system-email, newsletter or Letter Studio tables. Object/message retention remains explicit: there is no automatic deletion of historical sends or private mailbox bytes.
 
+## Void portal internal messaging schema
+
+`apps/portal/db/schema/messaging.ts`, additive migration `20261021124937_noisy_husk.sql` and its generated snapshot:
+
+| Table | Key / constraint | Purpose |
+|---|---|---|
+| `conversations` | UUID; unique `direct_key`, `department_id`, `project_id` | `kind` direct/department/project. A direct pair has one row (order-independent key); each department and project has at most one channel. `last_message_id` orders the list. |
+| `conversation_members` | `(conversation_id, person_id)` | Direct participants, plus a per-person read pointer and mute flag for any conversation. Rows grant nothing by themselves for channels: access is recomputed from department/project rules. |
+| `messages` | Autoincrement ID; unique `(author_id, request_id)` | Plain-text body, optional same-conversation reply, `edited_at`, `deleted_at` tombstone (body erased). |
+| `message_reactions` | `(message_id, person_id, emoji)` | Toggled reactions, deleted with the message's tombstone. |
+| `message_reports` | Autoincrement ID; unique `(message_id, reporter_id)` | Reason, open/dismissed/removed status and resolver. |
+| `message_notifications` | Autoincrement ID; unique `(recipient_id, message_id)` | Mention notices, kept separate from the task `notifications` table, whose `project_id`/`task_id` stay NOT NULL. Rows are filtered by current conversation access on read. |
+| `notification_preferences` | `(person_id, category)` | In-app switch, email-digest opt-in (default off, not sent) and optional quiet hours for `mentions` and `tasks`. |
+
+The migration only adds tables and indexes, plus the `admin` role's global `chat.moderate` grant. Existing `notifications` rows, columns and queries are unchanged: the new `message_mention` kind lives only in `message_notifications`.
+
 ## Portal collaboration migration
 
 The generated additive migrations are `20261018224102_stiff_purple_man.sql` (onboarding), `20261018224557_mature_spacker_dave.sql` (project collaboration) and `20261018224922_bent_living_tribunal.sql` (notifications and meeting follow-through). The project migration includes reviewed data-copy statements that consolidate only existing portal-local department work.

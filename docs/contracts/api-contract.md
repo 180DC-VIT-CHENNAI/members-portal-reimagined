@@ -40,6 +40,29 @@ These routes use the current Google personnel session and mailbox-local capabili
 
 Draft writes are limited to 60/hour, workflow actions to 100/hour, draft lists to 120/minute. Existing `/api/send-email`, letters and newsletters retain their own permissions and `noreply` identity; mailbox drafting never grants a bypass into those routes.
 
+## Void portal internal messaging
+
+All routes use the current Google personnel session. A conversation the caller cannot read now is 404 on every route (detail, messages, people, read, mute, send, edit, delete, react, report), whether or not it exists. Responses are private/no-store. Reads share a 240/minute limit, writes 60/minute, search 30/minute, reports 10/minute.
+
+- `GET /api/messages/conversations`: `{conversations}` the caller can read, at most 100, newest activity first. Each has `{id, kind: 'direct'|'department'|'project', title, departmentId, projectId, counterpartId, lastMessageId, lastAt, lastBody, unread, unreadCapped, muted, canSend}`. Channels appear once they have a message; direct conversations always appear.
+- `GET /api/messages/unread`: `{unread, capped}` across readable, unmuted conversations, capped at 99.
+- `POST /api/messages/direct`: `{personId}`, returns `{id}` for the single direct conversation with another current active/on-leave member. Self is 400; anyone else is 404.
+- `POST /api/messages/channels`: `{departmentId}` or `{projectId}`, returns `{id}` for that context's channel (created on first open) if the caller may read it, else 404.
+- `GET /api/messages/conversations/:id`: the conversation from the caller's view. `canSend` is false for a direct conversation whose other person has left.
+- `GET /api/messages/conversations/:id/people`: up to 200 current readers, for the mention picker.
+- `GET /api/messages/conversations/:id/messages?before=<id>`: `{messages, nextBefore}`, 50 per page, newest first. Deleted messages remain as `{deleted: true, body: null, reactions: []}`. Replies carry a 140-character `replyTo.preview` (null once deleted).
+- `POST /api/messages/conversations/:id/messages`: `{requestId: uuid, body: 1-4000 chars, replyToId?}`, returns 201 `{id, replayed}`. A repeated `requestId` with the same content returns the first message; with different content it is 409. Sending to a read-only conversation is 409.
+- `PATCH /api/messages/conversations/:id/messages/:messageId`: `{body}`. Own message only (403 otherwise), within 15 minutes of sending (`edit_window_closed` 409), never after deletion (409). Newly mentioned readers are notified.
+- `DELETE /api/messages/conversations/:id/messages/:messageId`: own message only (403 otherwise). Leaves a tombstone.
+- `POST .../messages/:messageId/reactions`: `{emoji}` from a fixed set of six; toggles the caller's reaction and returns `{reactions}`.
+- `POST .../messages/:messageId/report`: `{reason: 1-500 chars}`. You cannot report your own message (400) or a deleted one (409); repeat reports are a no-op.
+- `POST /api/messages/conversations/:id/read`: `{upTo}` moves the caller's read pointer forward (never back) and marks that conversation's mention notices read.
+- `PUT /api/messages/conversations/:id/mute`: `{muted: boolean}`. Muted conversations leave the nav badge and receive no mention notices.
+- `GET /api/messages/search?q=<2-100 chars>&before=<id>`: `{results, nextBefore}`, 30 live messages from readable conversations, case-insensitive substring match.
+- `GET /api/messages/reports` and `POST /api/messages/reports/:id` with `{action: 'dismiss'|'remove'}`: global `chat.moderate`. Moderators see only the reported message and where it was posted. Removal tombstones the message and writes an audit entry with no text.
+- `GET /api/notifications/mentions?before=<id>&unread=1`: `{mentions, nextBefore}`, 30 per page, rechecking conversation access and that the message is live. `POST /api/notifications/mentions/read` accepts `{ids}` (1-50) or `{upTo}` for the caller's own notices only. `GET /api/notifications/count` now includes readable unread mentions.
+- `GET`/`PUT /api/notification-preferences`: `{preferences: [{category: 'mentions'|'tasks', inApp, emailDigest, quietStart, quietEnd}]}`. Quiet hours are `HH:MM`; set both to different times or leave both null. Defaults are in-app on and digest off. No digest email is sent.
+
 ## Portal collaboration and onboarding
 
 All routes below use the current Google personnel session. Hidden projects/tasks are 404; access is rechecked on every request.
