@@ -75,3 +75,39 @@ No private text is copied into broadly visible task or internal-message notices.
 Mail-category opt-out, quiet-hours delivery, bundling, push/digest, timed reply-due
 reminders, plus other domains' approvals/project/meeting integrations remain
 uncovered. This package does not claim to finish the entire unified inbox.
+
+## A4 offboarding integration contract
+
+- Schema: `db/schema/mail-inbox.ts`, exported `mailConversations.assignedTo`,
+  SQL `mail_conversations.assigned_to` (nullable FK to `people.id`). There is no
+  `assigned_person_id` field.
+- Reusable operation: exported `triageConversation` in
+  `src/server/mailboxes/inbox-actions.ts`. Example:
+
+  ```ts
+  await triageConversation(actor, {
+    mailboxId,
+    conversationId,
+    body: { assignedTo: replacementPersonId }, // null explicitly unassigns
+  });
+  ```
+
+- HTTP surface: `PATCH /api/mailboxes/:id/conversations/:conversationId`, thin
+  handler at `routes/api/mailboxes/[id]/conversations/[conversationId]/index.ts`;
+  input schema `triageInput` in `src/server/mailboxes/inbox-validation.ts`.
+- Actor must currently hold `mailbox.read` **and** `mailbox.assign`; platform
+  admin or organization-lifecycle permission does not grant mailbox access.
+  Inaccessible mailbox/thread is 404, missing assign capability 403, inactive
+  or non-reading replacement 400. Actor/target grants are rechecked inside the
+  guarded D1 write. No requirement that the old assignee still has a grant.
+- Reassignment preserves status/priority/tags/due date unless explicitly patched,
+  writes `mail.conversation.triage` to `mail_audit`, and notifies the replacement
+  (except self-assignment/unchanged assignment). Reuse the operation rather than
+  updating `assigned_to` directly and bypassing current eligibility.
+- Verification: existing triage E2E now explicitly reassigns after revoking the
+  former assignee, checks preserved triage fields, then unassigns.
+- This is a single-conversation operation, **not** an atomic bulk offboarding
+  transaction. A4 owns enumeration and partial-failure handling. Outstanding email
+  review requests are capability-based (`mail_drafts.state = 'submitted'`), not an
+  assigned reviewer field; transferring grants must not rewrite prior approval
+  signatures. Neither org worktree nor A4 code is edited by B1.

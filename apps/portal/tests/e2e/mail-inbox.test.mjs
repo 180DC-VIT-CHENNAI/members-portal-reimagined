@@ -167,6 +167,15 @@ test('only assigners triage; assignees must hold mailbox read; views and notes f
   assert.equal((await admin.put(`/api/mailboxes/${mailbox.id}/members/${ids.viewer}`, { capabilities: [] })).status, 200);
   assert.equal((await viewer.get(path)).status, 404);
   assert.equal((await assigner.patch(path, { assignedTo: ids.viewer })).status, 400);
+  // Offboarding can hand over a thread even after the former assignee's grant is gone.
+  assert.equal((await assigner.patch(path, { assignedTo: ids.drafter })).status, 200);
+  const handedOver = (await drafter.get(path)).json.conversation;
+  assert.equal(handedOver.assignedTo, ids.drafter);
+  assert.equal(handedOver.status, 'closed', 'handover preserves thread status and other triage fields');
+  assert.equal(handedOver.priority, 'high');
+  assert.deepEqual(handedOver.tags, ['partnership', 'partnership']);
+  assert.equal((await assigner.patch(path, { assignedTo: null })).status, 200);
+  assert.equal((await assigner.get(path)).json.conversation.assignedTo, null);
 });
 
 test('search is scoped to the mailbox and never matches quarantined content', async () => {
