@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NOTIFICATIONS_CHANGED } from '../components/NotificationLink.tsx';
 import { MentionNotices } from '../components/messages/MentionNotices.tsx';
+import { MailNotices } from '../components/MailNotices.tsx';
 import { Button, EmptyState, ErrorState, LoadingBlock, PageHeader, ProblemAlert } from '../components/ui.tsx';
 import { api, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
@@ -78,7 +79,7 @@ export function NotificationsPage() {
       <PageHeader
         overline="Inbox"
         title="Notifications"
-        lede="Message mentions, task assignments, comments and approaching deadlines."
+        lede="Message mentions, shared mailbox events, task assignments, comments and approaching deadlines."
         actions={
           <div className="cluster">
             <Link className="btn btn-ghost btn-sm" to="/notifications/preferences">Preferences</Link>
@@ -93,6 +94,7 @@ export function NotificationsPage() {
       />
       <ProblemAlert problem={problem} />
       <MentionNotices unreadOnly={unreadOnly} />
+      <MailNotices key={String(unreadOnly)} unreadOnly={unreadOnly} />
       <h2>Task notices</h2>
       {first.problem ? (
         <ErrorState problem={first.problem} onRetry={first.reload} />

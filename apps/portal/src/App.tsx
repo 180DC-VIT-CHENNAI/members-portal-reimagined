@@ -62,6 +62,8 @@ import { NewsletterSubscribersPage } from './pages/admin/NewsletterSubscribersPa
 import { MailboxesPage } from './pages/mail/MailboxesPage.tsx';
 import { MailboxPage } from './pages/mail/MailboxPage.tsx';
 import { DraftPage } from './pages/mail/DraftPage.tsx';
+import { ConversationPage as MailConversationPage } from './pages/mail/ConversationPage.tsx';
+import { MailboxLink } from './components/MailboxLink.tsx';
 import { EngagementPage } from './pages/crm/EngagementPage.tsx';
 import { OpportunityPage } from './pages/crm/OpportunityPage.tsx';
 import { OrganizationPage } from './pages/crm/OrganizationPage.tsx';
@@ -236,7 +238,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
                 .filter((item) => item.show)
                 .map((item) => (
                   <li key={item.to}>
-                    {item.to === '/messages' ? <MessagesLink active={item.active} /> : item.to === '/notifications' ? <NotificationLink active={item.active} /> : <Link to={item.to} className="nav-link" aria-current={item.active ? 'page' : undefined}>
+                    {item.to === '/messages' ? <MessagesLink active={item.active} /> : item.to === '/notifications' ? <NotificationLink active={item.active} /> : item.to === '/mailboxes' ? <MailboxLink active={item.active} /> : <Link to={item.to} className="nav-link" aria-current={item.active ? 'page' : undefined}>
                       <Icon name={item.icon} size={18} />
                       {item.label}
                     </Link>}
@@ -292,6 +294,8 @@ function route(path: string, home: string, next: string | null) {
   if (composeMail) return <DraftPage key={path} id={composeMail.id} />;
   const editMail = matchPath('/mailboxes/:id/drafts/:draftId/edit', path);
   if (editMail) return <DraftPage key={path} id={editMail.id} draftId={editMail.draftId} edit />;
+  const mailConversation = matchPath('/mailboxes/:id/conversations/:conversationId', path);
+  if (mailConversation) return <MailConversationPage key={path} id={mailConversation.id} conversationId={mailConversation.conversationId} />;
   const mailDraft = matchPath('/mailboxes/:id/drafts/:draftId', path);
   if (mailDraft) return <DraftPage key={path} id={mailDraft.id} draftId={mailDraft.draftId} />;
   const mailbox = matchPath('/mailboxes/:id', path);
