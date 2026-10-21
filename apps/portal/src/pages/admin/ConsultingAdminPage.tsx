@@ -3,6 +3,7 @@ import { Alert, BackLink, Button, Card, ConfirmDialog, Dialog, EmptyState, Error
 import { api, problemFrom, useLoad } from '../../lib/api.ts';
 import type { ApiProblem } from '../../lib/errors.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { navigate } from '../../lib/router.tsx';
 import { useSession } from '../../lib/session.tsx';
 import type { ConsultingRequest } from '../../lib/types.ts';
 import { Forbidden } from './Forbidden.tsx';
@@ -28,6 +29,20 @@ export function ConsultingAdminPage() {
       await api('/api/consulting-requests/:id', { method: 'DELETE', params: { id: removing.id } });
       setRemoving(null);
       list.reload();
+    } catch (err) {
+      setProblem(problemFrom(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Create (or reopen) the request's CRM opportunity; converting again links the same records. */
+  const openInCrm = async (request: ConsultingRequest) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const result = await api('/api/consulting-requests/:id/convert', { method: 'POST', params: { id: request.id } });
+      navigate(`/crm/opportunities/${result.opportunityId}`);
     } catch (err) {
       setProblem(problemFrom(err));
     } finally {
@@ -91,6 +106,11 @@ export function ConsultingAdminPage() {
                         Reject
                       </Button>
                     </>
+                  )}
+                  {can('crm.manage') && (
+                    <Button size="sm" icon="arrowRightLeft" disabled={busy} onClick={() => void openInCrm(r)}>
+                      Open in CRM
+                    </Button>
                   )}
                   <Button size="sm" variant="danger-quiet" icon="trash" onClick={() => setRemoving(r)}>
                     Delete

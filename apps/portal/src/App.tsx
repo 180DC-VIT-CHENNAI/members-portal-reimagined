@@ -57,6 +57,11 @@ import { NewsletterSubscribersPage } from './pages/admin/NewsletterSubscribersPa
 import { MailboxesPage } from './pages/mail/MailboxesPage.tsx';
 import { MailboxPage } from './pages/mail/MailboxPage.tsx';
 import { DraftPage } from './pages/mail/DraftPage.tsx';
+import { EngagementPage } from './pages/crm/EngagementPage.tsx';
+import { OpportunityPage } from './pages/crm/OpportunityPage.tsx';
+import { OrganizationPage } from './pages/crm/OrganizationPage.tsx';
+import { OrganizationsPage } from './pages/crm/OrganizationsPage.tsx';
+import { PipelinePage } from './pages/crm/PipelinePage.tsx';
 
 const LetterStudioPage = lazy(() => import('./pages/letters/LetterStudioPage.tsx').then((module) => ({ default: module.LetterStudioPage })));
 
@@ -163,6 +168,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}`, tab: false },
     { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements', tab: false },
     { to: '/meets', label: 'Meets', icon: 'calendar', show: can(permissions, 'meets.view'), active: path === '/meets' },
+    { to: '/crm', label: 'Clients', icon: 'arrowRightLeft', show: can(permissions, 'crm.view'), active: path.startsWith('/crm'), tab: false },
     { to: '/projects', label: 'Projects', icon: 'clipboard', show: true, active: path.startsWith('/projects') },
     {
       to: '/teams',
@@ -284,6 +290,14 @@ function route(path: string, home: string, next: string | null) {
   if (mailDraft) return <DraftPage key={path} id={mailDraft.id} draftId={mailDraft.draftId} />;
   const mailbox = matchPath('/mailboxes/:id', path);
   if (mailbox) return <MailboxPage key={path} id={mailbox.id} />;
+  if (path === '/crm') return <PipelinePage />;
+  if (path === '/crm/organizations') return <OrganizationsPage />;
+  const crmOrganization = matchPath('/crm/organizations/:id', path);
+  if (crmOrganization) return <OrganizationPage key={path} id={crmOrganization.id} />;
+  const crmOpportunity = matchPath('/crm/opportunities/:id', path);
+  if (crmOpportunity) return <OpportunityPage key={path} id={crmOpportunity.id} />;
+  const crmEngagement = matchPath('/crm/engagements/:id', path);
+  if (crmEngagement) return <EngagementPage key={path} id={crmEngagement.id} />;
   if (path === '/people') return <DirectoryPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/meets') return <MeetsPage />;

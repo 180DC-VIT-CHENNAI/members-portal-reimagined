@@ -13,3 +13,4 @@ export * from './schema/notifications';
 export * from './schema/onboarding';
 export * from './schema/project-files';
 export * from './schema/mailboxes';
+export * from './schema/crm';
