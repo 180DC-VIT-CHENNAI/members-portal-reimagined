@@ -215,3 +215,39 @@ test('legal holds also block deletion through the parent task or project', async
   assert.equal((await hold(id, false)).status, 200);
   assert.equal((await admin.del(`/api/projects/${projectId}/tasks/${task.json.id}`)).status, 200);
 });
+
+test('archiving stops version changes and shares but preserves authenticated downloads and legal holds', async () => {
+  // Given a held attachment and an existing share.
+  const id = await uploadProject('archived bytes');
+  const created = await share(id);
+  const version = (await admin.get(`${doc(id)}/versions`)).json.versions[0];
+  // When a manager archives it.
+  const archived = await admin.patch(`${doc(id)}/retention`, {
+    retentionUntil: '2030-01-01', legalHold: true, archived: true, reviewStatus: 'approved',
+  });
+  assert.equal(archived.status, 200, archived.text);
+  // Then archive is not erasure, and neither archive nor review approval bypasses the hold.
+  assert.equal((await publicClient.get(created.json.url)).status, 404);
+  assert.equal((await share(id)).status, 400);
+  assert.equal((await admin.upload(`${doc(id)}/versions`, txt('replacement'))).status, 409);
+  assert.equal((await admin.post(`${doc(id)}/versions/${version.id}/restore`)).status, 409);
+  assert.equal((await member.get(`/api/projects/${projectId}/files/${id}/download`)).text, 'archived bytes');
+  assert.equal((await admin.del(`/api/projects/${projectId}/files/${id}`)).status, 409);
+  assert.equal((await hold(id, false)).status, 200);
+});
+
+test('a share stops working when its creator loses project access', async () => {
+  // Given a finance member's share of a finance project attachment.
+  const id = await uploadProject();
+  const created = await member.post(`${doc(id)}/shares`, { expiresAt: future() });
+  assert.equal(created.status, 201, created.text);
+  const person = portal.db.prepare('SELECT id FROM people WHERE email = ?').get('doc.finance@example.com');
+  // When the creator moves outside the project's audience.
+  portal.db.prepare('UPDATE people SET department_id = ? WHERE id = ?').run('marketing', person.id);
+  try {
+    // Then possession of the bearer URL no longer permits downloading.
+    assert.equal((await publicClient.get(created.json.url)).status, 404);
+  } finally {
+    portal.db.prepare('UPDATE people SET department_id = ? WHERE id = ?').run('finance', person.id);
+  }
+});
