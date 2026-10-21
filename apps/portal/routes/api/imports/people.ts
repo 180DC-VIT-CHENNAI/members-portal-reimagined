@@ -8,6 +8,7 @@ import { requirePermission } from '../../../src/server/guard';
 import { badRequest, conflict } from '../../../src/server/http';
 import { invitationCampaign, invitationHtml, invitationOrigin, isUniqueViolation } from '../../../src/server/invitations';
 import { can } from '../../../src/server/permissions';
+import { statusHistoryInsert } from '../../../src/server/status-history';
 import { emailAddress, fullName } from '../../../src/server/validation';
 
 const MAX_ROWS = 500;
@@ -86,6 +87,7 @@ export const POST = defineHandler.withValidator({
     const personId = crypto.randomUUID();
     inserts.push(
       db.insert(people).values({ id: personId, email: r.email, fullName: r.full_name, departmentId, accessRoleId, invitedBy: actor.person.id }),
+      statusHistoryInsert({ personId, from: null, to: 'invited', reason: 'csv_invitation', effectiveOn: today, actorPersonId: actor.person.id }),
     );
     if (positionId && currentTerm) {
       inserts.push(

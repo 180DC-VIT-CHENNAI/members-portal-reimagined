@@ -5,6 +5,7 @@ import { and, db, eq, inArray, isNull } from 'void/db';
 import { audit } from '../../../../src/server/audit';
 import { requirePermission } from '../../../../src/server/guard';
 import { badRequest, idParam, notFound } from '../../../../src/server/http';
+import { statusHistoryInsert, todayIso } from '../../../../src/server/status-history';
 import { id } from '../../../../src/server/validation';
 
 /**
@@ -35,6 +36,12 @@ export const POST = defineHandler.withValidator({
   const carry = new Set(body.carryOver);
   const carried = open.filter((t) => carry.has(t.personId));
   const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const leaving = body.alumni.length
+    ? await db
+        .select({ id: people.id, status: people.status })
+        .from(people)
+        .where(and(inArray(people.id, body.alumni), inArray(people.status, ['active', 'on_leave', 'invited'])))
+    : [];
 
   await db.batch([
     db.update(terms).set({ isCurrent: false }).where(eq(terms.isCurrent, true)),
@@ -54,6 +61,9 @@ export const POST = defineHandler.withValidator({
             .where(and(inArray(people.id, body.alumni), inArray(people.status, ['active', 'on_leave', 'invited']))),
         ]
       : []),
+    ...leaving.map((p) =>
+      statusHistoryInsert({ personId: p.id, from: p.status, to: 'alumni', reason: `term_start:${next.id}`, effectiveOn: todayIso(), actorPersonId: actor.person.id }),
+    ),
   ]);
   if (body.alumni.length) {
     const gone = await db.select({ authUserId: people.authUserId }).from(people).where(inArray(people.id, body.alumni));

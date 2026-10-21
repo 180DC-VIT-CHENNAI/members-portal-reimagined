@@ -47,6 +47,9 @@ import { TeamInstanceFormPage } from './pages/TeamInstanceFormPage.tsx';
 import { TeamInstancePage } from './pages/TeamInstancePage.tsx';
 import { TeamInstancesPage } from './pages/TeamInstancesPage.tsx';
 import { NotFoundPage } from './pages/NotFoundPage.tsx';
+import { OrgChartPage } from './pages/OrgChartPage.tsx';
+import { HandoverPage } from './pages/HandoverPage.tsx';
+import { OnboardingPoliciesPage } from './pages/admin/OnboardingPoliciesPage.tsx';
 import { PersonPage } from './pages/PersonPage.tsx';
 import { CaseStudiesPage } from './pages/public/CaseStudiesPage.tsx';
 import { GalleryPage } from './pages/public/GalleryPage.tsx';
@@ -173,6 +176,8 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     { to: '/notifications', label: 'Notifications', icon: 'inbox', show: true, active: path === '/notifications', tab: false },
     { to: '/mailboxes', label: 'Shared mailboxes', icon: 'inbox', show: true, active: path.startsWith('/mailboxes'), tab: false },
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people', tab: false },
+    { to: '/org-chart', label: 'Org chart', icon: 'users', show: can(permissions, 'people.view'), active: path === '/org-chart', tab: false },
+    { to: '/handover', label: 'Board handover', icon: 'clipboard', show: true, active: path === '/handover', tab: false },
     // On phones the header avatar links to the profile.
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}`, tab: false },
     { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements', tab: false },
@@ -314,6 +319,8 @@ function route(path: string, home: string, next: string | null) {
   if (conversation) return <ConversationPage key={conversation.id} id={conversation.id} />;
   if (path === '/admin/message-reports') return <MessageReportsPage />;
   if (path === '/people') return <DirectoryPage />;
+  if (path === '/org-chart') return <OrgChartPage />;
+  if (path === '/handover') return <HandoverPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/meets') return <MeetsPage />;
   if (path === '/projects') return <ProjectsPage />;
@@ -354,6 +361,7 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/admin/import') return <ImportPage />;
   if (path === '/admin/positions') return <PositionsPage />;
   if (path === '/admin/terms') return <TermsPage />;
+  if (path === '/admin/onboarding-policies') return <OnboardingPoliciesPage />;
   if (path === '/admin/roles') return <RolesPage />;
   if (path === '/admin/audit') return <AuditPage />;
   if (path === '/admin/case-studies') return <CaseStudiesAdminPage />;
