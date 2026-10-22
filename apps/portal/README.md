@@ -45,7 +45,17 @@ New mailboxes have outbound transport disabled. Development capture is never ava
 
 The minute cron records `accepted`, `failed` or `outcome_unknown`, never invented delivery confirmation. An interrupted claim becomes uncertain after 15 minutes and is not automatically resent. A global `/api/admin/mail-outbound` pause is independent of general maintenance mode. Private attachments use `CLUB_FILES/mail-files/` and cannot be reached through the shared file library; total raw attachments are capped at 3 MiB and checked again before dispatch.
 
-See ADR-011 and the shared-mailbox API contract. Inbound conversations, routing, CRM links and Template Studio are subsequent packages, not features of this increment.
+See ADR-011 and the shared-mailbox API contract. Inbound conversations, routing and CRM links are subsequent packages, not features of this increment; Template Studio follows below.
+
+## Email Template Studio
+
+`/templates` manages reusable, versioned templates for shared mailboxes (spec 3.7). A template is owned club-wide, by a department, or by one mailbox. Club-wide and department templates use the `templates.author|edit|publish|retire|draft|review|send` grants (seeded: admin global; directors author/edit/publish/retire in their department and draft/review/send everywhere; members draft/review/send). Mailbox-owned templates ignore those grants and follow the mailbox ACL: `mailbox.manage` authors, edits, publishes and retires; drafting, review and send need the matching mailbox capability. An optional per-template policy narrows any action to listed people. Inaccessible templates are 404.
+
+Every save writes an immutable version; a stale save is 409. Publishing points the template at its latest version, and only that published version can start a draft. Drafts store the version ID in their snapshot, so review and approval bind the rendered snapshot and the exact version, not a mutable template. Edit, submit, review and send each recheck the pinned version's action permission, allowed mailboxes, allowed recipients and retirement. Retiring stops new drafts and further steps on unsent pinned drafts; sent messages keep their frozen content. A message already approved and queued before retirement still dispatches.
+
+Fields (short/long text, date, amount, CRM organisation/contact, select, multi-select, URL, attachment, yes/no, repeating rows) carry required flags, bounds, examples and options. Rendering is single-pass text substitution of `{{key}}` with no expressions, helpers or HTML source; values are escaped for HTML and line breaks are stripped from subjects. Trusted automatic fields (`member_name`, `member_position` from current tenures, `club_name`, `club_website`) override caller values. CRM fields resolve server-side through CRM access; a contact needs granted consent and no do-not-contact flag. Preview returns the subject, text, HTML and signature plus warnings for unknown, unresolved or invalid values, missing recipients, missing attachments and attachments over 3 MiB; a draft is refused while warnings remain.
+
+The compose page offers published templates for that mailbox. "Send test to me" queues one message through the capture-able system queue to the caller's own sign-in address, obeys the mailbox category policy and both outbound pauses, and never accepts recipients. Templates with `followupDays` produce follow-up suggestions on the mailbox page after the interval; nothing is drafted or sent automatically. Mailbox managers get the eleven starter recipes as a starting point. CSV audience personalization is not enabled. See `docs/execution/tmpl-b2-coverage.md`.
 
 ## Internal messaging
 
