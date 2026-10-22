@@ -7,10 +7,12 @@ import { atomic, auditStatement, GRANT_SQL, requireCapability, statement } from 
 import { draftFor } from './drafts';
 import { canonicalContent, digest } from './rules';
 import { reviewInput } from './validation';
+import { checkPinned } from '../templates/access';
 
 export async function submitDraft(actor: Principal, mailboxId: string, draftId: string, revision: number) {
   const loaded = await draftFor(actor, mailboxId, draftId);
   requireCapability(loaded, 'mailbox.draft.submit');
+  await checkPinned(actor, loaded.snapshot.templateVersionId, 'draft', mailboxId, [...loaded.snapshot.recipients.to, ...loaded.snapshot.recipients.cc, ...loaded.snapshot.recipients.bcc]);
   if (loaded.draft.createdBy !== actor.person.id && !loaded.capabilities.includes('mailbox.draft.edit_any')) forbidden();
   if (!['draft', 'changes_requested'].includes(loaded.draft.state) || loaded.draft.revision !== revision) conflict('draft_changed');
   return recordReview({
@@ -22,6 +24,8 @@ export async function submitDraft(actor: Principal, mailboxId: string, draftId: 
 export async function reviewDraft(actor: Principal, mailboxId: string, draftId: string, input: v.InferOutput<typeof reviewInput>) {
   const loaded = await draftFor(actor, mailboxId, draftId);
   requireCapability(loaded, 'mailbox.review');
+  await checkPinned(actor, loaded.snapshot.templateVersionId, 'review', mailboxId, [...loaded.snapshot.recipients.to, ...loaded.snapshot.recipients.cc, ...loaded.snapshot.recipients.bcc]);
+  if (input.decision === 'approved') await checkPinned(actor, loaded.snapshot.templateVersionId, 'send', mailboxId, [...loaded.snapshot.recipients.to, ...loaded.snapshot.recipients.cc, ...loaded.snapshot.recipients.bcc]);
   const required: ('mailbox.review' | 'mailbox.approve' | 'mailbox.send')[] = ['mailbox.review'];
   if (input.decision === 'approved') {
     requireCapability(loaded, 'mailbox.approve');
