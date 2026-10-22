@@ -9,6 +9,7 @@ const STATUS_HELP: Record<PersonStatus, string> = {
   invited: 'Can sign in for the first time with Google.',
   active: 'Full access for their role.',
   on_leave: 'Keeps access while away.',
+  suspended: 'Access is paused until an authorized person restores it. The profile and assignments stay.',
   alumni: 'Access ends now. The profile and history stay.',
   removed: 'Access ends now. The profile and history stay.',
 };
@@ -21,7 +22,7 @@ export function StatusCard({ person, onChanged }: { person: PersonDetail; onChan
   const [effectiveOn, setEffectiveOn] = useState(todayUtc);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | null>(null);
-  const endsAccess = target === 'alumni' || target === 'removed';
+  const endsAccess = target === 'suspended' || target === 'alumni' || target === 'removed';
 
   const confirm = async () => {
     if (!target) return;
@@ -43,7 +44,7 @@ export function StatusCard({ person, onChanged }: { person: PersonDetail; onChan
     <Card title="Status" description={`Currently ${STATUS_LABEL[person.status].toLowerCase()}. ${STATUS_HELP[person.status]}`}>
       <div className="cluster">
         {options.map((s) => (
-          <Button key={s} variant={s === 'alumni' || s === 'removed' ? 'danger-quiet' : 'secondary'} onClick={() => setTarget(s)}>
+          <Button key={s} variant={s === 'suspended' || s === 'alumni' || s === 'removed' ? 'danger-quiet' : 'secondary'} onClick={() => setTarget(s)}>
             {person.status === 'removed' && s === 'active' ? 'Reinstate' : `Move to ${STATUS_LABEL[s].toLowerCase()}`}
           </Button>
         ))}

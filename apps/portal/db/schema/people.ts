@@ -4,7 +4,7 @@ import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'void
 import { accessRoles } from './access';
 import { departments, positions, terms } from './org';
 
-export const PERSON_STATUSES = ['invited', 'active', 'on_leave', 'alumni', 'removed'] as const;
+export const PERSON_STATUSES = ['invited', 'active', 'on_leave', 'suspended', 'alumni', 'removed'] as const;
 export type PersonStatus = (typeof PERSON_STATUSES)[number];
 
 /**

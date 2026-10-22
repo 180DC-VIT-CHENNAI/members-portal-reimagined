@@ -24,7 +24,7 @@ export const GET = defineHandler(async (c) => {
 const reasonText = v.pipe(v.string(), v.trim(), v.maxLength(500));
 
 /**
- * Move a person through the lifecycle. Losing access (alumni, removed) ends
+ * Move a person through the lifecycle. Losing access (suspended, alumni, removed) ends
  * their sessions immediately; the record is kept. Every change is recorded in
  * the status history with its reason (`reason`, or the older `note`) and the
  * date it counts from (`effectiveOn`, today by default, never in the future).
@@ -46,6 +46,7 @@ export const POST = defineHandler.withValidator({
   const effectiveOn = body.effectiveOn ?? todayIso();
   if (effectiveOn > todayIso()) badRequest('effective_date_in_future');
   const reason = body.reason || body.note || null;
+  if (result.status === 'suspended' && !reason) badRequest('status_reason_required');
 
   await db.batch([
     db.update(people).set({ status: result.status, statusChangedAt: sqlNow(), updatedAt: sqlNow() }).where(eq(people.id, person.id)),

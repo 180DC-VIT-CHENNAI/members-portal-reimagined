@@ -33,6 +33,32 @@ after(async () => {
 });
 
 describe('status history', () => {
+  test('suspension revokes sessions, requires a reason and can be restored without restoring an old session', async () => {
+    const invited = await admin.post('/api/people', { email: 'suspend.qa@example.com', fullName: 'Suspension fixture', departmentId: 'tech' });
+    assert.equal(invited.status, 201, invited.text);
+    const id = invited.json.id;
+    const original = signIn(portal, 'suspend.qa@example.com');
+    assert.equal((await original.get('/api/me')).status, 200);
+    const url = `/api/people/${id}/status`;
+    assert.equal((await clients.dirF.post(url, { status: 'suspended', reason: 'Review pending' })).status, 403);
+    assert.equal((await admin.post(url, { status: 'suspended' })).status, 400);
+
+    const suspended = await admin.post(url, { status: 'suspended', reason: 'Review pending' });
+    assert.equal(suspended.status, 200, suspended.text);
+    assert.equal(suspended.json.status, 'suspended');
+    assert.equal(count('SELECT COUNT(*) AS n FROM session WHERE userId = (SELECT auth_user_id FROM people WHERE id = ?)', id), 0);
+    assert.equal((await original.get('/api/me')).status, 401);
+
+    const restored = await admin.post(url, { status: 'active', reason: 'Review complete' });
+    assert.equal(restored.status, 200, restored.text);
+    assert.equal((await original.get('/api/me')).status, 401);
+    const fresh = signIn(portal, 'suspend.qa@example.com');
+    assert.equal((await fresh.get('/api/me')).status, 200);
+    const history = await admin.get(url);
+    assert.ok(history.json.some((entry) => entry.toStatus === 'suspended' && entry.reason === 'Review pending'));
+    assert.ok(history.json.some((entry) => entry.fromStatus === 'suspended' && entry.toStatus === 'active'));
+  });
+
   test('a lifecycle change records actor, reason and effective date', async () => {
     const res = await admin.post(`/api/people/${ids.successor}/status`, { status: 'on_leave', reason: 'exams', effectiveOn: '2026-09-01' });
     assert.equal(res.status, 200, res.text);

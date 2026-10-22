@@ -1,19 +1,21 @@
 import type { PersonStatus } from './types.ts';
 
-export const STATUS_ORDER: readonly PersonStatus[] = ['active', 'invited', 'on_leave', 'alumni', 'removed'];
+export const STATUS_ORDER: readonly PersonStatus[] = ['active', 'invited', 'on_leave', 'suspended', 'alumni', 'removed'];
 
 export const STATUS_LABEL: Record<PersonStatus, string> = {
   invited: 'Invited',
   active: 'Active',
   on_leave: 'On leave',
+  suspended: 'Suspended',
   alumni: 'Alumni',
   removed: 'Removed',
 };
 
 export const TRANSITIONS: Record<PersonStatus, readonly PersonStatus[]> = {
   invited: ['removed'],
-  active: ['on_leave', 'alumni', 'removed'],
-  on_leave: ['active', 'alumni', 'removed'],
+  active: ['on_leave', 'suspended', 'alumni', 'removed'],
+  on_leave: ['active', 'suspended', 'alumni', 'removed'],
+  suspended: ['active', 'on_leave', 'alumni', 'removed'],
   alumni: ['active', 'removed'],
   removed: ['active'],
 };
