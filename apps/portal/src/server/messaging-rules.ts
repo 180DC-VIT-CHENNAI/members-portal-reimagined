@@ -71,3 +71,10 @@ export function validQuietHours(start: string | null, end: string | null): boole
   if (start === null || end === null) return start === end;
   return HHMM.test(start) && HHMM.test(end) && start !== end;
 }
+
+/** Saved HH:MM intervals use India time, with an inclusive start and exclusive end. */
+export function quietHoursActive(start: string | null, end: string | null, now: Date): boolean {
+  if (start === null || end === null) return false;
+  const localTime = new Date(now.getTime() + 330 * 60_000).toISOString().slice(11, 16);
+  return start < end ? localTime >= start && localTime < end : localTime >= start || localTime < end;
+}

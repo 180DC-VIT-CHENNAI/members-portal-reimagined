@@ -16,6 +16,7 @@ Live business transport is disabled by default. Cloudflare is restricted to exis
 
 ## Portal onboarding and collaboration
 
+- Notification quiet hours apply separately to task and mention badges in India time. An overnight interval spans midnight; its start is inclusive and its end exclusive. Quiet hours retain unread inbox entries and restore their badge contribution afterward, subject to current access and the category's in-app switch.
 - Invitations validate their complete input before writing. Person, optional tenure, queued invitation and audit are atomic. Import dry runs never queue mail. Invitation links use the canonical production portal, not an arbitrary browser Origin.
 - Onboarding is a nonblocking checklist. Profile progress is derived; read and hide actions are explicit and person-owned. Optional phone and registration fields never gate progress.
 - Assigning work and posting a comment atomically create deduplicated in-app notices for relevant other people. An hourly job at minute 5 UTC creates deadline notices for visible open/blocked tasks due today or tomorrow; repeated runs do not duplicate them. Current access filters labels, paging and unread counts.

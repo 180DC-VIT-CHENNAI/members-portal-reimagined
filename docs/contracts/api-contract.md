@@ -76,7 +76,7 @@ All routes use the current Google personnel session. A conversation the caller c
 - `GET /api/messages/search?q=<2-100 chars>&before=<id>`: `{results, nextBefore}`, 30 live messages from readable conversations, case-insensitive substring match.
 - `GET /api/messages/reports` and `POST /api/messages/reports/:id` with `{action: 'dismiss'|'remove'}`: global `chat.moderate`. Moderators see only the reported message and where it was posted. Removal tombstones the message and writes an audit entry with no text.
 - `GET /api/notifications/mentions?before=<id>&unread=1`: `{mentions, nextBefore}`, 30 per page, rechecking conversation access and that the message is live. `POST /api/notifications/mentions/read` accepts `{ids}` (1-50) or `{upTo}` for the caller's own notices only. `GET /api/notifications/count` now includes readable unread mentions.
-- `GET`/`PUT /api/notification-preferences`: `{preferences: [{category: 'mentions'|'tasks', inApp, emailDigest, quietStart, quietEnd}]}`. Quiet hours are `HH:MM`; set both to different times or leave both null. Defaults are in-app on and digest off. No digest email is sent.
+- `GET`/`PUT /api/notification-preferences`: `{preferences: [{category: 'mentions'|'tasks', inApp, emailDigest, quietStart, quietEnd}]}`. Quiet hours are `HH:MM` in India time; set both to different times or leave both null. The start is inclusive, the end exclusive, and overnight windows are supported. `GET /api/notifications/count` excludes categories that are quiet now or have in-app notices disabled. Inbox lists remain accessible and unread; pending notices count again when quiet hours end. Defaults are in-app on and digest off. No digest email is sent.
 
 ## Portal collaboration and onboarding
 
