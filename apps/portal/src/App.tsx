@@ -32,6 +32,9 @@ import { TermsPage } from './pages/admin/TermsPage.tsx';
 import { DepartmentPage } from './pages/DepartmentPage.tsx';
 import { DirectoryPage } from './pages/DirectoryPage.tsx';
 import { FilesPage } from './pages/FilesPage.tsx';
+import { KnowledgePage } from './pages/KnowledgePage.tsx';
+import { KnowledgeArticlePage } from './pages/KnowledgeArticlePage.tsx';
+import { KnowledgeEditorPage } from './pages/KnowledgeEditorPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { MeetsPage } from './pages/MeetsPage.tsx';
 import { MorePage } from './pages/MorePage.tsx';
@@ -192,6 +195,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
       active: path.startsWith('/departments/'),
     },
     { to: '/files', label: 'Files', icon: 'fileText', show: can(permissions, 'files.view'), active: path === '/files' },
+    { to: '/knowledge', label: 'Knowledge', icon: 'bookOpen', show: can(permissions, 'knowledge.view'), active: path.startsWith('/knowledge'), tab: false },
     { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') || path.startsWith('/newsletter-editor') || path.startsWith('/letters') },
   ];
   const visible = nav.filter((item) => item.show);
@@ -325,6 +329,12 @@ function route(path: string, home: string, next: string | null) {
   const instance = matchPath('/teams/:id', path);
   if (instance) return <TeamInstancePage key={instance.id} id={instance.id} />;
   if (path === '/files') return <FilesPage />;
+  if (path === '/knowledge') return <KnowledgePage />;
+  if (path === '/knowledge/new') return <KnowledgeEditorPage />;
+  const knowledgeEdit = matchPath('/knowledge/:id/edit', path);
+  if (knowledgeEdit) return <KnowledgeEditorPage id={knowledgeEdit.id} />;
+  const knowledgeArticle = matchPath('/knowledge/:id', path);
+  if (knowledgeArticle) return <KnowledgeArticlePage id={knowledgeArticle.id} />;
   const department = matchPath('/departments/:id', path);
   if (department) return <DepartmentPage key={department.id} id={department.id} />;
   const person = matchPath('/people/:id', path);

@@ -19,6 +19,21 @@ Every route needs a personnel session and `crm.view` (403 otherwise). Records th
 - `GET /api/crm/duplicates`, `POST /api/crm/organizations/:id/merge` and `POST /api/crm/contacts/:id/merge` `{sourceId}`: `crm.admin`.
 - `POST /api/consulting-requests/:id/convert`: `consulting.manage` and `crm.manage`; `{organizationId, contactId, opportunityId, created}`; `created` is true only the first time, later calls return the same ids.
 
+## Void portal documents and knowledge
+
+`:fileId` is a project/task file ID or a shared club-file ID. Each route first resolves the existing file ACL (project access or `files.view`), so an inaccessible or unknown ID returns 404. Mutations need project task management or `files.manage` (403 otherwise). Reads are private/no-store.
+
+- `GET /api/documents/:fileId/versions`: `{document, versions, canManage}`, at most 100 versions, newest first. `POST` (manage, multipart `file`, 30/hour, 25 MiB shared-file policy) returns 201 `{id, number, checksum}`. A concurrent revision change is 409 `version_changed`, and an archived document is 409.
+- `GET .../versions/:versionId/download`: the specific version as an attachment. `POST .../versions/:versionId/restore` (manage) returns 201 with a new version copied from it.
+- `PATCH /api/documents/:fileId/retention` (manage): `{retentionUntil: YYYY-MM-DD|null, legalHold, archived?, reviewStatus?: pending|approved|rejected}`. Audited.
+- `GET /api/documents/:fileId/shares`: the caller's links (managers see all). `POST` (30/hour) takes `{expiresAt: ISO within 30 days, maxDownloads?: 1..100000|null, requireSignIn?}` and returns 201 `{id, url, expiresAt}`. The URL contains the only copy of the token. `DELETE .../shares/:shareId` revokes the link. Creation and revocation are audited.
+- `GET /api/document-shares/:token`: public, 60/minute. Returns the frozen version as an attachment (`private, no-store`, nosniff, sandbox CSP), or 404 for malformed, unknown, revoked, expired, over-limit, archived, creator-lost-access, or (when sign-in is required) unauthenticated requests.
+- `DELETE /api/projects/.../files/:fileId` and `DELETE /api/club-files/:id` return 409 `legal_hold` while a hold is set. Deleting a parent task or project also returns 409 when any affected attachment is held.
+- `GET /api/knowledge?search=&before=<id>`: `knowledge.view`, 50 readable articles (descending ID) plus `nextBefore`. Search matches title and body only within readable rows. 60/minute.
+- `POST /api/knowledge`: `knowledge.edit` for the scope. `{title, slug, body, scope: global|department, departmentId?, status, tags?, projectId?, taskId?, meetId?}` returns 201 `{id, revision}`. A non-draft status requires `knowledge.publish`. A duplicate slug is 409. An inaccessible department or linked resource is 404.
+- `GET /api/knowledge/:id`: an article with `renderedBody` (escaped HTML), `canEdit` and `canPublish`. Unreadable articles are 404. `PUT` takes the same body plus `revision`. A stale revision is 409, and so is a scope change.
+- `GET /api/knowledge/:id/revisions`: `knowledge.edit`, at most 100 snapshots.
+
 ## Void portal shared mailboxes
 
 These routes use the current Google personnel session and mailbox-local capabilities, not titles or the global `email.send` permission. An inaccessible mailbox/object is 404; a forbidden operation on a readable mailbox is 403. Read responses are private/no-store.

@@ -11,6 +11,9 @@ import { badRequest, conflict, idParam, notFound } from './http';
 import type { Principal } from './principal';
 import { type LoadedProject, projectFor, requireRight, taskOr404 } from './projects';
 import { rateLimit } from './rate-limit';
+import { assertDeletable, initializeDocument } from './document-access';
+import { latestDownload } from './document-versions';
+import { documents, documentVersions } from '@schema';
 
 /** Outside SHARED_FILE_CATEGORIES, so the shared library never lists or serves these objects. */
 export const PROJECT_FILES_PREFIX = 'project-files/';
@@ -48,14 +51,16 @@ export async function listFiles(c: Context, scope: FileScope) {
   const rows = await db
     .select({
       id: projectFiles.id,
-      fileName: projectFiles.fileName,
-      contentType: projectFiles.contentType,
-      bytes: projectFiles.bytes,
+      fileName: sql<string>`coalesce(${documentVersions.fileName}, ${projectFiles.fileName})`,
+      contentType: sql<string>`coalesce(${documentVersions.contentType}, ${projectFiles.contentType})`,
+      bytes: sql<number>`coalesce(${documentVersions.bytes}, ${projectFiles.bytes})`,
       uploadedByName: people.fullName,
       createdAt: projectFiles.createdAt,
     })
     .from(projectFiles)
     .leftJoin(people, eq(people.id, projectFiles.uploadedBy))
+    .leftJoin(documents, eq(documents.projectFileId, projectFiles.id))
+    .leftJoin(documentVersions, and(eq(documentVersions.documentId, documents.id), eq(documentVersions.number, documents.revision)))
     .where(inScope(scope))
     .orderBy(desc(projectFiles.createdAt), desc(projectFiles.id))
     .limit(MAX_FILES_PER_SCOPE);
@@ -105,6 +110,7 @@ export async function uploadFile(c: Context, scope: FileScope) {
     }
     throw err;
   }
+  await initializeDocument(c, { id, projectFileId: id, sharedKey: null, key, fileName, contentType, uploadedBy: scope.principal.person.id, createdAt: new Date().toISOString() });
   await audit(scope.principal.person.id, 'project_file.upload', 'project_file', id, { projectId, taskId: scope.taskId, fileName });
   return c.json({ id, fileName, bytes: file.size }, 201);
 }
@@ -112,9 +118,7 @@ export async function uploadFile(c: Context, scope: FileScope) {
 export async function downloadFile(c: Context, scope: FileScope) {
   await rateLimit(c, 'project_files_read', 120, 60);
   const file = await fileOr404(scope, routeParam(c, 'fileId'));
-  const object = await bucket(c, 'CLUB_FILES').get(file.key);
-  if (!object) notFound('file_missing');
-  return new Response(object.body, { headers: { ...downloadFileHeaders(file.fileName, file.contentType), 'Content-Security-Policy': "default-src 'none'; sandbox" } });
+  return latestDownload(c, file);
 }
 
 /**
@@ -125,6 +129,7 @@ export async function deleteFile(c: Context, scope: FileScope) {
   requireRight(scope.loaded, 'manageTasks');
   await rateLimit(c, 'project_files_delete', 60, 3600);
   const file = await fileOr404(scope, routeParam(c, 'fileId'));
+  await assertDeletable(file.id);
   await bucket(c, 'CLUB_FILES').delete(file.key);
   const removed = await db.delete(projectFiles).where(eq(projectFiles.id, file.id)).returning({ id: projectFiles.id });
   if (!removed.length) notFound('file_not_found');

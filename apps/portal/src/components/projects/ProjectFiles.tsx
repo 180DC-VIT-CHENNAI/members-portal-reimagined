@@ -6,6 +6,7 @@ import type { ApiProblem } from '../../lib/errors.ts';
 import { formatDate } from '../../lib/format.ts';
 import type { Project } from '../../lib/project-client.ts';
 import { CLUB_FILE_TYPES } from '../../server/club-files.ts';
+import { DocumentActions } from '../documents/DocumentActions.tsx';
 
 const ACCEPT = Object.keys(CLUB_FILE_TYPES).map((ext) => `.${ext}`).join(',');
 
@@ -127,6 +128,7 @@ export function ProjectFiles({ project }: { readonly project: Project }) {
                   </p>
                 </div>
                 <div className="cluster">
+                  <DocumentActions fileId={f.id} fileName={f.fileName} onChanged={list.reload} />
                   <a className="btn btn-secondary btn-sm" href={`${filesPath(project.id, scope)}/${encodeURIComponent(f.id)}/download`} download>
                     <Icon name="download" size={16} />
                     Download
