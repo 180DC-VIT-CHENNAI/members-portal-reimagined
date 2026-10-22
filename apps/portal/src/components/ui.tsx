@@ -217,6 +217,7 @@ const STATUS_TONE: Record<PersonStatus, string> = {
   active: 'badge-success',
   invited: '',
   on_leave: 'badge-warning',
+  suspended: 'badge-error',
   alumni: '',
   removed: 'badge-error',
 };

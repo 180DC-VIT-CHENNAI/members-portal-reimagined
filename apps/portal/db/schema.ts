@@ -17,3 +17,4 @@ export * from './schema/crm';
 export * from './schema/messaging';
 export * from './schema/documents';
 export * from './schema/knowledge';
+export * from './schema/lifecycle';

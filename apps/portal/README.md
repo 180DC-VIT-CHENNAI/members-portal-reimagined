@@ -12,6 +12,29 @@ Flows: "Open in CRM" on a consulting request (needs `consulting.manage` and `crm
 
 Email touchpoints keep a subject and an opaque `external_ref` only, never a message body. CRM does not read the shared-mailbox tables yet; linking mailbox conversations to CRM records is a follow-up, as is a client-facing guest workspace.
 
+## Member lifecycle
+
+Every status change (invite, first sign-in, manual lifecycle move, term start, offboarding) appends to `person_status_history` with actor, reason and effective date. `POST /api/people/:id/status` additively accepts `reason` (the older `note` still works) and `effectiveOn` (never in the future); the person page asks for a reason.
+
+**Secondary memberships** list a person in another department for a period. The directory's department filter includes them, but department-scoped permissions keep following the primary `people.department_id`; a secondary department grants nothing unless someone adds an explicit personal grant.
+
+**Promotions** are proposed by someone with `people.edit` for the position, then approved by a different person holding `people.promotions.approve` for the position's department (club-wide positions need a global grant). Neither the proposer nor the person concerned can approve. Approval writes in one batch: the tenure, an open access review saying access is unchanged, a notification through the existing email queue and the audit entry. It never changes access roles or personal grants; those stay a separate `people.grants` decision on `PUT /api/people/:id/access`, which still refuses any change to your own access. A Letter Studio document id may be linked; no new PDF engine.
+
+**Reports-to** is set per tenure (`PATCH /api/tenures/:id`, cycles refused). `/org-chart` shows one term's positions, holders and reporting lines.
+
+**Offboarding** (`people.offboard` for the person's department) moves someone to alumni or removed in one D1 batch with every registered cleanup step, then records a handover checklist and returns a per-step summary. Re-running it changes nothing (`changed: false`). Built-in steps: open tasks and project roles go to a chosen active successor (required when there is work to hand over), current tenures end, personal grants are removed and sessions are revoked. Shared-mailbox capability rows are deleted with a `mailbox.offboard` entry in each mailbox's audit, so reinstatement does not restore inbox access; the mailbox dispatcher already refuses approved sends whose approver lost their grant. CRM: owned organisations and opportunities, engagement client-owner/lead roles and owner-role record grants go to the successor (merged records keep their historical owner), every CRM record grant of the leaver is removed, and each change is audited (`crm.owner.reassign`, `crm.engagement.reassign`, `crm.grant.remove`). The successor still needs `crm.view` to open the CRM; ownership grants no permission.
+
+Later packages add their own cleanup with `registerOffboardingStep({ key, label, plan })` from `src/server/offboarding.ts`. `plan(context)` reads current state and returns `{ count, needsSuccessor, statements, items? }`: unexecuted Drizzle writes that join the single batch, and that must change nothing when the step has nothing left to do (count 0). With `successorId: null` the call is a preview and its statements are discarded. Import the registering module from `routes/api/people/[id]/offboard.ts`, as `src/server/mailboxes/offboarding.ts` is.
+
+**Onboarding policies** (`onboarding.manage`, `/admin/onboarding-policies`) add acknowledgement items to the first-login checklist. **Board handover** (`/handover`) is a per-term checklist built by `terms.manage`; owners see and tick their own items.
+
+This implementation does not complete the assigned section 5 / 13.E scope.
+The requirement-by-requirement map in `docs/execution/member-lifecycle-coverage.md`
+(from the repository root) identifies uncovered work, including integrated
+letter issuance, recruitment, member development, native-device revocation,
+mailbox/review transfer and verified board authority handover. These are not
+approved scope exclusions.
+
 ## Shared mailboxes
 
 `/mailboxes` is separate from the global system-email composer. Mailbox-local grants independently control reading, drafting, editing, submission, review, approval, sending, assignment, management and audit. A manager has no implicit message access; platform `mailboxes.admin` can create a mailbox with a different manager and recover another person's access, never grant themselves inbox rights.
@@ -158,6 +181,7 @@ The e2e harness awaits the real `/__void/scheduled` trigger with the startup tok
 - **Status** (`people.status`) decides whether someone can sign in at all:
   - `active` and `on_leave` keep access.
   - `invited` becomes `active` on the person's first Google sign-in with that verified email.
+  - `suspended` temporarily denies access: it needs a reason, sessions are deleted, and the person can be restored to `active` or `on_leave` later.
   - `alumni` and `removed` lose access on their next request, and their sessions are deleted.
   - People are never deleted.
 - **Permissions** are keys in `src/server/permissions.ts`. A person's permissions are:

@@ -33,6 +33,7 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
   { path: '/admin/import', label: 'Import', description: 'Invite many people from a CSV file.', permission: 'people.import', icon: 'upload' },
   { path: '/admin/positions', label: 'Positions', description: 'Titles people can hold, by department.', permission: 'positions.manage', icon: 'briefcase' },
   { path: '/admin/terms', label: 'Terms', description: 'Academic years and the start of a new term.', permission: 'terms.manage', icon: 'calendar' },
+  { path: '/admin/onboarding-policies', label: 'Onboarding policies', description: 'Policies members acknowledge on their first-login checklist.', permission: 'onboarding.manage', icon: 'fileText' },
   { path: '/admin/roles', label: 'Access roles', description: 'What each role is allowed to do.', permission: 'roles.manage', icon: 'shield' },
   { path: '/admin/audit', label: 'Audit log', description: 'Every administrative change, newest first.', permission: 'audit.view', icon: 'fileText' },
   { path: '/admin/case-studies', label: 'Case studies', description: 'Write, edit and remove public case studies.', permission: 'content.publish', icon: 'bookOpen' },

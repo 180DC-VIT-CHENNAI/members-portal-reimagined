@@ -1,10 +1,11 @@
-import { departments, people, personGrants, positions, tenures, terms } from '@schema';
+import { accessReviews, departments, people, personGrants, positions, tenures, terms } from '@schema';
 import * as v from 'valibot';
 import { defineHandler } from 'void';
-import { db, desc, eq } from 'void/db';
+import { and, db, desc, eq } from 'void/db';
 import { audit } from '../../../../src/server/audit';
 import { requirePrincipal } from '../../../../src/server/guard';
 import { badRequest, forbidden, idParam } from '../../../../src/server/http';
+import { membershipsOf } from '../../../../src/server/memberships';
 import { getPersonOr404, personView } from '../../../../src/server/people';
 import { can } from '../../../../src/server/permissions';
 import { id, profileFields } from '../../../../src/server/validation';
@@ -24,6 +25,7 @@ export const GET = defineHandler(async (c) => {
       termLabel: terms.label,
       startedOn: tenures.startedOn,
       endedOn: tenures.endedOn,
+      reportsToPersonId: tenures.reportsToPersonId,
     })
     .from(tenures)
     .innerJoin(positions, eq(positions.id, tenures.positionId))
@@ -37,7 +39,15 @@ export const GET = defineHandler(async (c) => {
         .from(personGrants)
         .where(eq(personGrants.personId, person.id))
     : null;
-  return { ...personView(viewer, person), tenures: history, grants };
+  const memberships = await membershipsOf(person.id);
+  // Open access reviews go to the same audience as grants.
+  const reviews = grants
+    ? await db
+        .select({ id: accessReviews.id, note: accessReviews.note, sourceType: accessReviews.sourceType, createdAt: accessReviews.createdAt })
+        .from(accessReviews)
+        .where(and(eq(accessReviews.personId, person.id), eq(accessReviews.status, 'open')))
+    : null;
+  return { ...personView(viewer, person), tenures: history, memberships, grants, accessReviews: reviews };
 });
 
 const patchBody = v.object({ ...profileFields, departmentId: v.optional(v.nullable(id)) });
@@ -55,6 +65,7 @@ export const PATCH = defineHandler.withValidator({ body: patchBody })(async (c, 
 
   if (!self && !can(actor.permissions, 'people.edit', person.departmentId)) forbidden();
   if (departmentId !== undefined && departmentId !== person.departmentId) {
+    if (self) forbidden('cannot_change_own_department');
     if (!can(actor.permissions, 'people.edit', person.departmentId) || !can(actor.permissions, 'people.edit', departmentId)) {
       forbidden();
     }

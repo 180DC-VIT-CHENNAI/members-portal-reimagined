@@ -20,6 +20,7 @@ import { formatDate, plural } from '../../lib/format.ts';
 import { useSession } from '../../lib/session.tsx';
 import type { DirectoryEntry, Term, TermStartResponse } from '../../lib/types.ts';
 import { Forbidden } from './Forbidden.tsx';
+import { HandoverCard } from './HandoverCard.tsx';
 
 export function TermsPage() {
   const { can } = useSession();
@@ -72,6 +73,7 @@ export function TermsPage() {
         </Card>
         <NewTerm onCreated={changed} />
         {terms.data && <StartTerm terms={upcoming} onStarted={changed} />}
+        {terms.data && terms.data.length > 0 && <HandoverCard terms={terms.data} />}
       </div>
     </div>
   );

@@ -15,6 +15,22 @@
 | `crm_proposals` / `crm_proposal_versions` | UUID; unique (proposal_id, version) | Status draft/sent/accepted/declined and current version; versions hold scope, objectives, timeline, deliverables and `frozen_at`. |
 | `crm_engagements` | UUID; unique opportunity and project | Accepted work: proposal, canonical project, client owner, lead, confidentiality, status, closeout checklist, feedback, case-study consent. |
 | `crm_case_study_drafts` | UUID; unique engagement | Internal draft created at closeout only with consent; never copied to `case_studies`. |
+## Void portal member-lifecycle schema
+
+`apps/portal/db/schema/lifecycle.ts` (plus `onboarding_policies` in `onboarding.ts` and `tenures.reports_to_person_id`), additive migration `20261019163832_volatile_stardust.sql` and its snapshot:
+
+| Table | Key / constraint | Purpose |
+|---|---|---|
+| `person_status_history` | autoincrement id, person FK | Every status transition: from/to, reason, effective date, actor. |
+| `department_memberships` | UUID, person/department FKs | Secondary department, note, valid from/until. Grants no department permissions. |
+| `promotion_proposals` | UUID; person, position, term, proposer, decider, tenure FKs | Pending/approved/rejected/withdrawn proposal, rationale, optional Letter Studio document id, resulting tenure. |
+| `promotion_decisions` | proposal id PK | One decision per proposal: actor, action, note. |
+| `access_reviews` | UUID, unique `(source_type, source_id)` | Open/reviewed task telling `people.grants` holders that a title change left access unchanged. |
+| `offboarding_records` | UUID, person/successor FKs | Target status, reason, effective date, JSON checklist and per-step summary. |
+| `board_handover_items` | UUID, term/owner FKs | Incoming-board checklist item, owner, done state. |
+| `onboarding_policies` | UUID | Admin-configured acknowledgement items for the first-login checklist. |
+
+`tenures.reports_to_person_id` (nullable, people FK) records reporting lines. The migration also grants `people.promotions.approve` and `people.offboard` (admin global, director department) and `onboarding.manage` (admin). Nothing is backfilled: status history starts with this release.
 
 ## Void portal documents and knowledge schema
 

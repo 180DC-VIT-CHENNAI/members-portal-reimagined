@@ -30,6 +30,14 @@ const httpsUrl = (host: RegExp) =>
     ),
   );
 
+/** A policy link: an https:// document or an in-portal path such as /files. */
+export const policyHref = v.pipe(
+  v.string(),
+  v.trim(),
+  v.maxLength(300),
+  v.check((value) => /^\/(?!\/)[^\s\\]*$/.test(value) || (URL.canParse(value) && new URL(value).protocol === 'https:'), 'invalid_policy_link'),
+);
+
 /** Fields a member may change on their own profile. */
 export const profileFields = {
   fullName: v.optional(fullName),
