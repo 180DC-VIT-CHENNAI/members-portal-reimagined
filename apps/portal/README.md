@@ -181,6 +181,7 @@ The e2e harness awaits the real `/__void/scheduled` trigger with the startup tok
 - **Status** (`people.status`) decides whether someone can sign in at all:
   - `active` and `on_leave` keep access.
   - `invited` becomes `active` on the person's first Google sign-in with that verified email.
+  - `suspended` temporarily denies access: it needs a reason, sessions are deleted, and the person can be restored to `active` or `on_leave` later.
   - `alumni` and `removed` lose access on their next request, and their sessions are deleted.
   - People are never deleted.
 - **Permissions** are keys in `src/server/permissions.ts`. A person's permissions are:
