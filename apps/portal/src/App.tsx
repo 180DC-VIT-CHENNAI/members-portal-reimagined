@@ -68,6 +68,8 @@ import { NewsletterSubscribersPage } from './pages/admin/NewsletterSubscribersPa
 import { MailboxesPage } from './pages/mail/MailboxesPage.tsx';
 import { MailboxPage } from './pages/mail/MailboxPage.tsx';
 import { DraftPage } from './pages/mail/DraftPage.tsx';
+import { TemplatesPage } from './pages/templates/TemplatesPage.tsx';
+import { TemplatePage } from './pages/templates/TemplatePage.tsx';
 import { EngagementPage } from './pages/crm/EngagementPage.tsx';
 import { OpportunityPage } from './pages/crm/OpportunityPage.tsx';
 import { OrganizationPage } from './pages/crm/OrganizationPage.tsx';
@@ -175,6 +177,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     { to: '/messages', label: 'Messages', icon: 'messageSquare', show: true, active: path.startsWith('/messages') },
     { to: '/notifications', label: 'Notifications', icon: 'inbox', show: true, active: path === '/notifications', tab: false },
     { to: '/mailboxes', label: 'Shared mailboxes', icon: 'inbox', show: true, active: path.startsWith('/mailboxes'), tab: false },
+    { to: '/templates', label: 'Email templates', icon: 'fileText', show: true, active: path.startsWith('/templates'), tab: false },
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people', tab: false },
     { to: '/org-chart', label: 'Org chart', icon: 'users', show: can(permissions, 'people.view'), active: path === '/org-chart', tab: false },
     { to: '/handover', label: 'Board handover', icon: 'clipboard', show: true, active: path === '/handover', tab: false },
@@ -297,6 +300,9 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/today') return <TodayPage />;
   if (path === '/notifications') return <NotificationsPage />;
   if (path === '/mailboxes') return <MailboxesPage />;
+  if (path === '/templates') return <TemplatesPage />;
+  const emailTemplate = matchPath('/templates/:id', path);
+  if (emailTemplate) return <TemplatePage key={path} id={emailTemplate.id} />;
   const composeMail = matchPath('/mailboxes/:id/compose', path);
   if (composeMail) return <DraftPage key={path} id={composeMail.id} />;
   const editMail = matchPath('/mailboxes/:id/drafts/:draftId/edit', path);
