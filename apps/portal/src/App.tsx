@@ -32,6 +32,9 @@ import { TermsPage } from './pages/admin/TermsPage.tsx';
 import { DepartmentPage } from './pages/DepartmentPage.tsx';
 import { DirectoryPage } from './pages/DirectoryPage.tsx';
 import { FilesPage } from './pages/FilesPage.tsx';
+import { KnowledgePage } from './pages/KnowledgePage.tsx';
+import { KnowledgeArticlePage } from './pages/KnowledgeArticlePage.tsx';
+import { KnowledgeEditorPage } from './pages/KnowledgeEditorPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { MeetsPage } from './pages/MeetsPage.tsx';
 import { MorePage } from './pages/MorePage.tsx';
@@ -44,6 +47,9 @@ import { TeamInstanceFormPage } from './pages/TeamInstanceFormPage.tsx';
 import { TeamInstancePage } from './pages/TeamInstancePage.tsx';
 import { TeamInstancesPage } from './pages/TeamInstancesPage.tsx';
 import { NotFoundPage } from './pages/NotFoundPage.tsx';
+import { OrgChartPage } from './pages/OrgChartPage.tsx';
+import { HandoverPage } from './pages/HandoverPage.tsx';
+import { OnboardingPoliciesPage } from './pages/admin/OnboardingPoliciesPage.tsx';
 import { PersonPage } from './pages/PersonPage.tsx';
 import { CaseStudiesPage } from './pages/public/CaseStudiesPage.tsx';
 import { GalleryPage } from './pages/public/GalleryPage.tsx';
@@ -64,6 +70,8 @@ import { MailboxPage } from './pages/mail/MailboxPage.tsx';
 import { DraftPage } from './pages/mail/DraftPage.tsx';
 import { ConversationPage as MailConversationPage } from './pages/mail/ConversationPage.tsx';
 import { MailboxLink } from './components/MailboxLink.tsx';
+import { TemplatesPage } from './pages/templates/TemplatesPage.tsx';
+import { TemplatePage } from './pages/templates/TemplatePage.tsx';
 import { EngagementPage } from './pages/crm/EngagementPage.tsx';
 import { OpportunityPage } from './pages/crm/OpportunityPage.tsx';
 import { OrganizationPage } from './pages/crm/OrganizationPage.tsx';
@@ -171,7 +179,10 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
     { to: '/messages', label: 'Messages', icon: 'messageSquare', show: true, active: path.startsWith('/messages') },
     { to: '/notifications', label: 'Notifications', icon: 'inbox', show: true, active: path === '/notifications', tab: false },
     { to: '/mailboxes', label: 'Shared mailboxes', icon: 'inbox', show: true, active: path.startsWith('/mailboxes'), tab: false },
+    { to: '/templates', label: 'Email templates', icon: 'fileText', show: true, active: path.startsWith('/templates'), tab: false },
     { to: '/people', label: 'Directory', icon: 'users', show: can(permissions, 'people.view'), active: path === '/people', tab: false },
+    { to: '/org-chart', label: 'Org chart', icon: 'users', show: can(permissions, 'people.view'), active: path === '/org-chart', tab: false },
+    { to: '/handover', label: 'Board handover', icon: 'clipboard', show: true, active: path === '/handover', tab: false },
     // On phones the header avatar links to the profile.
     { to: `/people/${me.person.id}`, label: 'My profile', icon: 'user', show: true, active: path === `/people/${me.person.id}`, tab: false },
     { to: '/announcements', label: 'Announcements', icon: 'megaphone', show: true, active: path === '/announcements', tab: false },
@@ -194,6 +205,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
       active: path.startsWith('/departments/'),
     },
     { to: '/files', label: 'Files', icon: 'fileText', show: can(permissions, 'files.view'), active: path === '/files' },
+    { to: '/knowledge', label: 'Knowledge', icon: 'bookOpen', show: can(permissions, 'knowledge.view'), active: path.startsWith('/knowledge'), tab: false },
     { to: '/admin', label: 'Admin', icon: 'grid', show: tools.length > 0, active: path.startsWith('/admin') || path.startsWith('/newsletter-editor') || path.startsWith('/letters') },
   ];
   const visible = nav.filter((item) => item.show);
@@ -290,6 +302,9 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/today') return <TodayPage />;
   if (path === '/notifications') return <NotificationsPage />;
   if (path === '/mailboxes') return <MailboxesPage />;
+  if (path === '/templates') return <TemplatesPage />;
+  const emailTemplate = matchPath('/templates/:id', path);
+  if (emailTemplate) return <TemplatePage key={path} id={emailTemplate.id} />;
   const composeMail = matchPath('/mailboxes/:id/compose', path);
   if (composeMail) return <DraftPage key={path} id={composeMail.id} />;
   const editMail = matchPath('/mailboxes/:id/drafts/:draftId/edit', path);
@@ -314,6 +329,8 @@ function route(path: string, home: string, next: string | null) {
   if (conversation) return <ConversationPage key={conversation.id} id={conversation.id} />;
   if (path === '/admin/message-reports') return <MessageReportsPage />;
   if (path === '/people') return <DirectoryPage />;
+  if (path === '/org-chart') return <OrgChartPage />;
+  if (path === '/handover') return <HandoverPage />;
   if (path === '/announcements') return <AnnouncementsPage />;
   if (path === '/meets') return <MeetsPage />;
   if (path === '/projects') return <ProjectsPage />;
@@ -329,6 +346,12 @@ function route(path: string, home: string, next: string | null) {
   const instance = matchPath('/teams/:id', path);
   if (instance) return <TeamInstancePage key={instance.id} id={instance.id} />;
   if (path === '/files') return <FilesPage />;
+  if (path === '/knowledge') return <KnowledgePage />;
+  if (path === '/knowledge/new') return <KnowledgeEditorPage />;
+  const knowledgeEdit = matchPath('/knowledge/:id/edit', path);
+  if (knowledgeEdit) return <KnowledgeEditorPage id={knowledgeEdit.id} />;
+  const knowledgeArticle = matchPath('/knowledge/:id', path);
+  if (knowledgeArticle) return <KnowledgeArticlePage id={knowledgeArticle.id} />;
   const department = matchPath('/departments/:id', path);
   if (department) return <DepartmentPage key={department.id} id={department.id} />;
   const person = matchPath('/people/:id', path);
@@ -348,6 +371,7 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/admin/import') return <ImportPage />;
   if (path === '/admin/positions') return <PositionsPage />;
   if (path === '/admin/terms') return <TermsPage />;
+  if (path === '/admin/onboarding-policies') return <OnboardingPoliciesPage />;
   if (path === '/admin/roles') return <RolesPage />;
   if (path === '/admin/audit') return <AuditPage />;
   if (path === '/admin/case-studies') return <CaseStudiesAdminPage />;

@@ -75,7 +75,7 @@ export function NotificationPreferencesPage() {
                   onChange={(event) => change(pref.category, { quietEnd: event.target.value || null })}
                 />
               </div>
-              <p className="caption muted">Quiet hours are India time and apply to digests and future push alerts.</p>
+              <p className="caption muted">Quiet hours use India time and pause this category's notification badge. Unread notices stay in your inbox.</p>
             </div>
           </Card>
         ))}

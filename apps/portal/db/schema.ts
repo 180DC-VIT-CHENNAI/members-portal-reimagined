@@ -16,3 +16,7 @@ export * from './schema/mailboxes';
 export * from './schema/crm';
 export * from './schema/messaging';
 export * from './schema/mail-inbox';
+export * from './schema/documents';
+export * from './schema/knowledge';
+export * from './schema/lifecycle';
+export * from './schema/templates';

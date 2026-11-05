@@ -12,6 +12,29 @@ Flows: "Open in CRM" on a consulting request (needs `consulting.manage` and `crm
 
 Email touchpoints keep a subject and an opaque `external_ref` only, never a message body. CRM does not read the shared-mailbox tables yet; linking mailbox conversations to CRM records is a follow-up, as is a client-facing guest workspace.
 
+## Member lifecycle
+
+Every status change (invite, first sign-in, manual lifecycle move, term start, offboarding) appends to `person_status_history` with actor, reason and effective date. `POST /api/people/:id/status` additively accepts `reason` (the older `note` still works) and `effectiveOn` (never in the future); the person page asks for a reason.
+
+**Secondary memberships** list a person in another department for a period. The directory's department filter includes them, but department-scoped permissions keep following the primary `people.department_id`; a secondary department grants nothing unless someone adds an explicit personal grant.
+
+**Promotions** are proposed by someone with `people.edit` for the position, then approved by a different person holding `people.promotions.approve` for the position's department (club-wide positions need a global grant). Neither the proposer nor the person concerned can approve. Approval writes in one batch: the tenure, an open access review saying access is unchanged, a notification through the existing email queue and the audit entry. It never changes access roles or personal grants; those stay a separate `people.grants` decision on `PUT /api/people/:id/access`, which still refuses any change to your own access. A Letter Studio document id may be linked; no new PDF engine.
+
+**Reports-to** is set per tenure (`PATCH /api/tenures/:id`, cycles refused). `/org-chart` shows one term's positions, holders and reporting lines.
+
+**Offboarding** (`people.offboard` for the person's department) moves someone to alumni or removed in one D1 batch with every registered cleanup step, then records a handover checklist and returns a per-step summary. Re-running it changes nothing (`changed: false`). Built-in steps: open tasks and project roles go to a chosen active successor (required when there is work to hand over), current tenures end, personal grants are removed and sessions are revoked. Shared-mailbox capability rows are deleted with a `mailbox.offboard` entry in each mailbox's audit, so reinstatement does not restore inbox access; the mailbox dispatcher already refuses approved sends whose approver lost their grant. CRM: owned organisations and opportunities, engagement client-owner/lead roles and owner-role record grants go to the successor (merged records keep their historical owner), every CRM record grant of the leaver is removed, and each change is audited (`crm.owner.reassign`, `crm.engagement.reassign`, `crm.grant.remove`). The successor still needs `crm.view` to open the CRM; ownership grants no permission.
+
+Later packages add their own cleanup with `registerOffboardingStep({ key, label, plan })` from `src/server/offboarding.ts`. `plan(context)` reads current state and returns `{ count, needsSuccessor, statements, items? }`: unexecuted Drizzle writes that join the single batch, and that must change nothing when the step has nothing left to do (count 0). With `successorId: null` the call is a preview and its statements are discarded. Import the registering module from `routes/api/people/[id]/offboard.ts`, as `src/server/mailboxes/offboarding.ts` is.
+
+**Onboarding policies** (`onboarding.manage`, `/admin/onboarding-policies`) add acknowledgement items to the first-login checklist. **Board handover** (`/handover`) is a per-term checklist built by `terms.manage`; owners see and tick their own items.
+
+This implementation does not complete the assigned section 5 / 13.E scope.
+The requirement-by-requirement map in `docs/execution/member-lifecycle-coverage.md`
+(from the repository root) identifies uncovered work, including integrated
+letter issuance, recruitment, member development, native-device revocation,
+mailbox/review transfer and verified board authority handover. These are not
+approved scope exclusions.
+
 ## Shared mailboxes
 
 `/mailboxes` is separate from the global system-email composer. Mailbox-local grants independently control reading, drafting, editing, submission, review, approval, sending, assignment, management and audit. A manager has no implicit message access; platform `mailboxes.admin` can create a mailbox with a different manager and recover another person's access, never grant themselves inbox rights.
@@ -34,15 +57,37 @@ Incoming messages, assignment changes and submitted email reviews create durable
 
 This repository creates no Email Routing rule: `email.from` and `cloudflare.addresses` stay unset. Routing `technical@180dc.vitcc.org` to the Worker is a separate owner action. There is no local inbound trigger, so e2e tests feed fixture MIME through the development-only `POST /api/dev/ingest-mail` route (requires `EMAIL_TEST_MODE=capture` and `INBOUND_TEST_INGEST=1`). Unit tests drive the handler with `createInboundTestHarness`. See ADR-012. Uncovered spec requirements include CRM linking, team assignment, due-for-reply reminder delivery (only a count exists), templates/rich-text composition, explicit submitted-revision reopening, ownership transfer and fully paginated operator/history lists. The coverage ledger records these as gaps, not completed capabilities.
 
+## Email Template Studio
+
+`/templates` manages reusable, versioned templates for shared mailboxes (spec 3.7). A template is owned club-wide, by a department, or by one mailbox. Club-wide and department templates use the `templates.author|edit|publish|retire|draft|review|send` grants (seeded: admin global; directors author/edit/publish/retire in their department and draft/review/send everywhere; members draft/review/send). Mailbox-owned templates ignore those grants and follow the mailbox ACL: `mailbox.manage` authors, edits, publishes and retires; drafting, review and send need the matching mailbox capability. An optional per-template policy narrows any action to listed people. Inaccessible templates are 404.
+
+Every save writes an immutable version; a stale save is 409. Publishing points the template at its latest version, and only that published version can start a draft. Drafts store the version ID in their snapshot, so review and approval bind the rendered snapshot and the exact version, not a mutable template. Edit, submit, review and send each recheck the pinned version's action permission, allowed mailboxes, allowed recipients and retirement. Retiring stops new drafts and further steps on unsent pinned drafts; sent messages keep their frozen content. A message already approved and queued before retirement still dispatches.
+
+Fields (short/long text, date, amount, CRM organisation/contact, select, multi-select, URL, attachment, yes/no, repeating rows) carry required flags, bounds, examples and options. Rendering is single-pass text substitution of `{{key}}` with no expressions, helpers or HTML source; values are escaped for HTML and line breaks are stripped from subjects. Trusted automatic fields (`member_name`, `member_position` from current tenures, `club_name`, `club_website`) override caller values. CRM fields resolve server-side through CRM access; a contact needs granted consent and no do-not-contact flag. Preview returns the subject, text, HTML and signature plus warnings for unknown, unresolved or invalid values, missing recipients, missing attachments and attachments over 3 MiB; a draft is refused while warnings remain.
+
+The compose page offers published templates for that mailbox. "Send test to me" queues one message through the capture-able system queue to the caller's own sign-in address, obeys the mailbox category policy and both outbound pauses, and never accepts recipients. Templates with `followupDays` produce follow-up suggestions on the mailbox page after the interval; nothing is drafted or sent automatically. Mailbox managers get the eleven starter recipes as a starting point. CSV audience personalization is not enabled. See `docs/execution/tmpl-b2-coverage.md`.
+
 ## Internal messaging
 
 `/messages` lists the conversations a member can read now: direct conversations, their department's channel and the channels of projects they can see. Unread badges (capped at 99) appear in the list and in the navigation. Direct messages start from a person's profile and only between two current `active`/`on_leave` members; once the other person leaves the club the conversation becomes read-only. Department pages and project pages open their channel. Department channels follow home department or `departments.workspace.view`; project channels reuse `visibleProjects`, the same rule as the project list. Every list, count, search, mention notice and detail read evaluates the access predicate again, so a person who moves department, leaves a project or becomes alumni loses access on the next request. An inaccessible conversation is 404, never a hint that it exists.
 
 Messages are plain text with `@[Name](personId)` mentions. Authors can edit for 15 minutes after sending; deleting leaves a tombstone with the body erased and its reactions, search hit and mention notices removed. Sends are idempotent per `requestId`. A mention creates a notice only for mentioned people who can read the conversation at that moment, have not muted it and have not turned off mention notices. Members can report someone else's message; holders of `chat.moderate` (seeded to `admin`) review reports at `/admin/message-reports` and can dismiss or remove them. Removal is audited without the message text.
 
-`/notifications/preferences` stores, per category (`mentions`, `tasks`), in-app on/off, an email-digest opt-in (default off) and quiet hours. In-app task and mention notice creation respects the in-app switch. In-app notices are pull-based, so quiet hours are stored for later delivery channels and suppress nothing yet. **Email digests are not sent:** the opt-in is stored only. A digest would be metered Cloudflare Email Sending and needs its own governed package.
+`/notifications/preferences` stores, per category (`mentions`, `tasks`), in-app on/off, an email-digest opt-in (default off) and quiet hours. In-app task and mention notice creation respects the in-app switch. Quiet hours use India time, including overnight intervals, with an inclusive start and exclusive end. During a quiet interval that category leaves the notification badge; the unread inbox stays available and pending notices return to the badge after quiet hours end. Disabling in-app notices also removes that category's existing notices from the badge. **Email digests are not sent:** the opt-in is stored only. A digest would be metered Cloudflare Email Sending and needs its own governed package.
 
 The browser polls instead of holding a live connection: an open conversation every 10 s, the list and nav badge every 30 s, only while the tab is visible. Club-scale traffic fits D1 reads comfortably, and polling needs no Durable Object, WebSocket binding or new billing surface. A move to Durable State/WebSockets is the follow-up if message volume or latency needs change.
+
+## Documents and knowledge
+
+This is partial DOC-01 coverage. See [the section 8.2 coverage map](../../docs/execution/doc-b4-coverage.md) for implementation/test evidence and explicit gaps. In particular, retention dates and review status are metadata, not an enforced retention schedule or download-approval workflow.
+
+Project files, task files and shared club files have one document lifecycle. Each upload is an immutable version with a SHA-256 checksum, uploader and time. Restoring copies an old version into a new one, so history is never rewritten. Existing files enter the lifecycle lazily, with their original object as version 1. Old download URLs always return the latest version. New version bytes live under `CLUB_FILES/document-versions/<documentId>/` and use the same 25 MiB file policy and storage failover. No bucket or binding is added. Every deleted version row, including parent project, task and file cascades, queues its object key through a D1 trigger for the existing `*/5` cleanup cron.
+
+Anyone who can read a file can create a share link that expires within 30 days, with an optional download limit and optional member sign-in. The 32-byte token is shown once and only its SHA-256 hash is stored. A link serves the version that was current when it was created. It stops working, with a 404, when it is revoked, expires, reaches its limit, the document is archived, or its creator loses access to the file. Downloads are attachment-only, `private, no-store`, `nosniff` and sandboxed, with a sanitized filename. A conditional counter update decides each download, so concurrent requests cannot exceed the limit. Managers can set the retention date (metadata only, nothing is erased automatically), legal hold, archived and review status. Deleting a held file returns 409.
+
+Legal holds also block deletion of a parent task or project with held attachments. The API returns 409 `legal_hold`; a database trigger prevents cascade deletion from bypassing the hold.
+
+`/knowledge` holds club-wide or department-scoped articles with draft/published/archived status, tags, links to projects/tasks/meets and full revision history. Reading needs `knowledge.view` (every role by default). Department articles are visible only to that department and to holders of `departments.workspace.view` for it. Drafts and archived articles are visible only to editors. `knowledge.edit` writes drafts and reads history, and `knowledge.publish` changes status (directors hold both for their department, admins hold them globally). List and search apply these rules in SQL at query time. Bodies are a small Markdown dialect (`#` headings, `**bold**`, `code`) that escapes HTML first and creates no links. Linked IDs are checked against the editor's access on write, and hidden links are dropped on read. Antivirus scanning and e-signatures are out of scope.
 
 ## Collaboration and onboarding
 
@@ -156,6 +201,7 @@ The e2e harness awaits the real `/__void/scheduled` trigger with the startup tok
 - **Status** (`people.status`) decides whether someone can sign in at all:
   - `active` and `on_leave` keep access.
   - `invited` becomes `active` on the person's first Google sign-in with that verified email.
+  - `suspended` temporarily denies access: it needs a reason, sessions are deleted, and the person can be restored to `active` or `on_leave` later.
   - `alumni` and `removed` lose access on their next request, and their sessions are deleted.
   - People are never deleted.
 - **Permissions** are keys in `src/server/permissions.ts`. A person's permissions are:

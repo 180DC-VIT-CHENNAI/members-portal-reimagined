@@ -4,6 +4,7 @@ import * as v from 'valibot';
 import { defineHandler } from 'void';
 import { db, eq, inArray } from 'void/db';
 import { audit } from '../../../../src/server/audit';
+import { assertProjectFilesDeletable } from '../../../../src/server/document-access';
 import { requirePrincipal } from '../../../../src/server/guard';
 import { badRequest, forbidden, idParam } from '../../../../src/server/http';
 import { projectAccess } from '../../../../src/server/project-rules';
@@ -57,6 +58,7 @@ export const DELETE = defineHandler(async (c) => {
   requireRight(loaded, 'manage');
   await rateLimit(c, 'projects_write', 60, 3600);
   const { project } = loaded;
+  await assertProjectFilesDeletable(project.id);
   await db.batch([
     db.delete(taskComments).where(inArray(taskComments.taskId, db.select({ id: projectTasks.id }).from(projectTasks).where(eq(projectTasks.projectId, project.id)))),
     db.delete(projectTasks).where(eq(projectTasks.projectId, project.id)),

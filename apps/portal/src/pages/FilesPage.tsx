@@ -7,6 +7,7 @@ import { formatDate } from '../lib/format.ts';
 import { setQuery, useLocation } from '../lib/router.tsx';
 import { useSession } from '../lib/session.tsx';
 import { Forbidden } from './admin/Forbidden.tsx';
+import { DocumentActions } from '../components/documents/DocumentActions.tsx';
 
 const CATEGORIES = [
   { id: 'general', label: 'General' },
@@ -114,6 +115,7 @@ export function FilesPage() {
                       <td data-label="Size">{formatSize(f.fileSize)}</td>
                       <td className="cell-actions">
                         <div className="cluster">
+                          <DocumentActions fileId={f.id} fileName={f.fileName} onChanged={list.reload} />
                           <a className="btn btn-secondary btn-sm" href={`/api/club-files/${encodeURIComponent(f.id)}/download`} download>
                             <Icon name="download" size={16} />
                             Download

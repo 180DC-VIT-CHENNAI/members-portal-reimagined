@@ -4,7 +4,7 @@ import type { ApiProblem } from '../lib/errors.ts';
 import { Link } from '../lib/router.tsx';
 import { Button, Card, ProblemAlert } from './ui.tsx';
 
-type Acknowledgment = 'department_read' | 'resources_read' | 'checklist_dismissed';
+type Acknowledgment = 'department_read' | 'resources_read' | 'checklist_dismissed' | `policy:${string}`;
 
 const loadChecklist = () => api('/api/onboarding');
 
@@ -52,12 +52,16 @@ export function OnboardingChecklist() {
               )}
             </div>
             <div className="cluster">
-              <Link className="btn btn-secondary btn-sm" to={item.href}>{item.kind === 'derived' ? 'Edit profile' : 'Open'}</Link>
+              {item.href.startsWith('https://') ? (
+                <a className="btn btn-secondary btn-sm" href={item.href} target="_blank" rel="noopener noreferrer">Open</a>
+              ) : (
+                <Link className="btn btn-secondary btn-sm" to={item.href}>{item.kind === 'derived' ? 'Edit profile' : 'Open'}</Link>
+              )}
               {item.acknowledgment && !item.done && (
                 <Button size="sm" busy={busy === item.acknowledgment} onClick={() => {
                   if (item.acknowledgment) void acknowledge(item.acknowledgment);
                 }}>
-                  Mark as read
+                  {item.key.startsWith('policy:') ? 'I acknowledge' : 'Mark as read'}
                 </Button>
               )}
             </div>

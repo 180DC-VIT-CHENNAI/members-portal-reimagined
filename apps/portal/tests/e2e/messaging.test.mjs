@@ -269,3 +269,35 @@ test('messages page backwards 50 at a time and unread counts stop at 99', async 
   assert.deepEqual([row.unread, row.unreadCapped], [99, true]);
   assert.deepEqual(ok(await member.get('/api/messages/unread')), { unread: 99, capped: true });
 });
+
+test('quiet categories leave the notification badge without losing unread inbox entries', { timeout: 120_000 }, async () => {
+  const channel = await departmentChannel();
+  const messageId = await send(member, channel, `Quiet ping @[colleague](${ids.colleague})`);
+  const taskId = ok(await admin.post(`/api/projects/${project}/tasks`, { title: 'Quiet-hours assignment', assigneeId: ids.colleague }), 201).id;
+  // A two-hour margin on either side makes the real-clock integration deterministic
+  // within this test's two-minute timeout. Exact boundaries use fixed-time unit tests.
+  const indiaNow = Date.now() + 330 * 60_000;
+  const hhmm = (delta) => new Date(indiaNow + delta * 60_000).toISOString().slice(11, 16);
+  const quietStart = hhmm(-120);
+  const quietEnd = hhmm(120);
+  ok(await colleague.put('/api/notification-preferences', {
+    preferences: ['mentions', 'tasks'].map((category) => ({ category, inApp: true, emailDigest: false, quietStart, quietEnd })),
+  }));
+
+  assert.deepEqual(ok(await colleague.get('/api/notifications/count')), { unread: 0, capped: false });
+  assert.ok((await mentionNotices(colleague)).some((notice) => notice.messageId === messageId && notice.readAt === null));
+  assert.ok(ok(await colleague.get('/api/notifications')).notifications.some((notice) => notice.taskId === taskId && notice.readAt === null));
+
+  // A category that is not quiet still contributes; clearing quiet hours restores
+  // the pending mentions without sending duplicates or marking anything read.
+  ok(await colleague.put('/api/notification-preferences', {
+    preferences: [{ category: 'tasks', inApp: true, emailDigest: false, quietStart: null, quietEnd: null }],
+  }));
+  const tasksOnly = ok(await colleague.get('/api/notifications/count')).unread;
+  assert.ok(tasksOnly > 0);
+  ok(await colleague.put('/api/notification-preferences', {
+    preferences: [{ category: 'mentions', inApp: true, emailDigest: false, quietStart: null, quietEnd: null }],
+  }));
+  assert.ok(ok(await colleague.get('/api/notifications/count')).unread > tasksOnly);
+  assert.equal(portal.db.prepare('SELECT count(*) AS n FROM message_notifications WHERE recipient_id = ? AND message_id = ?').get(ids.colleague, messageId).n, 1);
+});

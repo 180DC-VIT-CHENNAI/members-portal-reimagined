@@ -299,3 +299,48 @@ test('mixed definitive and uncertain recipient failures retain an uncertain send
   assert.equal(status.json.intent.state, 'outcome_unknown', status.text);
   assert.equal(captured(mailbox).length, 0);
 });
+
+async function inviteMailUser(name) {
+  const invited = await admin.post('/api/people', { email: `mail.${name}@example.org`, fullName: name, departmentId: 'finance' });
+  assert.equal(invited.status, 201, invited.text);
+  return { id: invited.json.id, client: signIn(portal, `mail.${name}@example.org`) };
+}
+
+test('offboarding removes mailbox capabilities with an audit entry; a reinstated person still gets 404', async () => {
+  const mailbox = await createMailbox();
+  const leaver = await inviteMailUser(`leaver-${randomUUID()}`);
+  assert.equal((await admin.put(`/api/mailboxes/${mailbox}/members/${leaver.id}`, { capabilities: drafting })).status, 200);
+  assert.equal((await leaver.client.get(`/api/mailboxes/${mailbox}`)).status, 200);
+  const offboarded = await admin.post(`/api/people/${leaver.id}/offboard`, { status: 'removed', reason: 'Left the club' });
+  assert.equal(offboarded.status, 200, offboarded.text);
+  assert.equal(offboarded.json.summary.mailboxes, drafting.length);
+  assert.equal(portal.db.prepare('SELECT count(*) AS n FROM mailbox_memberships WHERE person_id=?').get(leaver.id).n, 0);
+  assert.equal(portal.db.prepare("SELECT count(*) AS n FROM mail_audit WHERE mailbox_id=? AND action='mailbox.offboard' AND target_id=?").get(mailbox, leaver.id).n, 1);
+  assert.equal((await leaver.client.get(`/api/mailboxes/${mailbox}`)).status, 401);
+  const again = await admin.post(`/api/people/${leaver.id}/offboard`, { status: 'removed', reason: 'Left the club' });
+  assert.equal(again.json.changed, false, again.text);
+  assert.equal((await admin.post(`/api/people/${leaver.id}/status`, { status: 'active', reason: 'Rejoined' })).status, 200);
+  const rejoined = signIn(portal, `${portal.db.prepare('SELECT email FROM people WHERE id=?').get(leaver.id).email}`);
+  assert.equal((await rejoined.get(`/api/mailboxes/${mailbox}`)).status, 404);
+  assert.equal((await rejoined.get('/api/mailboxes')).json.mailboxes.length, 0);
+});
+
+test('a scheduled send approved by someone later offboarded is not dispatched', async () => {
+  const mailbox = await createMailbox(), draft = await createDraft(mailbox);
+  const approver = await inviteMailUser(`approver-${randomUUID()}`);
+  assert.equal((await admin.put(`/api/mailboxes/${mailbox}/members/${approver.id}`, { capabilities: reviewing })).status, 200);
+  assert.equal((await drafter.post(`/api/mailboxes/${mailbox}/drafts/${draft}/submit`, { revision: 1 })).status, 200);
+  const approved = await approver.client.post(`/api/mailboxes/${mailbox}/drafts/${draft}/review`, { revision: 1, decision: 'approved' });
+  assert.equal(approved.status, 200, approved.text);
+  const sent = await approver.client.post(`/api/mailboxes/${mailbox}/drafts/${draft}/send`, {
+    revision: 1, idempotencyKey: randomUUID(), scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
+  });
+  assert.equal(sent.status, 200, sent.text);
+  const offboarded = await admin.post(`/api/people/${approver.id}/offboard`, { status: 'alumni', reason: 'Graduated' });
+  assert.equal(offboarded.status, 200, offboarded.text);
+  portal.db.prepare("UPDATE mail_send_intents SET due_at='2000-01-01T00:00:00Z' WHERE id=?").run(sent.json.id);
+  await portal.runCron();
+  assert.equal(captured(mailbox).length, 0);
+  const intent = portal.db.prepare('SELECT state, last_error FROM mail_send_intents WHERE id=?').get(sent.json.id);
+  assert.deepEqual({ ...intent }, { state: 'cancelled', last_error: 'AUTHORIZATION_CHANGED' });
+});

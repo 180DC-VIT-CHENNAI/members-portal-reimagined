@@ -1,13 +1,13 @@
-import type { OnboardingAckKey } from '../../db/schema/onboarding.ts';
+import type { OnboardingAckItem } from '../../db/schema/onboarding.ts';
 import { can, type PermissionSet } from './permissions.ts';
 
 export type ProfileGap = 'year' | 'branch' | 'about';
 
 export type ChecklistItem = {
-  key: 'profile' | 'department' | 'resources';
+  key: 'profile' | 'department' | 'resources' | `policy:${string}`;
   /** `derived` items finish from real data; `acknowledge` items finish when the person marks them read. */
   kind: 'derived' | 'acknowledge';
-  acknowledgment: OnboardingAckKey | null;
+  acknowledgment: OnboardingAckItem | null;
   title: string;
   description: string;
   href: string;
@@ -24,6 +24,9 @@ export type Checklist = {
   visible: boolean;
 };
 
+/** An active admin-configured policy the person must acknowledge. */
+export type Policy = { id: string; title: string; description: string; href: string | null };
+
 type ProfileFields = { year: number | null; branch: string | null; bio: string | null; skills: readonly string[] | null };
 
 /** Public profile fields still empty. Private fields (phone, reg no) are never required. */
@@ -38,7 +41,8 @@ export function profileGaps(person: ProfileFields): ProfileGap[] {
 export function buildChecklist(
   person: ProfileFields & { id: string; departmentId: string | null },
   permissions: PermissionSet,
-  acknowledgments: ReadonlyMap<OnboardingAckKey, string>,
+  acknowledgments: ReadonlyMap<OnboardingAckItem, string>,
+  policies: readonly Policy[] = [],
 ): Checklist {
   const missing = profileGaps(person);
   const items: ChecklistItem[] = [{
@@ -52,7 +56,7 @@ export function buildChecklist(
     doneAt: null,
     missing,
   }];
-  const read = (key: ChecklistItem['key'], acknowledgment: OnboardingAckKey, title: string, description: string, href: string) => {
+  const read = (key: ChecklistItem['key'], acknowledgment: OnboardingAckItem, title: string, description: string, href: string) => {
     const at = acknowledgments.get(acknowledgment) ?? null;
     items.push({ key, kind: 'acknowledge', acknowledgment, title, description, href, done: at !== null, doneAt: at, missing: [] });
   };
@@ -63,14 +67,20 @@ export function buildChecklist(
   if (can(permissions, 'files.view')) {
     read('resources', 'resources_read', 'Browse the shared club files', 'Templates and resources the club keeps for everyone.', '/files');
   }
+  for (const policy of policies) {
+    const key = `policy:${policy.id}` as const;
+    read(key, key, policy.title, policy.description || 'Read and acknowledge this policy.', policy.href ?? '/today');
+  }
   const complete = items.every((item) => item.done);
   const dismissed = acknowledgments.has('checklist_dismissed');
-  return { items, complete, dismissed, visible: !complete && !dismissed };
+  // Hiding the checklist never hides a policy still waiting for acknowledgment.
+  const policyPending = items.some((item) => item.key.startsWith('policy:') && !item.done);
+  return { items, complete, dismissed, visible: !complete && (!dismissed || policyPending) };
 }
 
 /** Acknowledgments this person may record: the read items shown to them, and hiding the checklist. */
-export function allowedAcknowledgments(checklist: Checklist): Set<OnboardingAckKey> {
-  const allowed = new Set<OnboardingAckKey>(['checklist_dismissed']);
+export function allowedAcknowledgments(checklist: Checklist): Set<OnboardingAckItem> {
+  const allowed = new Set<OnboardingAckItem>(['checklist_dismissed']);
   for (const item of checklist.items) if (item.acknowledgment) allowed.add(item.acknowledgment);
   return allowed;
 }

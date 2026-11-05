@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bodySegments, directKey, EDIT_WINDOW_MS, editDecision, MAX_MENTIONS, parseMentions, plainText, validQuietHours } from './messaging-rules.ts';
+import { bodySegments, directKey, EDIT_WINDOW_MS, editDecision, MAX_MENTIONS, parseMentions, plainText, quietHoursActive, validQuietHours } from './messaging-rules.ts';
 
 const sent = '2030-01-15 10:00:00';
 const sentAt = Date.parse('2030-01-15T10:00:00Z');
@@ -49,4 +49,23 @@ test('quiet hours are both set to different valid times, or both empty', () => {
   assert.equal(validQuietHours('22:00', null), false);
   assert.equal(validQuietHours('22:00', '22:00'), false);
   assert.equal(validQuietHours('24:00', '07:00'), false);
+});
+
+test('quiet hours include their start and exclude their end in India time', () => {
+  assert.equal(quietHoursActive('10:00', '11:00', new Date('2030-01-15T04:29:59Z')), false);
+  assert.equal(quietHoursActive('10:00', '11:00', new Date('2030-01-15T04:30:00Z')), true);
+  assert.equal(quietHoursActive('10:00', '11:00', new Date('2030-01-15T05:29:59Z')), true);
+  assert.equal(quietHoursActive('10:00', '11:00', new Date('2030-01-15T05:30:00Z')), false);
+});
+
+test('overnight quiet hours cover both sides of midnight in India time', () => {
+  assert.equal(quietHoursActive('22:00', '07:00', new Date('2030-01-15T16:30:00Z')), true);
+  assert.equal(quietHoursActive('22:00', '07:00', new Date('2030-01-15T18:30:00Z')), true);
+  assert.equal(quietHoursActive('22:00', '07:00', new Date('2030-01-16T01:29:59Z')), true);
+  assert.equal(quietHoursActive('22:00', '07:00', new Date('2030-01-16T01:30:00Z')), false);
+  assert.equal(quietHoursActive('22:00', '07:00', new Date('2030-01-16T10:00:00Z')), false);
+});
+
+test('unset quiet hours never suppress the badge', () => {
+  assert.equal(quietHoursActive(null, null, new Date('2030-01-15T10:00:00Z')), false);
 });

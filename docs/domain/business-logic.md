@@ -1,5 +1,9 @@
 # Business Logic — 180DC VIT Chennai Platform
 
+## Member lifecycle
+
+Every status change appends to `person_status_history` with actor, reason and effective date. Promotions are proposed (`people.edit`) and approved by a different holder of `people.promotions.approve` for the position's department; approval adds the tenure, opens an access review and queues a notice, and never touches access. Offboarding (`people.offboard`) moves a person to alumni or removed and runs every registered cleanup step in one batch: work and CRM ownership go to an active successor, tenures end, grants (personal, shared mailbox, CRM record) and sessions are removed, and a handover record is kept.
+
 ## CRM pipeline and intake
 
 CRM visibility is per record: owner, explicit grant (an organisation grant covers its children) or `crm.admin`. Contact private fields need organisation or contact access. Consulting-request conversion is idempotent through the unique opportunity link and reuses organisations by normalised domain and contacts by email. Won is reached only by accepting a sent proposal, which creates one engagement and its project in one batch; closeout requires the checklist, and a case-study draft exists only with consent and is never published.
@@ -16,6 +20,7 @@ Live business transport is disabled by default. Cloudflare is restricted to exis
 
 ## Portal onboarding and collaboration
 
+- Notification quiet hours apply separately to task and mention badges in India time. An overnight interval spans midnight; its start is inclusive and its end exclusive. Quiet hours retain unread inbox entries and restore their badge contribution afterward, subject to current access and the category's in-app switch.
 - Invitations validate their complete input before writing. Person, optional tenure, queued invitation and audit are atomic. Import dry runs never queue mail. Invitation links use the canonical production portal, not an arbitrary browser Origin.
 - Onboarding is a nonblocking checklist. Profile progress is derived; read and hide actions are explicit and person-owned. Optional phone and registration fields never gate progress.
 - Assigning work and posting a comment atomically create deduplicated in-app notices for relevant other people. An hourly job at minute 5 UTC creates deadline notices for visible open/blocked tasks due today or tomorrow; repeated runs do not duplicate them. Current access filters labels, paging and unread counts.

@@ -8,6 +8,7 @@ import { canonicalContent, digest, editable, FOLDER_STATES, recipientsValid } fr
 import type { MailFolder, SnapshotContent } from './types';
 import type { DraftInput } from './validation';
 import { requireReplyContext } from './reply-policy';
+import { checkPinned } from '../templates/access';
 
 export async function draftFor(actor: Principal, mailboxId: string, draftId: string) {
   const access = await mailboxFor(actor, mailboxId);
@@ -30,7 +31,7 @@ export async function listDrafts(actor: Principal, mailboxId: string, query: { r
   return { drafts, nextBefore: rows.length > 50 ? (drafts.at(-1)?.draft.id ?? null) : null };
 }
 
-async function snapshotContent(input: { readonly actor: Principal; readonly mailboxId: string; readonly body: DraftInput; readonly conversationId: string | null }) {
+async function snapshotContent(input: { readonly actor: Principal; readonly mailboxId: string; readonly body: DraftInput; readonly conversationId: string | null; readonly template?: { readonly versionId: string; readonly signature: string } }) {
   const access = await mailboxFor(input.actor, input.mailboxId);
   if (access.mailbox.status !== 'active') conflict('mailbox_inactive');
   const recipients = { to: input.body.to, cc: input.body.cc, bcc: input.body.bcc };
@@ -51,9 +52,9 @@ async function snapshotContent(input: { readonly actor: Principal; readonly mail
     fromAddress: access.mailbox.address, fromName: access.mailbox.displayName,
     recipients, subject: input.body.subject, text: input.body.text,
     html: `<p>${escapeHtml(input.body.text).replace(/\n/g, '<br>')}</p>`,
-    signature: access.mailbox.signature, category: input.body.category,
+    signature: input.template?.signature || access.mailbox.signature, category: input.body.category,
     attachments: attachments.map((a) => ({ id: a.id, key: a.key, filename: a.filename, contentType: a.contentType, bytes: a.bytes, digest: a.digest })),
-    templateVersionId: null,
+    templateVersionId: input.template?.versionId ?? null,
   };
   return { content, hash: await digest(canonicalContent(content)) };
 }
@@ -69,9 +70,9 @@ function insertSnapshot(input: { readonly draftId: string; readonly snapshotId: 
     c.templateVersionId, input.hash, input.actorId, input.draftId, input.snapshotId]);
 }
 
-export async function createDraft(actor: Principal, mailboxId: string, input: { readonly body: DraftInput; readonly conversationId: string | null }) {
+export async function createDraft(actor: Principal, mailboxId: string, input: { readonly body: DraftInput; readonly conversationId: string | null }, template?: { readonly versionId: string; readonly signature: string }) {
   requireCapability(await mailboxFor(actor, mailboxId), 'mailbox.draft.create');
-  const { content, hash } = await snapshotContent({ actor, mailboxId, ...input });
+  const { content, hash } = await snapshotContent({ actor, mailboxId, ...input, template });
   const id = crypto.randomUUID(), snapshotId = crypto.randomUUID();
   const [result] = await atomic([
     statement(`INSERT INTO mail_drafts (id,mailbox_id,conversation_id,created_by,current_snapshot_id,updated_at)
@@ -90,7 +91,9 @@ export async function editDraft(actor: Principal, mailboxId: string, draftId: st
   requireCapability(loaded, capability);
   if (capability === 'mailbox.draft.edit_own' && loaded.draft.createdBy !== actor.person.id) forbidden();
   if (!editable(loaded.draft.state) || loaded.draft.revision !== body.revision) conflict('draft_changed');
-  const { content, hash } = await snapshotContent({ actor, mailboxId, body, conversationId: loaded.draft.conversationId });
+  await checkPinned(actor, loaded.snapshot.templateVersionId, 'draft', mailboxId, [...body.to, ...body.cc, ...body.bcc]);
+  const template = loaded.snapshot.templateVersionId ? { versionId: loaded.snapshot.templateVersionId, signature: loaded.snapshot.signature } : undefined;
+  const { content, hash } = await snapshotContent({ actor, mailboxId, body, conversationId: loaded.draft.conversationId, template });
   const snapshotId = crypto.randomUUID();
   const [updated] = await atomic([
     statement(`UPDATE mail_drafts SET revision=revision+1,state='draft',current_snapshot_id=?,approved_review_id=NULL,

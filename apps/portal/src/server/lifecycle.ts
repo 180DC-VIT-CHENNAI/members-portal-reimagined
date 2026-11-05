@@ -6,8 +6,9 @@ import type { PersonStatus } from '../../db/schema/people';
  */
 const TRANSITIONS: Record<PersonStatus, readonly PersonStatus[]> = {
   invited: ['removed'],
-  active: ['on_leave', 'alumni', 'removed'],
-  on_leave: ['active', 'alumni', 'removed'],
+  active: ['on_leave', 'suspended', 'alumni', 'removed'],
+  on_leave: ['active', 'suspended', 'alumni', 'removed'],
+  suspended: ['active', 'on_leave', 'alumni', 'removed'],
   alumni: ['active', 'removed'],
   removed: ['active'],
 };

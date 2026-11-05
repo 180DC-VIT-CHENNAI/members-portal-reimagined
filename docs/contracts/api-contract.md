@@ -18,6 +18,39 @@ Every route needs a personnel session and `crm.view` (403 otherwise). Records th
 - `GET /api/crm/engagements`, `GET /api/crm/engagements/:id`, `PATCH .../closeout` (checklist, feedback, case-study consent), `POST .../close` returns `{closed, caseStudyDraftId}`.
 - `GET /api/crm/duplicates`, `POST /api/crm/organizations/:id/merge` and `POST /api/crm/contacts/:id/merge` `{sourceId}`: `crm.admin`.
 - `POST /api/consulting-requests/:id/convert`: `consulting.manage` and `crm.manage`; `{organizationId, contactId, opportunityId, created}`; `created` is true only the first time, later calls return the same ids.
+## Void portal member lifecycle
+
+Google personnel session on every route. Hidden people/proposals/items are 404; a known but forbidden action is 403.
+
+- `GET /api/people/:id/status`: status history, oldest first (`fromStatus, toStatus, reason, effectiveOn, actorPersonId, createdAt`); the person or `people.lifecycle` for their department. `POST` additively accepts `reason?` (or the older `note?`) and `effectiveOn?: YYYY-MM-DD` (default today; a future date is 400).
+- `GET /api/people/:id` adds `memberships` (secondary departments), `tenures[].reportsToPersonId` and `accessReviews` (open reviews; only for viewers who see grants). `GET /api/people?department=` also matches secondary memberships in force today.
+- `POST /api/people/:id/memberships`: `people.edit` for the secondary department; `{departmentId, note?, validFrom?, validUntil?}` returns 201. Primary department is 400; an open duplicate is 409. `DELETE .../memberships/:membershipId` ends it today and keeps the row.
+- `GET /api/promotions?person=&status=`: proposals the viewer may see (the person, the proposer, `people.edit` or `people.promotions.approve` holders for the position), each with `canDecide` and `canWithdraw`. `GET /api/promotions/:id` is 404 when not visible.
+- `POST /api/promotions`: `people.edit` for the position's department (else the person's); `{personId, positionId, termId?, startsOn?, rationale, letterDocumentId?}` returns 201 with `status: 'pending'`.
+- `POST /api/promotions/:id/decision`: `{action: 'approve'|'reject'|'withdraw', note?}`. Approve/reject need `people.promotions.approve` for the position; the proposer and the person concerned get 403. Withdraw is the proposer's. Approval returns `{status: 'approved', tenureId}` and creates the tenure, an open access review, a `promotion` email-queue campaign to the person and an audit entry; access roles and grants are unchanged. A decided proposal is 409.
+- `GET /api/access-reviews?status=&person=`: `people.grants`. `POST /api/access-reviews/:id/review` closes one; your own is 403.
+- `PATCH /api/tenures/:id`: `{reportsToPersonId: string|null}`, `people.edit` for the position; a cycle in that term is 400.
+- `GET /api/org-chart?term=`: `people.view`; the term's tenures with position, holder and `reportsToPersonId` (current term by default).
+- `GET /api/people/:id/offboard`: `people.offboard` for the person's department; `{status, steps: [{key, label, count, items}], needsSuccessor, records}`. `POST` `{status: 'alumni'|'removed', successorId?, reason, effectiveOn?, handover?: [{item, done}]}` returns `{id, status, changed, summary: {tasks, projects, tenures, grants, sessions, mailboxes, crm}, recordId}`. The `crm` step moves owned CRM organisations/opportunities, engagement owner/lead roles and owner-role record grants to the successor and deletes the leaver's CRM record grants, with audit entries. Yourself, an inactive successor or a missing successor when work exists is 400. Re-running returns `changed: false` and writes nothing.
+- `GET/POST /api/onboarding/policies`, `PATCH /api/onboarding/policies/:id` (`active: false` retires): `onboarding.manage`. Active policies appear in `GET /api/onboarding` and are acknowledged through the existing acknowledgment route.
+- `GET /api/terms/:id/handover`: `terms.manage` sees every item, others only their own. `POST` `{title, ownerPersonId?}` and `DELETE /api/handover-items/:id`: `terms.manage`. `PATCH /api/handover-items/:id` `{done?, title?, ownerPersonId?}`: owners may only tick; others' items are 404.
+
+New permission keys: `people.promotions.approve` and `people.offboard` (admin global, director department), `onboarding.manage` (admin).
+
+## Void portal documents and knowledge
+
+`:fileId` is a project/task file ID or a shared club-file ID. Each route first resolves the existing file ACL (project access or `files.view`), so an inaccessible or unknown ID returns 404. Mutations need project task management or `files.manage` (403 otherwise). Reads are private/no-store.
+
+- `GET /api/documents/:fileId/versions`: `{document, versions, canManage}`, at most 100 versions, newest first. `POST` (manage, multipart `file`, 30/hour, 25 MiB shared-file policy) returns 201 `{id, number, checksum}`. A concurrent revision change is 409 `version_changed`, and an archived document is 409.
+- `GET .../versions/:versionId/download`: the specific version as an attachment. `POST .../versions/:versionId/restore` (manage) returns 201 with a new version copied from it.
+- `PATCH /api/documents/:fileId/retention` (manage): `{retentionUntil: YYYY-MM-DD|null, legalHold, archived?, reviewStatus?: pending|approved|rejected}`. Audited.
+- `GET /api/documents/:fileId/shares`: the caller's links (managers see all). `POST` (30/hour) takes `{expiresAt: ISO within 30 days, maxDownloads?: 1..100000|null, requireSignIn?}` and returns 201 `{id, url, expiresAt}`. The URL contains the only copy of the token. `DELETE .../shares/:shareId` revokes the link. Creation and revocation are audited.
+- `GET /api/document-shares/:token`: public, 60/minute. Returns the frozen version as an attachment (`private, no-store`, nosniff, sandbox CSP), or 404 for malformed, unknown, revoked, expired, over-limit, archived, creator-lost-access, or (when sign-in is required) unauthenticated requests.
+- `DELETE /api/projects/.../files/:fileId` and `DELETE /api/club-files/:id` return 409 `legal_hold` while a hold is set. Deleting a parent task or project also returns 409 when any affected attachment is held.
+- `GET /api/knowledge?search=&before=<id>`: `knowledge.view`, 50 readable articles (descending ID) plus `nextBefore`. Search matches title and body only within readable rows. 60/minute.
+- `POST /api/knowledge`: `knowledge.edit` for the scope. `{title, slug, body, scope: global|department, departmentId?, status, tags?, projectId?, taskId?, meetId?}` returns 201 `{id, revision}`. A non-draft status requires `knowledge.publish`. A duplicate slug is 409. An inaccessible department or linked resource is 404.
+- `GET /api/knowledge/:id`: an article with `renderedBody` (escaped HTML), `canEdit` and `canPublish`. Unreadable articles are 404. `PUT` takes the same body plus `revision`. A stale revision is 409, and so is a scope change.
+- `GET /api/knowledge/:id/revisions`: `knowledge.edit`, at most 100 snapshots.
 
 ## Void portal shared mailboxes
 
@@ -59,6 +92,24 @@ All routes below require a current `mailbox.read` grant unless stated otherwise.
 
 Draft writes are limited to 60/hour, workflow actions to 100/hour, draft lists to 120/minute. Existing `/api/send-email`, letters and newsletters retain their own permissions and `noreply` identity; mailbox drafting never grants a bypass into those routes.
 
+## Void portal email templates
+
+All routes use the current Google personnel session. A template is visible only when the caller holds at least one action on it (global/department `templates.*` grants, or for mailbox-owned templates the mailbox capabilities `mailbox.manage` / `draft.create` / `review` / `send`, narrowed by the template's `policy`); otherwise 404. A visible template with a missing action is 403. Reads are private/no-store. Template writes share 60/hour.
+
+- `GET /api/email-templates?before=<id>`: `{templates: [{template, actions, category}], nextBefore}`, 50 per page, authorized row by row before paging.
+- `POST /api/email-templates`: `{name, ownerScope: 'global'|'department'|'mailbox', ownerId (null for global), definition}`; needs `author`. Returns 201 `{id, versionId, version: 1}` with status `draft`. `definition` is `{fields: [{key, label, type, required?, example?, options?, min?, max?}], subject, body, signature?, allowedMailboxIds (1-20), allowedRecipients?, category?, policy?: {action: personId[]}, followupDays?}`. The caller must manage every allowed mailbox (404 unknown, 403 not manager); a mailbox template must allow its owner mailbox. Unknown or reserved variables, duplicate keys, malformed `{{` and extra properties are 400.
+- `GET /api/email-templates/:id`: `{template, latest, actions, versions}`.
+- `POST /api/email-templates/:id/versions`: `{version, definition}`; needs `edit`. `version` is the current latest; a stale value is 409, a retired template 409. Returns 201 `{id, versionId, version}`.
+- `POST /api/email-templates/:id/status`: `{version, action: 'publish'|'retire'}`; needs that action. Publishing sets the latest version as the published version; retiring is final. Stale version or retired template is 409.
+- `GET /api/mailboxes/:id/templates`: `mailbox.draft.create`; `{templates: [{id, name, versionId, version, definition}]}` for published versions that allow this mailbox and on which the caller has `draft`.
+- `POST /api/mailboxes/:id/templates/preview`: `{versionId, values, to?}`; needs template `draft` and `mailbox.draft.create` on an active mailbox. Returns `{subject, text, html, signature, warnings, attachmentIds, to, category, versionId, version, templateName}`. Disallowed mailbox/recipient or category is 400; unverified CRM contact is 400. 300/hour.
+- `POST /api/mailboxes/:id/templates/drafts`: same body; the version must be the published one (409) and there must be no warnings (400). Creates a mailbox draft pinned to `versionId`, returns 201 `{id, revision: 1}`.
+- `POST /api/mailboxes/:id/templates/test`: `{versionId, values}` (no recipients accepted); queues one system-queue message to the caller's own address, returns `{campaignId, queued: 1}`. Outbound pause (mailbox or global) is 409. 10/hour.
+- `GET /api/mailboxes/:id/templates/starters`: `mailbox.manage`; `{starters: [{id, name, definition}]}` eleven recipes, not templates.
+- `GET /api/mailboxes/:id/templates/reminders`: `mailbox.draft.create`; `{reminders: [{draftId, subject, templateId, sentAt, to}]}` for the caller's accepted sends from published templates whose `followupDays` elapsed. Suggestions only.
+
+Mailbox draft `PATCH`, `submit`, `review` and `send` on a template-pinned draft additionally require the pinned version's `draft`, `review` (and `send` for approval) or `send` action, the version's mailbox/recipient rules, and a non-retired template (409 `template_retired`).
+
 ## Void portal internal messaging
 
 All routes use the current Google personnel session. A conversation the caller cannot read now is 404 on every route (detail, messages, people, read, mute, send, edit, delete, react, report), whether or not it exists. Responses are private/no-store. Reads share a 240/minute limit, writes 60/minute, search 30/minute, reports 10/minute.
@@ -80,7 +131,7 @@ All routes use the current Google personnel session. A conversation the caller c
 - `GET /api/messages/search?q=<2-100 chars>&before=<id>`: `{results, nextBefore}`, 30 live messages from readable conversations, case-insensitive substring match.
 - `GET /api/messages/reports` and `POST /api/messages/reports/:id` with `{action: 'dismiss'|'remove'}`: global `chat.moderate`. Moderators see only the reported message and where it was posted. Removal tombstones the message and writes an audit entry with no text.
 - `GET /api/notifications/mentions?before=<id>&unread=1`: `{mentions, nextBefore}`, 30 per page, rechecking conversation access and that the message is live. `POST /api/notifications/mentions/read` accepts `{ids}` (1-50) or `{upTo}` for the caller's own notices only. `GET /api/notifications/count` now includes readable unread mentions.
-- `GET`/`PUT /api/notification-preferences`: `{preferences: [{category: 'mentions'|'tasks', inApp, emailDigest, quietStart, quietEnd}]}`. Quiet hours are `HH:MM`; set both to different times or leave both null. Defaults are in-app on and digest off. No digest email is sent.
+- `GET`/`PUT /api/notification-preferences`: `{preferences: [{category: 'mentions'|'tasks', inApp, emailDigest, quietStart, quietEnd}]}`. Quiet hours are `HH:MM` in India time; set both to different times or leave both null. The start is inclusive, the end exclusive, and overnight windows are supported. `GET /api/notifications/count` excludes categories that are quiet now or have in-app notices disabled. Inbox lists remain accessible and unread; pending notices count again when quiet hours end. Defaults are in-app on and digest off. No digest email is sent.
 
 ## Portal collaboration and onboarding
 

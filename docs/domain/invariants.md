@@ -1,5 +1,14 @@
 # Invariants — 180DC VIT Chennai Platform
 
+## Member lifecycle invariants
+
+- **ORG-PERM-01:** Department-scoped permissions follow the primary `people.department_id` only; secondary memberships grant nothing.
+- **ORG-PROMO-01:** A promotion approver differs from both the proposer and the person concerned, and approval never changes access roles or personal grants (it opens an access review instead).
+- **ORG-ACCESS-01:** Nobody changes their own access role or grants through `PUT /api/people/:id/access`.
+- **ORG-OFF-01:** Offboarding is one batch (status, history, every registered cleanup step, handover record, audit) and re-running it changes nothing. It revokes sessions, ends tenures, removes personal grants, shared-mailbox capability rows and CRM record grants, and hands open tasks, project roles and CRM ownership to an active successor.
+
+Covered by `apps/portal/tests/e2e/member-lifecycle.test.mjs`, `src/server/promotion-rules.test.ts` and `src/server/org-chart.test.ts`.
+
 ## CRM invariants
 
 - **CRM-ACL-01:** Every CRM list, search, count, detail and mutation applies the caller's live owner/grant/admin visibility; hidden records are 404 and never confirmed by duplicate checks.
@@ -25,6 +34,7 @@ Covered by `apps/portal/tests/e2e/mailboxes.test.mjs` and `src/server/mailboxes/
 - **CHAT-DM-01:** A new direct conversation needs two distinct current active/on-leave members. When one leaves, the other can read the history but cannot send; the leaver has no session.
 - **CHAT-EDIT-01:** Only the author edits, only within 15 minutes, and never after deletion. A tombstone erases the body and removes its reactions, search hit and mention notices.
 - **CHAT-NOTICE-01:** A mention notice is created at most once per recipient and message, only for someone who can read the conversation at that moment, has not muted it and has not turned off mention notices. No message email is sent.
+- **CHAT-QUIET-01:** Per-category quiet hours use India time and a start-inclusive, end-exclusive interval, including overnight windows. Quiet or disabled categories do not contribute to the notification badge. Quiet hours never delete inbox entries or mark them read; ending the interval restores still-authorized unread notices.
 
 Covered by `apps/portal/tests/e2e/messaging.test.mjs` and `src/server/messaging-rules.test.ts`.
 

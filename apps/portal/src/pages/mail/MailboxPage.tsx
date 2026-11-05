@@ -5,6 +5,7 @@ import { Link } from '../../lib/router.tsx';
 import { InboxCard } from './InboxCard.tsx';
 import { MailboxManagement } from './MailboxManagement.tsx';
 import { QuarantineCard } from './QuarantineCard.tsx';
+import { FollowUps } from './TemplateCompose.tsx';
 import type { MailFolder } from '../../server/mailboxes/types.ts';
 
 const folders = [
@@ -30,6 +31,7 @@ export function MailboxPage({ id }: { readonly id: string }) {
     } />
     <p className="muted">Sending {access.mailbox.outboundPaused ? 'paused' : access.mailbox.outboundAdapter === 'disabled' ? 'not enabled' : 'requires a current approval'}. Acceptance is not confirmed inbox delivery.</p>
     <p className="muted">Incoming mail {access.mailbox.inboundEnabled ? 'is accepted' : 'is refused'} for this address.</p>
+    {access.capabilities.includes('mailbox.draft.create') && <FollowUps id={id} />}
     {access.capabilities.includes('mailbox.read') && <InboxCard id={id} />}
     {access.capabilities.includes('mailbox.read') && <DraftFolders id={id} />}
     {access.capabilities.includes('mailbox.manage') && <QuarantineCard id={id} />}

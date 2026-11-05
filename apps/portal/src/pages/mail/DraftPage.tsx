@@ -5,6 +5,7 @@ import type { ApiProblem } from '../../lib/errors.ts';
 import { Link } from '../../lib/router.tsx';
 import { useSession } from '../../lib/session.tsx';
 import { DraftEditor } from './DraftEditor.tsx';
+import { TemplateCompose } from './TemplateCompose.tsx';
 
 export function DraftPage({ id, draftId, edit = false }: { readonly id: string; readonly draftId?: string; readonly edit?: boolean }) {
   const load = useLoad(() => draftId ? api('/api/mailboxes/:id/drafts/:draftId', { params: { id, draftId } }) : Promise.resolve(null), [id, draftId]);
@@ -24,7 +25,7 @@ export function DraftPage({ id, draftId, edit = false }: { readonly id: string; 
   if (!loaded) return <div className="page page-narrow">
     <BackLink to={`/mailboxes/${id}`}>{mailbox.data.mailbox.displayName}</BackLink>
     <PageHeader title="New draft" lede={mailbox.data.mailbox.address} />
-    {caps.includes('mailbox.draft.create') ? <DraftEditor id={id} /> : <Alert tone="warning">You have no drafting access.</Alert>}
+    {caps.includes('mailbox.draft.create') ? <><TemplateCompose id={id} /><DraftEditor id={id} /></> : <Alert tone="warning">You have no drafting access.</Alert>}
   </div>;
   const { draft, snapshot } = loaded;
   const mayEdit = caps.includes('mailbox.draft.edit_any') || (caps.includes('mailbox.draft.edit_own') && draft.createdBy === me.id);
@@ -45,6 +46,7 @@ export function DraftPage({ id, draftId, edit = false }: { readonly id: string; 
         <div><dt>To</dt><dd>{snapshot.recipients.to.join(', ')}</dd></div>
         <div><dt>CC</dt><dd>{snapshot.recipients.cc.join(', ') || 'None'}</dd></div>
         <div><dt>BCC</dt><dd>{snapshot.recipients.bcc.join(', ') || 'None'}</dd></div>
+        {snapshot.templateVersionId && <div><dt>Template</dt><dd>Pinned to template version <code>{snapshot.templateVersionId.slice(0, 8)}</code></dd></div>}
       </dl>
       <TextAreaField label="Frozen message" value={snapshot.text} readOnly rows={10} />
       {snapshot.signature && <TextAreaField label="Signature" value={snapshot.signature} readOnly />}

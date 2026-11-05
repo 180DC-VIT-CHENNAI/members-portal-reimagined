@@ -17,7 +17,14 @@ export async function isInvited(db: D1Database, email: string): Promise<boolean>
 
 /** Link the auth user to the person and turn "invited" into "active". */
 export async function activateOnFirstSignIn(db: D1Database, authUserId: string, email: string): Promise<void> {
-  await db
+  const history = db
+    .prepare(
+      `INSERT INTO person_status_history (person_id, from_status, to_status, reason, effective_on)
+       SELECT id, 'invited', 'active', 'first_sign_in', date('now') FROM people
+       WHERE email = ?1 AND auth_user_id IS NULL AND status = 'invited'`,
+    )
+    .bind(normalizeEmail(email));
+  const activate = db
     .prepare(
       `UPDATE people SET auth_user_id = ?1,
          status = CASE status WHEN 'invited' THEN 'active' ELSE status END,
@@ -26,8 +33,8 @@ export async function activateOnFirstSignIn(db: D1Database, authUserId: string, 
          updated_at = datetime('now')
        WHERE email = ?2 AND auth_user_id IS NULL`,
     )
-    .bind(authUserId, normalizeEmail(email))
-    .run();
+    .bind(authUserId, normalizeEmail(email));
+  await db.batch([history, activate]);
 }
 
 /** True when this auth user belongs to a person who still has access. */

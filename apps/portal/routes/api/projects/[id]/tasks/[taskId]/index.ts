@@ -4,6 +4,7 @@ import { defineHandler } from 'void';
 import { and, db, eq } from 'void/db';
 import { audit } from '../../../../../../src/server/audit';
 import { routeParam } from '../../../../../../src/server/departments';
+import { assertProjectFilesDeletable } from '../../../../../../src/server/document-access';
 import { requirePrincipal } from '../../../../../../src/server/guard';
 import { badRequest, conflict, idParam } from '../../../../../../src/server/http';
 import { canSeeProject, projectFor, requireRight, taskFields, taskOr404 } from '../../../../../../src/server/projects';
@@ -61,6 +62,7 @@ export const DELETE = defineHandler(async (c) => {
   const loaded = await projectFor(actor, idParam(c));
   requireRight(loaded, 'manageTasks');
   const task = await taskOr404(loaded.project.id, routeParam(c, 'taskId'));
+  await assertProjectFilesDeletable(loaded.project.id, task.id);
   await db.batch([db.delete(taskComments).where(eq(taskComments.taskId, task.id)), db.delete(projectTasks).where(eq(projectTasks.id, task.id))]);
   await audit(actor.person.id, 'task.delete', 'task', task.id, { projectId: loaded.project.id, title: task.title });
   return { id: task.id };

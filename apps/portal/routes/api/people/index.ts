@@ -7,7 +7,9 @@ import { PERSON_STATUSES } from '../../../db/schema/people';
 import { requirePermission } from '../../../src/server/guard';
 import { badRequest, conflict } from '../../../src/server/http';
 import { checkInvitation, invitationCampaign, invitationHtml, invitationOrigin, isUniqueViolation } from '../../../src/server/invitations';
+import { currentMembersOf } from '../../../src/server/memberships';
 import { personView } from '../../../src/server/people';
+import { statusHistoryInsert, todayIso } from '../../../src/server/status-history';
 import { can } from '../../../src/server/permissions';
 import { emailAddress, fullName, id } from '../../../src/server/validation';
 
@@ -29,7 +31,8 @@ export const GET = defineHandler.withValidator({ query: listQuery })(async (c, {
     where.push(or(like(people.fullName, pattern), like(people.email, pattern), like(people.skills, pattern)));
   }
   if (query.status) where.push(eq(people.status, query.status));
-  if (query.department) where.push(eq(people.departmentId, query.department));
+  // Primary department, or a secondary membership in force today.
+  if (query.department) where.push(or(eq(people.departmentId, query.department), inArray(people.id, currentMembersOf(query.department, todayIso()))));
   if (query.role) where.push(eq(people.accessRoleId, query.role));
   if (query.position || query.term) {
     const tenureWhere = [];
@@ -116,6 +119,7 @@ export const POST = defineHandler.withValidator({ body: inviteBody })(async (c, 
         accessRoleId: body.accessRoleId,
         invitedBy: actor.person.id,
       }),
+      statusHistoryInsert({ personId, from: null, to: 'invited', reason: 'invited', effectiveOn: todayIso(), actorPersonId: actor.person.id }),
       ...(checked.positionId && term
         ? [db.insert(tenures).values({
             id: crypto.randomUUID(),

@@ -1,0 +1,11 @@
+.dialog:has(.document-history) {
+  margin-inline: auto 0;
+  max-height: 100dvh;
+  height: 100dvh;
+  width: min(100%, 42rem);
+}
+.document-history { padding-block-start: var(--space-4, 1rem); }
+.document-versions { padding-inline-start: var(--space-6, 1.5rem); }
+.document-checksum { overflow-wrap: anywhere; font-size: .75rem; }
+.knowledge-body { overflow-wrap: anywhere; }
+.knowledge-body p { white-space: pre-wrap; }

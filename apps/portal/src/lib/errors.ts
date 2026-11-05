@@ -9,11 +9,13 @@ const STATUS_NAMES: Record<string, string> = {
   invited: 'Invited',
   active: 'Active',
   on_leave: 'On leave',
+  suspended: 'Suspended',
   alumni: 'Alumni',
   removed: 'Removed',
 };
 
 const MESSAGES: Record<string, string> = {
+  status_reason_required: 'Add a reason before suspending this member.',
   letter_not_found: 'This saved PDF does not exist or is outside your access.',
   letter_file_missing: 'The saved PDF is unavailable. No email was sent.',
   invalid_letter_metadata: 'The letter metadata is invalid or too large.',

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { primaryKey, sqliteTable, text } from 'void/schema-d1';
+import { integer, primaryKey, sqliteTable, text } from 'void/schema-d1';
 import { people } from './people';
 
 /**
@@ -9,6 +9,20 @@ import { people } from './people';
  */
 export const ONBOARDING_ACK_KEYS = ['department_read', 'resources_read', 'checklist_dismissed'] as const;
 export type OnboardingAckKey = (typeof ONBOARDING_ACK_KEYS)[number];
+/** A fixed item, or `policy:<policy id>` for an admin-configured policy acknowledgment. */
+export type OnboardingAckItem = OnboardingAckKey | `policy:${string}`;
+
+/** Policies every member acknowledges from the first-login checklist, configured by admins. */
+export const onboardingPolicies = sqliteTable('onboarding_policies', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  /** An https:// document or an in-portal path. */
+  href: text('href'),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  createdBy: text('created_by'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+});
 
 export const onboardingAcknowledgments = sqliteTable(
   'onboarding_acknowledgments',
@@ -16,7 +30,7 @@ export const onboardingAcknowledgments = sqliteTable(
     personId: text('person_id')
       .notNull()
       .references(() => people.id),
-    item: text('item', { enum: ONBOARDING_ACK_KEYS }).notNull(),
+    item: text('item').$type<OnboardingAckItem>().notNull(),
     acknowledgedAt: text('acknowledged_at').notNull().default(sql`(datetime('now'))`),
   },
   (t) => [primaryKey({ columns: [t.personId, t.item] })],

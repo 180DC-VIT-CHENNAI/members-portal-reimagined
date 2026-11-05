@@ -29,3 +29,12 @@ test('only active and on_leave keep access', () => {
   assert.equal(hasAccess('alumni'), false);
   assert.equal(hasAccess('removed'), false);
 });
+
+test('suspension withdraws access without making the member an alumnus', () => {
+  assert.deepEqual(nextStatus('active', 'suspended', true), { ok: true, status: 'suspended' });
+  assert.deepEqual(nextStatus('on_leave', 'suspended', true), { ok: true, status: 'suspended' });
+  assert.equal(hasAccess('suspended'), false);
+  assert.deepEqual(nextStatus('suspended', 'active', true), { ok: true, status: 'active' });
+  assert.deepEqual(nextStatus('suspended', 'on_leave', true), { ok: true, status: 'on_leave' });
+  assert.equal(nextStatus('invited', 'suspended', false).ok, false);
+});

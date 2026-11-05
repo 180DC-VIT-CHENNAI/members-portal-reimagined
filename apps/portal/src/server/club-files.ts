@@ -3,6 +3,7 @@
 // details (original name, uploader, event/project) are R2 custom metadata,
 // exactly as the old Worker stored them, so existing objects list unchanged.
 // Pure module (no void/* imports) so it runs under `node --test`.
+import { sanitizeFileName } from './document-rules.ts';
 
 /** Shared library only. Other prefixes in the bucket (letters/, ...) are private. */
 export const SHARED_FILE_CATEGORIES = ['general', 'projects', 'events'] as const;
@@ -61,7 +62,7 @@ export async function sharedFileKeyById(bucket: ListableBucket, id: string): Pro
 
 /** Download headers: always an attachment, never cached, filename safely encoded. */
 export function downloadFileHeaders(name: string, contentType: string): Record<string, string> {
-  const safeName = name.replace(/[\x00-\x1f\x7f"\\]/g, '_');
+  const safeName = sanitizeFileName(name);
   const encoded = encodeURIComponent(safeName).replace(/['()*]/g, (ch) => '%' + ch.charCodeAt(0).toString(16).toUpperCase());
   return {
     'Content-Type': contentType || 'application/octet-stream',

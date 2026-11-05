@@ -1,9 +1,10 @@
 import { sql } from 'drizzle-orm';
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'void/schema-d1';
 import { accessRoles } from './access';
 import { departments, positions, terms } from './org';
 
-export const PERSON_STATUSES = ['invited', 'active', 'on_leave', 'alumni', 'removed'] as const;
+export const PERSON_STATUSES = ['invited', 'active', 'on_leave', 'suspended', 'alumni', 'removed'] as const;
 export type PersonStatus = (typeof PERSON_STATUSES)[number];
 
 /**
@@ -80,6 +81,8 @@ export const tenures = sqliteTable(
       .references(() => terms.id),
     startedOn: text('started_on').notNull(),
     endedOn: text('ended_on'),
+    /** Who this person reports to while holding the position; drives the org chart. */
+    reportsToPersonId: text('reports_to_person_id').references((): AnySQLiteColumn => people.id),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (t) => [
