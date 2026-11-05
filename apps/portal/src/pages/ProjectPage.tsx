@@ -3,6 +3,7 @@ import { BackLink, Button, ConfirmDialog, ErrorState, LoadingBlock, PageHeader, 
 import { ProjectTasks } from '../components/projects/ProjectTasks.tsx';
 import { ProjectMembers } from '../components/projects/ProjectMembers.tsx';
 import { ProjectFiles } from '../components/projects/ProjectFiles.tsx';
+import { ProjectGitHub } from '../components/github/ProjectGitHub.tsx';
 import { ConversationButton } from '../components/messages/ConversationButton.tsx';
 import { api, problemFrom, useLoad } from '../lib/api.ts';
 import type { ApiProblem } from '../lib/errors.ts';
@@ -103,6 +104,7 @@ export function ProjectPage({ id }: { id: string }) {
         {p.description && <p className="pre-wrap">{p.description}</p>}
         <ProblemAlert problem={confirm ? null : problem} />
         <ProjectTasks project={p} assignable={(people.data ?? []).filter((c) => c.canSee)} onChange={project.reload} />
+        <ProjectGitHub projectId={p.id} />
         <ProjectFiles project={p} />
         <ProjectMembers
           project={p}

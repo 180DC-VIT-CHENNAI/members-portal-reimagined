@@ -41,8 +41,9 @@ export const ADMIN_TOOLS: readonly AdminTool[] = [
   { path: '/admin/consulting', label: 'Consulting requests', description: 'Review "Work with us" requests and reply.', permission: 'consulting.manage', icon: 'inbox' },
   { path: '/admin/announcements', label: 'Announcements', description: 'Post and remove notices for members.', permission: 'announcements.manage', icon: 'megaphone' },
   { path: '/admin/maintenance', label: 'Maintenance', description: 'Pause the members portal for everyone but admins.', permission: 'site.maintenance', icon: 'wrench' },
+  { path: '/admin/github', label: 'GitHub', description: 'Connect the GitHub App, map repositories to projects and link members.', permission: 'github.manage', icon: 'wrench' },
 ];
 
 export function visibleAdminTools(perms: PermissionMap): AdminTool[] {
-  return ADMIN_TOOLS.filter((tool) => can(perms, tool.permission, tool.permission === 'email.view' ? null : undefined));
+  return ADMIN_TOOLS.filter((tool) => can(perms, tool.permission, tool.permission === 'email.view' || tool.permission === 'github.manage' ? null : undefined));
 }

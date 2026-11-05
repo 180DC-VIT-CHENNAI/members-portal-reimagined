@@ -24,6 +24,7 @@ import { EmailQueuePage } from './pages/admin/EmailQueuePage.tsx';
 import { SendEmailPage } from './pages/admin/SendEmailPage.tsx';
 import { PartnersAdminPage } from './pages/admin/PartnersAdminPage.tsx';
 import { AuditPage } from './pages/admin/AuditPage.tsx';
+import { GitHubAdminPage } from './pages/admin/GitHubAdminPage.tsx';
 import { ImportPage } from './pages/admin/ImportPage.tsx';
 import { InvitePage } from './pages/admin/InvitePage.tsx';
 import { PositionsPage } from './pages/admin/PositionsPage.tsx';
@@ -40,6 +41,8 @@ import { MeetsPage } from './pages/MeetsPage.tsx';
 import { MorePage } from './pages/MorePage.tsx';
 import { TodayPage } from './pages/TodayPage.tsx';
 import { NotificationsPage } from './pages/NotificationsPage.tsx';
+import { MyWorkPage } from './pages/MyWorkPage.tsx';
+import { IssuePage } from './pages/github/IssuePage.tsx';
 import { ProjectFormPage } from './pages/ProjectFormPage.tsx';
 import { ProjectPage } from './pages/ProjectPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
@@ -172,6 +175,7 @@ function SignedIn({ me, refresh }: { me: MeResponse; refresh: () => void }) {
   // Phones show the first four entries as tabs and the rest under More; `tab: false` sends an entry straight to More.
   const nav: Array<{ to: string; label: string; icon: IconName; show: boolean; active: boolean; tab?: boolean }> = [
     { to: '/today', label: 'Today', icon: 'checkCircle', show: true, active: path === '/today' },
+    { to: '/my-work', label: 'My work', icon: 'grid', show: true, active: path === '/my-work', tab: false },
     { to: '/messages', label: 'Messages', icon: 'messageSquare', show: true, active: path.startsWith('/messages') },
     { to: '/notifications', label: 'Notifications', icon: 'inbox', show: true, active: path === '/notifications', tab: false },
     { to: '/mailboxes', label: 'Shared mailboxes', icon: 'inbox', show: true, active: path.startsWith('/mailboxes'), tab: false },
@@ -295,6 +299,7 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/me') return <Redirect to={home} />;
   if (path === '/login') return <Redirect to={next && next.startsWith('/') && !next.startsWith('//') ? next : home} />;
   if (path === '/today') return <TodayPage />;
+  if (path === '/my-work') return <MyWorkPage />;
   if (path === '/notifications') return <NotificationsPage />;
   if (path === '/mailboxes') return <MailboxesPage />;
   const composeMail = matchPath('/mailboxes/:id/compose', path);
@@ -329,6 +334,8 @@ function route(path: string, home: string, next: string | null) {
   if (projectEdit) return <ProjectFormPage key={projectEdit.id} id={projectEdit.id} />;
   const project = matchPath('/projects/:id', path);
   if (project) return <ProjectPage key={project.id} id={project.id} />;
+  const githubIssue = matchPath('/github/issues/:id', path);
+  if (githubIssue) return <IssuePage id={githubIssue.id} />;
   if (path === '/teams') return <TeamInstancesPage />;
   if (path === '/teams/new') return <TeamInstanceFormPage />;
   const instanceEdit = matchPath('/teams/:id/edit', path);
@@ -364,6 +371,7 @@ function route(path: string, home: string, next: string | null) {
   if (path === '/admin/onboarding-policies') return <OnboardingPoliciesPage />;
   if (path === '/admin/roles') return <RolesPage />;
   if (path === '/admin/audit') return <AuditPage />;
+  if (path === '/admin/github') return <GitHubAdminPage />;
   if (path === '/admin/case-studies') return <CaseStudiesAdminPage />;
   if (path === '/admin/partners') return <PartnersAdminPage />;
   if (path === '/admin/consulting') return <ConsultingAdminPage />;

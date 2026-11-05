@@ -1,0 +1,12 @@
+{
+  "id": 9201,
+  "name": "portal-ci",
+  "head_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "status": "completed",
+  "conclusion": "success",
+  "details_url": "https://example.test/runs/9201",
+  "html_url": "https://github.com/180DC-VIT-CHENNAI/portal/runs/9201",
+  "app": {
+    "id": 424242
+  }
+}

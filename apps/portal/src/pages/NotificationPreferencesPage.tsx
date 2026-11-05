@@ -10,7 +10,8 @@ type Preference = Preferences['preferences'][number];
 const CATEGORY = {
   mentions: { title: 'Mentions', description: 'Someone mentions you in a message or channel you can read.' },
   tasks: { title: 'Tasks', description: 'Tasks assigned to you, comments on your tasks and deadlines due today or tomorrow.' },
-} as const satisfies Record<Preference['category'], { title: string; description: string }>;
+  github: { title: 'GitHub', description: 'You are assigned to an issue, asked to review a pull request, or someone reviews your pull request or mentions you.' },
+} as const satisfies Record<Preference['category'] | 'github', { title: string; description: string }>;
 
 /** Per-category in-app notices, the (not yet sent) email digest opt-in and quiet hours. */
 export function NotificationPreferencesPage() {

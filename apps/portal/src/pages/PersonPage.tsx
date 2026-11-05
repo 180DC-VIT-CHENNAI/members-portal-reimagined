@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GitHubCard } from './person/GitHubCard.tsx';
 import { ConversationButton } from '../components/messages/ConversationButton.tsx';
 import { Alert, Avatar, BackLink, ErrorState, LoadingBlock, StatusBadge, useTitle } from '../components/ui.tsx';
 import { api, lookups, useLoad } from '../lib/api.ts';
@@ -82,6 +83,7 @@ export function PersonPage({ id }: { id: string }) {
         </aside>
         <div className="stack">
           <ProfileCard person={p} self={self} departments={departments} onSaved={(next) => (self ? reload() : person.setData(next))} />
+          {self && <GitHubCard />}
           <TenureCard person={p} positions={positions} terms={terms} departments={departments} onChanged={person.reload} />
           <MembershipsCard person={p} departments={departments} onChanged={person.reload} />
           <PromotionsCard person={p} positions={positions} terms={terms} onChanged={person.reload} />

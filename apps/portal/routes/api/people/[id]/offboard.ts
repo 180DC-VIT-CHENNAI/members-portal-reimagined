@@ -9,6 +9,7 @@ import { activeSuccessor, planOffboarding, previewOffboarding } from '../../../.
 // Registers each package's offboarding step (see registerOffboardingStep).
 import '../../../../src/server/mailboxes/offboarding';
 import '../../../../src/server/crm/offboarding';
+import '../../../../src/server/github/sync/offboarding';
 import { getPersonOr404 } from '../../../../src/server/people';
 import { sqlNow, statusHistoryInsert, todayIso } from '../../../../src/server/status-history';
 import { calendarDate, id } from '../../../../src/server/validation';

@@ -98,11 +98,11 @@ export async function startPortal(bindings = {}) {
     db,
     /** Token for Void's dev endpoints: the scheduled trigger and the email inbox. */
     devToken: triggerToken,
-    async runCron() {
+    async runCron(cron = '* * * * *') {
       const response = await fetch(`${base}/__void/scheduled`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-void-dev-trigger': triggerToken },
-        body: JSON.stringify({ cron: '* * * * *', scheduledTime: Date.now() }),
+        body: JSON.stringify({ cron, scheduledTime: Date.now() }),
       });
       if (!response.ok) throw new Error(`cron ${response.status}: ${await response.text()}`);
       return response.json();
