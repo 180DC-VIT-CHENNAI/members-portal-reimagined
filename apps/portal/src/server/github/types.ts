@@ -745,6 +745,19 @@ export interface MilestonesResponse {
   readonly milestones: readonly MilestoneProgress[];
 }
 
+/** GET /api/github/projects/:id/burndown?milestone=<GitHub milestone id> */
+export interface BurndownResponse {
+  readonly repositoryId: number;
+  readonly milestone: MilestoneView;
+  /** First and last day drawn (YYYY-MM-DD, UTC); the last is the earlier of today and the due date. */
+  readonly start: string;
+  readonly end: string;
+  /** Issues and pull requests in the milestone now. */
+  readonly total: number;
+  /** One point per day; empty when the milestone has no items. `ideal` is null without a due date. */
+  readonly points: readonly { readonly date: string; readonly open: number; readonly ideal: number | null }[];
+}
+
 /** GET /api/github/projects/:id/activity */
 export interface ActivityResponse {
   readonly activity: readonly ActivityView[];

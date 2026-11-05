@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useLoad } from '../../lib/api.ts';
 import { formatDate } from '../../lib/format.ts';
 import { github } from '../../lib/github-client.ts';
 import { milestonePercent, recentlyClosed, repoName } from '../../lib/github-view.ts';
 import type { MilestoneProgress, ProjectGitHubResponse } from '../../server/github/types.ts';
-import { EmptyState, ErrorState, LoadingBlock } from '../ui.tsx';
+import { Button, EmptyState, ErrorState, LoadingBlock } from '../ui.tsx';
+import { BurndownChart } from './BurndownChart.tsx';
 import { ToneBadge } from './parts.tsx';
 
 function order(a: MilestoneProgress, b: MilestoneProgress): number {
@@ -14,6 +16,7 @@ function order(a: MilestoneProgress, b: MilestoneProgress): number {
 
 export function MilestoneList({ projectId, info }: { projectId: string; info: ProjectGitHubResponse }) {
   const data = useLoad(() => github.milestones(projectId), [projectId]);
+  const [charted, setCharted] = useState<number | null>(null);
   if (!data.data) {
     return <div className="gh-pad">{data.problem ? <ErrorState problem={data.problem} onRetry={data.reload} /> : <LoadingBlock rows={2} label="Loading milestones" />}</div>;
   }
@@ -35,8 +38,9 @@ export function MilestoneList({ projectId, info }: { projectId: string; info: Pr
         const percent = milestonePercent(open, closed);
         const repository = info.repositories.find((candidate) => candidate.id === repositoryId);
         const week = recentlyClosed(progress);
+        const expanded = charted === milestone.id;
         return (
-          <li key={`${repositoryId}-${milestone.id}`} className="gh-milestone">
+          <li key={`${repositoryId}-${milestone.id}`} className={expanded ? 'gh-milestone is-expanded' : 'gh-milestone'}>
             <div className="row-between">
               <strong className="wrap-anywhere">{milestone.title}</strong>
               <ToneBadge presentation={milestone.state === 'open' ? { label: 'Open', tone: 'success' } : { label: 'Closed', tone: 'neutral' }} />
@@ -50,6 +54,12 @@ export function MilestoneList({ projectId, info }: { projectId: string; info: Pr
               {closed} of {total} done ({percent}%)
               {week > 0 ? ` · ${week} closed in the last 7 days` : ''}
             </span>
+            <div>
+              <Button size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setCharted(expanded ? null : milestone.id)}>
+                {expanded ? 'Hide burndown' : 'Burndown'}
+              </Button>
+            </div>
+            {expanded && <BurndownChart projectId={projectId} milestoneId={milestone.id} title={milestone.title} />}
           </li>
         );
       })}

@@ -17,6 +17,7 @@ import type { SQL } from 'drizzle-orm';
 import * as v from 'valibot';
 import { and, db, desc, eq, inArray, isNull, or, sql } from 'void/db';
 import { loadActivePrincipals, type Principal } from '../../principal';
+import { notFound } from '../../http';
 import { projectAccess } from '../../project-rules';
 import type { LoadedProject } from '../../projects';
 import { todayIso } from '../../status-history';
@@ -28,6 +29,7 @@ import {
   BOARD_COLUMNS,
   type BoardColumn,
   type BoardResponse,
+  type BurndownResponse,
   type CheckView,
   type CommentView,
   GITHUB_LIMITS,
@@ -55,7 +57,8 @@ import { type IssueRow, type LoadedIssue, type RepositoryRow, canWriteIssues, vi
 import { asGitHubError } from './attribution-rules';
 import { isoAt } from './backfill-rules';
 import { columnFor, compareInColumn, likePattern, statusOfLabel } from './board-rules';
-import type { activityQuery, boardQuery, milestonesQuery, pullsQuery } from './inputs';
+import { type BurndownItem, computeBurndown } from './burndown-rules';
+import type { activityQuery, boardQuery, burndownQuery, milestonesQuery, pullsQuery } from './inputs';
 
 /** D1 allows 100 bound parameters per statement. */
 export function chunked<T>(items: readonly T[], size = 90): T[][] {
@@ -399,6 +402,42 @@ export async function milestonesFor(loaded: LoadedProject, query: v.InferOutput<
     })
     .sort((a, b) => (a.milestone.dueOn ?? '9999').localeCompare(b.milestone.dueOn ?? '9999') || a.milestone.id - b.milestone.id);
   return { milestones };
+}
+
+/** Daily open counts of one milestone of this project's mapped repositories; 404 `milestone_not_found` otherwise. */
+export async function burndownFor(loaded: LoadedProject, query: v.InferOutput<typeof burndownQuery>): Promise<BurndownResponse> {
+  const repositoryIds = (await projectRepositories(loaded.project.id)).map((repo) => repo.id);
+  const [milestone] =
+    repositoryIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(githubMilestones)
+          .where(and(eq(githubMilestones.id, query.milestone), inArray(githubMilestones.repositoryId, repositoryIds)));
+  if (!milestone) notFound('milestone_not_found');
+
+  const issues = await db
+    .select({ id: githubIssues.id, createdAt: githubIssues.githubCreatedAt, state: githubIssues.state, closedAt: githubIssues.closedAt })
+    .from(githubIssues)
+    .where(eq(githubIssues.milestoneId, milestone.id));
+  const events = await inChunks(
+    issues.map((issue) => issue.id),
+    (chunk) =>
+      db
+        .select({ issueId: githubActivity.issueId, kind: githubActivity.kind, occurredAt: githubActivity.occurredAt })
+        .from(githubActivity)
+        .where(and(inArray(githubActivity.issueId, chunk), inArray(githubActivity.kind, ['closed', 'merged', 'reopened']))),
+  );
+  const eventsBy = groupBy(events, (event) => event.issueId);
+  const items = issues.map(
+    (issue): BurndownItem => ({
+      createdAt: issue.createdAt,
+      state: issue.state,
+      closedAt: issue.closedAt,
+      transitions: (eventsBy.get(issue.id) ?? []).map((event) => ({ at: event.occurredAt, open: event.kind === 'reopened' })),
+    }),
+  );
+  return { repositoryId: milestone.repositoryId, milestone: milestoneView(milestone), ...computeBurndown(items, milestone.dueOn, todayIso()) };
 }
 
 type ActivityRow = typeof githubActivity.$inferSelect;

@@ -4,6 +4,7 @@ import type {
   ActivityResponse,
   BoardColumn,
   BoardResponse,
+  BurndownResponse,
   ChangeLabelsInput,
   CommentWriteResponse,
   CreateCommentInput,
@@ -59,8 +60,10 @@ export const github = {
     call<PullsResponse>('/api/github/projects/:id/pulls', { params: { id: projectId }, query: compact({ ...query }) }),
   milestones: (projectId: string, repo?: string) =>
     call<MilestonesResponse>('/api/github/projects/:id/milestones', { params: { id: projectId }, query: compact({ repo }) }),
+  burndown: (projectId: string, milestoneId: number) =>
+    call<BurndownResponse>('/api/github/projects/:id/burndown', { params: { id: projectId }, query: { milestone: String(milestoneId) } }),
   activity: (projectId: string, before?: number) =>
-    call<ActivityResponse>('/api/github/projects/:id/activity', { params: { id: projectId }, query: compact({ before: before?.toString(), limit: '30' }) }),
+    call<ActivityResponse>('/api/github/projects/:id/activity', { params: { id: projectId }, query: compact({ before: before?.toString(), limit: '50' }) }),
   createIssue: (projectId: string, input: CreateIssueInput) =>
     call<IssueWriteResponse>('/api/github/projects/:id/issues', { method: 'POST', params: { id: projectId }, body: input }),
 

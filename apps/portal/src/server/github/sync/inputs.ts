@@ -79,6 +79,8 @@ export const pullsQuery = v.object({
 
 export const milestonesQuery = v.object({ repo: v.optional(numericId) });
 
+export const burndownQuery = v.object({ milestone: numericId });
+
 export const activityQuery = v.object({ before: v.optional(numericId), limit: limit(100, 50) });
 
 export const noticesQuery = v.object({ before: v.optional(numericId), limit: limit(50, 50) });
