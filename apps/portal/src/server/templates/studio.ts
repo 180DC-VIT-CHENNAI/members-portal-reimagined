@@ -162,8 +162,8 @@ export async function preview(actor: Principal, mailboxId: string, input: v.Infe
 export async function templateDraft(actor: Principal, mailboxId: string, input: v.InferOutput<typeof renderInput>) {
   const rendered = await render(actor, mailboxId, input, 'draft');
   if (rendered.warnings.length) badRequest(rendered.warnings.join('; '));
-  const created = await createDraft(actor, mailboxId, { to: rendered.to, cc: [], bcc: [], subject: rendered.subject, text: rendered.text,
-    category: rendered.category, attachmentIds: rendered.attachmentIds }, { versionId: rendered.versionId, signature: rendered.signature });
+  const created = await createDraft(actor, mailboxId, { conversationId: null, body: { to: rendered.to, cc: [], bcc: [], subject: rendered.subject, text: rendered.text,
+    category: rendered.category, attachmentIds: rendered.attachmentIds } }, { versionId: rendered.versionId, signature: rendered.signature });
   await audit(actor.person.id, 'template.draft', 'email_template_version', rendered.versionId, { draftId: created.id, mailboxId });
   return created;
 }

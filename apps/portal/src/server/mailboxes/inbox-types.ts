@@ -1,0 +1,9 @@
+export const CONVERSATION_STATUSES = ['open', 'pending', 'closed'] as const;
+export const MAIL_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+export const INBOX_VIEWS = ['inbox', 'assigned', 'unassigned', 'archive', 'search'] as const;
+export type MailIdentity = { readonly address: string; readonly name: string };
+export type InboxView = (typeof INBOX_VIEWS)[number];
+export type InboxBucket = Pick<R2Bucket, 'get' | 'put' | 'delete'>;
+export const MAX_INBOUND_BYTES = 25 * 1024 * 1024;
+export const MAX_PARSE_BYTES = 10 * 1024 * 1024;
+export const MAX_BODY_CHARS = 100_000;

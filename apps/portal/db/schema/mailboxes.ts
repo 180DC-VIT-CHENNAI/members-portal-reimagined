@@ -12,6 +12,7 @@ export const mailboxes = sqliteTable('mailboxes', {
   displayName: text('display_name').notNull(),
   purpose: text('purpose').notNull().default(''),
   status: text('status', { enum: MAILBOX_STATUSES }).notNull().default('active'),
+  inboundEnabled: integer('inbound_enabled', { mode: 'boolean' }).notNull().default(false),
   approvalRequired: integer('approval_required', { mode: 'boolean' }).notNull().default(true),
   requireDistinctReviewer: integer('require_distinct_reviewer', { mode: 'boolean' }).notNull().default(true),
   signature: text('signature').notNull().default(''),
@@ -53,7 +54,7 @@ export const mailUploads = sqliteTable('mail_uploads', {
 export const mailDrafts = sqliteTable('mail_drafts', {
   id: text('id').primaryKey(),
   mailboxId: text('mailbox_id').notNull().references(() => mailboxes.id),
-  /** B1 owns inbound conversations; no user-supplied conversation references in A1. */
+  /** Logical link validated server-side; adding an FK would rebuild this live table. */
   conversationId: text('conversation_id'),
   createdBy: text('created_by').notNull().references(() => people.id),
   revision: integer('revision').notNull().default(1),

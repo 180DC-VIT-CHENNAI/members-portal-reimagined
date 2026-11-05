@@ -27,6 +27,9 @@ export function MailboxManagement({ id, mailbox, onChanged }: { readonly id: str
       <Button busy={busy} onClick={() => run(() => api('/api/mailboxes/:id', { method: 'PATCH', params: { id }, body: { outboundPaused: !mailbox.outboundPaused } }))}>
         {mailbox.outboundPaused ? 'Resume approved sends' : 'Pause outbound sends'}
       </Button>
+      <Button busy={busy} onClick={() => run(() => api('/api/mailboxes/:id', { method: 'PATCH', params: { id }, body: { inboundEnabled: !mailbox.inboundEnabled } }))}>
+        {mailbox.inboundEnabled ? 'Refuse incoming mail' : 'Accept incoming mail'}
+      </Button>
     </div>
     <TextAreaField label="Approved signature" value={signature} onChange={(e) => setSignature(e.target.value)} maxLength={2000} />
     <Button busy={busy} onClick={() => run(() => api('/api/mailboxes/:id', { method: 'PATCH', params: { id }, body: { signature } }))}>Save signature and invalidate old approvals</Button>

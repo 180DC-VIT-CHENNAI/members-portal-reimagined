@@ -77,7 +77,9 @@ export const mailboxTransport: MailTransport = {
       to: [...content.recipients.to], cc: [...content.recipients.cc], bcc: [...content.recipients.bcc],
       replyTo: content.fromAddress, subject: content.subject,
       text: `${content.text}${content.signature ? `\n\n${content.signature}` : ''}`,
-      html: content.html, attachments: [...attachments], idempotencyKey: outboundId,
+      // Native SEND_EMAIL rejects platform idempotency keys. Our durable claim prevents replay.
+      // Void 1.1 reserves Message-ID/In-Reply-To/References; see ADR-012 for threading limits.
+      html: content.html, attachments: [...attachments], headers: { 'X-Outbound-ID': outboundId },
     }));
   },
 };

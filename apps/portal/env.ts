@@ -9,6 +9,7 @@ export default defineEnv({
   EMAIL_HOURLY_LIMIT: string().optional(),
   // Local tests only: "capture" records mail in dev_outbox instead of sending it.
   EMAIL_TEST_MODE: string().optional(),
+  INBOUND_TEST_INGEST: string().optional(),
   ENVIRONMENT: string().optional(),
   // Optional Backblaze B2 failover for the R2 buckets (src/server/buckets.ts).
   // Without the first four, files live in R2 only.

@@ -8,6 +8,7 @@ import { projectAccess } from './project-rules';
 import { visibleProjects } from './project-visibility';
 import { unreadFor as unreadGitHubNotices } from './github/sync/notices';
 import { unreadMentionRows } from './messaging/notices';
+import { unreadMailNoticeRows } from './mailboxes/notices';
 import { preferencesFor } from './messaging/preferences';
 import { quietHoursActive } from './messaging-rules';
 
@@ -110,8 +111,9 @@ export async function unreadCount(principal: Principal) {
     .innerJoin(projects, eq(projects.id, projectTasks.projectId))
     .where(mine(principal, isNull(notifications.readAt)))
     .limit(COUNT_LIMIT + 1) : [];
+  const mail = await unreadMailNoticeRows(principal, COUNT_LIMIT + 1);
   const github = enabled.has('github') ? await unreadGitHubNotices(principal) : 0;
-  const total = rows.length + mentions + github;
+  const total = rows.length + mentions + mail + github;
   return { unread: Math.min(total, COUNT_LIMIT), capped: total > COUNT_LIMIT };
 }
 
