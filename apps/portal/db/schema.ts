@@ -20,3 +20,4 @@ export * from './schema/documents';
 export * from './schema/knowledge';
 export * from './schema/lifecycle';
 export * from './schema/templates';
+export * from './schema/github';

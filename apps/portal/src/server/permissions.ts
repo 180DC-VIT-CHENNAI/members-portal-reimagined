@@ -65,6 +65,8 @@ export const PERMISSIONS = {
   'crm.view': 'Open the CRM and see the client records you own or were granted',
   'crm.manage': 'Create and edit client organisations, contacts, opportunities, proposals and engagements you can see',
   'crm.admin': 'See every client record, configure pipeline stages and merge duplicates',
+  'github.manage': "Connect the GitHub App, map repositories to projects, link members' GitHub accounts and read the webhook log",
+  'github.issues.write': "Create, edit, move, assign, label, close and comment on GitHub issues of a department's projects",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

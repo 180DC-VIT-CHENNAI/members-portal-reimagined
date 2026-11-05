@@ -152,7 +152,7 @@ export const messageNotifications = sqliteTable(
   ],
 );
 
-export const NOTIFICATION_CATEGORIES = ['mentions', 'tasks'] as const;
+export const NOTIFICATION_CATEGORIES = ['mentions', 'tasks', 'github'] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
 /**

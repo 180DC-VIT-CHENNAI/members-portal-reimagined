@@ -53,7 +53,7 @@ The migration only adds tables and indexes, plus the `admin` role's global `chat
 
 ## Void portal shared-mailbox inbox schema
 
-`apps/portal/db/schema/mail-inbox.ts`, additive migration `20261105072835_daffy_molecule_man.sql` and its snapshot, generated on top of main's latest migration (`20261022054013_left_liz_osborn.sql`). The migration also adds `mailboxes.inbound_enabled` (default 0, so existing mailboxes keep refusing mail).
+`apps/portal/db/schema/mail-inbox.ts`, additive migration `20261105081038_polite_marvel_zombies.sql` and its snapshot, generated on top of main's latest migration (`20261022054013_left_liz_osborn.sql`). The migration also adds `mailboxes.inbound_enabled` (default 0, so existing mailboxes keep refusing mail).
 
 | Table | Key | Purpose |
 |-------|-----|---------|

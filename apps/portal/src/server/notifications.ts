@@ -6,6 +6,7 @@ import { COUNT_LIMIT, departmentsByProject, PAGE_SIZE, reminderDates } from './n
 import { ACTIVE_STATUSES, loadActivePrincipals, type Principal } from './principal';
 import { projectAccess } from './project-rules';
 import { visibleProjects } from './project-visibility';
+import { unreadFor as unreadGitHubNotices } from './github/sync/notices';
 import { unreadMentionRows } from './messaging/notices';
 import { unreadMailNoticeRows } from './mailboxes/notices';
 import { preferencesFor } from './messaging/preferences';
@@ -111,7 +112,8 @@ export async function unreadCount(principal: Principal) {
     .where(mine(principal, isNull(notifications.readAt)))
     .limit(COUNT_LIMIT + 1) : [];
   const mail = await unreadMailNoticeRows(principal, COUNT_LIMIT + 1);
-  const total = rows.length + mentions + mail;
+  const github = enabled.has('github') ? await unreadGitHubNotices(principal) : 0;
+  const total = rows.length + mentions + mail + github;
   return { unread: Math.min(total, COUNT_LIMIT), capped: total > COUNT_LIMIT };
 }
 

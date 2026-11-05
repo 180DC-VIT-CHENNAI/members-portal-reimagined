@@ -203,7 +203,7 @@ test('muting a conversation or turning off mention notices stops new notices; mu
 
   ok(await colleague.put(`/api/messages/conversations/${channel}/mute`, { muted: false }));
   const prefs = ok(await colleague.get('/api/notification-preferences')).preferences;
-  assert.deepEqual(prefs.map((p) => [p.category, p.inApp, p.emailDigest]), [['mentions', true, false], ['tasks', true, false]]);
+  assert.deepEqual(prefs.map((p) => [p.category, p.inApp, p.emailDigest]), [['mentions', true, false], ['tasks', true, false], ['github', true, false]]);
   ok(await colleague.put('/api/notification-preferences', {
     preferences: [{ category: 'mentions', inApp: false, emailDigest: false, quietStart: '22:00', quietEnd: '07:00' }],
   }));
