@@ -3,6 +3,7 @@ import { BackLink, Button, Card, EmptyState, ErrorState, LoadingBlock, PageHeade
 import { api, useLoad } from '../../lib/api.ts';
 import { Link } from '../../lib/router.tsx';
 import { MailboxManagement } from './MailboxManagement.tsx';
+import { FollowUps } from './TemplateCompose.tsx';
 import type { MailFolder } from '../../server/mailboxes/types.ts';
 
 const folders = [
@@ -27,6 +28,7 @@ export function MailboxPage({ id }: { readonly id: string }) {
         <Link className="btn btn-primary" to={`/mailboxes/${id}/compose`}>New draft</Link> : undefined
     } />
     <p className="muted">Sending {access.mailbox.outboundPaused ? 'paused' : access.mailbox.outboundAdapter === 'disabled' ? 'not enabled' : 'requires a current approval'}. Acceptance is not confirmed inbox delivery.</p>
+    {access.capabilities.includes('mailbox.draft.create') && <FollowUps id={id} />}
     {access.capabilities.includes('mailbox.read') && <DraftFolders id={id} />}
     {access.capabilities.includes('mailbox.manage') && <MailboxManagement id={id} mailbox={access.mailbox} onChanged={load.reload} />}
     {access.capabilities.includes('mailbox.audit') && <Audit id={id} />}

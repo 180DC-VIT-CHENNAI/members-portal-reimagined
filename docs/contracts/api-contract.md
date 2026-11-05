@@ -73,6 +73,24 @@ These routes use the current Google personnel session and mailbox-local capabili
 
 Draft writes are limited to 60/hour, workflow actions to 100/hour, draft lists to 120/minute. Existing `/api/send-email`, letters and newsletters retain their own permissions and `noreply` identity; mailbox drafting never grants a bypass into those routes.
 
+## Void portal email templates
+
+All routes use the current Google personnel session. A template is visible only when the caller holds at least one action on it (global/department `templates.*` grants, or for mailbox-owned templates the mailbox capabilities `mailbox.manage` / `draft.create` / `review` / `send`, narrowed by the template's `policy`); otherwise 404. A visible template with a missing action is 403. Reads are private/no-store. Template writes share 60/hour.
+
+- `GET /api/email-templates?before=<id>`: `{templates: [{template, actions, category}], nextBefore}`, 50 per page, authorized row by row before paging.
+- `POST /api/email-templates`: `{name, ownerScope: 'global'|'department'|'mailbox', ownerId (null for global), definition}`; needs `author`. Returns 201 `{id, versionId, version: 1}` with status `draft`. `definition` is `{fields: [{key, label, type, required?, example?, options?, min?, max?}], subject, body, signature?, allowedMailboxIds (1-20), allowedRecipients?, category?, policy?: {action: personId[]}, followupDays?}`. The caller must manage every allowed mailbox (404 unknown, 403 not manager); a mailbox template must allow its owner mailbox. Unknown or reserved variables, duplicate keys, malformed `{{` and extra properties are 400.
+- `GET /api/email-templates/:id`: `{template, latest, actions, versions}`.
+- `POST /api/email-templates/:id/versions`: `{version, definition}`; needs `edit`. `version` is the current latest; a stale value is 409, a retired template 409. Returns 201 `{id, versionId, version}`.
+- `POST /api/email-templates/:id/status`: `{version, action: 'publish'|'retire'}`; needs that action. Publishing sets the latest version as the published version; retiring is final. Stale version or retired template is 409.
+- `GET /api/mailboxes/:id/templates`: `mailbox.draft.create`; `{templates: [{id, name, versionId, version, definition}]}` for published versions that allow this mailbox and on which the caller has `draft`.
+- `POST /api/mailboxes/:id/templates/preview`: `{versionId, values, to?}`; needs template `draft` and `mailbox.draft.create` on an active mailbox. Returns `{subject, text, html, signature, warnings, attachmentIds, to, category, versionId, version, templateName}`. Disallowed mailbox/recipient or category is 400; unverified CRM contact is 400. 300/hour.
+- `POST /api/mailboxes/:id/templates/drafts`: same body; the version must be the published one (409) and there must be no warnings (400). Creates a mailbox draft pinned to `versionId`, returns 201 `{id, revision: 1}`.
+- `POST /api/mailboxes/:id/templates/test`: `{versionId, values}` (no recipients accepted); queues one system-queue message to the caller's own address, returns `{campaignId, queued: 1}`. Outbound pause (mailbox or global) is 409. 10/hour.
+- `GET /api/mailboxes/:id/templates/starters`: `mailbox.manage`; `{starters: [{id, name, definition}]}` eleven recipes, not templates.
+- `GET /api/mailboxes/:id/templates/reminders`: `mailbox.draft.create`; `{reminders: [{draftId, subject, templateId, sentAt, to}]}` for the caller's accepted sends from published templates whose `followupDays` elapsed. Suggestions only.
+
+Mailbox draft `PATCH`, `submit`, `review` and `send` on a template-pinned draft additionally require the pinned version's `draft`, `review` (and `send` for approval) or `send` action, the version's mailbox/recipient rules, and a non-retired template (409 `template_retired`).
+
 ## Void portal internal messaging
 
 All routes use the current Google personnel session. A conversation the caller cannot read now is 404 on every route (detail, messages, people, read, mute, send, edit, delete, react, report), whether or not it exists. Responses are private/no-store. Reads share a 240/minute limit, writes 60/minute, search 30/minute, reports 10/minute.

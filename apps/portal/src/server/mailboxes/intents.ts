@@ -7,6 +7,7 @@ import type { Principal } from '../principal';
 import { atomic, auditStatement, GRANT_SQL, mailboxFor, requireCapability, statement } from './access';
 import { draftFor } from './drafts';
 import { sendInput } from './validation';
+import { checkPinned } from '../templates/access';
 
 export async function sendIntent(actor: Principal, mailboxId: string, draftId: string, input: v.InferOutput<typeof sendInput>) {
   const access = await mailboxFor(actor, mailboxId);
@@ -17,6 +18,7 @@ export async function sendIntent(actor: Principal, mailboxId: string, draftId: s
     return { id: existing.id, state: existing.state };
   }
   const loaded = await draftFor(actor, mailboxId, draftId);
+  await checkPinned(actor, loaded.snapshot.templateVersionId, 'send', mailboxId, [...loaded.snapshot.recipients.to, ...loaded.snapshot.recipients.cc, ...loaded.snapshot.recipients.bcc]);
   if (loaded.draft.revision !== input.revision || loaded.draft.state !== 'approved' || !loaded.draft.approvedReviewId) conflict('current_approval_required');
   if (input.scheduledAt && Date.parse(input.scheduledAt) <= Date.now()) badRequest('schedule_in_past');
   const intentId = crypto.randomUUID();
