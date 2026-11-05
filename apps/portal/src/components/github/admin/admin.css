@@ -1,0 +1,72 @@
+.gha-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gha-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.gha-step svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.gha-step.is-done svg {
+  color: var(--accent-text);
+}
+
+.gha-step.is-todo svg {
+  color: var(--text-tertiary);
+}
+
+.gha-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.gha-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+}
+
+.gha-stat dt {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.gha-stat dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.gha-error {
+  color: var(--error-text);
+}
+
+.gha-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  align-items: end;
+  gap: 12px;
+}
+
+.gha-pad {
+  padding: 0 clamp(18px, 3vw, 28px) clamp(18px, 3vw, 28px);
+}

@@ -113,6 +113,24 @@ The rewrite of the members portal as a [Void](https://void.cloud) app in SPA + A
 
 Void's version-matched docs live in `node_modules/void/docs/`. The `void` agent skill points at them.
 
+## GitHub integration
+
+The org `180DC-VIT-CHENNAI`'s GitHub issues and pull requests show up on the project page (Board, Pull requests, Milestones, Activity), on `/my-work` and on `/github/issues/:id`; members create, move, assign, label, close and comment from the portal and it writes to GitHub. `/admin/github` (needs a global `github.manage`) connects the App, maps each repository to a portal project and links members' GitHub accounts. Reading follows project visibility; writing needs `github.issues.write` for the project's department. Titles never grant either.
+
+It is a GitHub App: webhooks (`POST /api/github/webhook`, HMAC-verified, deduplicated by delivery id) plus a `*/10` resync cron (`crons/github-sync.ts`, 30 GitHub calls per run). Board columns come from `status: todo`, `status: in progress` and `status: in review` labels, open/closed state and linked pull requests. Schema: `db/schema/github.ts`; server code: `src/server/github/`; routes: `routes/api/github/`. All GitHub calls go through an injectable `fetch`, so tests use fixtures (`src/server/github/fixtures/`) and never touch the network.
+
+Secrets (all optional, so the portal deploys with the integration off; set with `void secret put <NAME>`, locally in `apps/portal/.env`):
+
+| Name | Purpose |
+| --- | --- |
+| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` | App auth for sync and writes. The key must be **PKCS#8** PEM (`openssl pkcs8 -topk8 -nocrypt -in app.pem -out app-pkcs8.pem`). |
+| `GITHUB_WEBHOOK_SECRET` | Verifies webhook deliveries; use 32+ random characters. |
+| `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` | Optional: members link their account through GitHub OAuth. Without them admins link by login. |
+| `GITHUB_TOKEN_ENCRYPTION_KEY` | Optional: `openssl rand -base64 32`. Stores user tokens so writes are attributed to the member; without it writes go out as the App. |
+| `GITHUB_TEST_API_URL` | Local tests only; ignored in production. |
+
+App setup: create the App under `180DC-VIT-CHENNAI`; callback `https://180dc.vitcc.org/api/github/link/callback`; webhook `https://180dc.vitcc.org/api/github/webhook`; repository permissions Metadata (read), Issues (read/write), Pull requests (read), Checks (read), Commit statuses (read); events Issues, Issue comment, Label, Milestone, Pull request, Pull request review, Check run, Status, Repository; install on **All repositories**. Then, in `/admin/github`, sync installations and map repositories to projects. What is and is not done: `docs/execution/portal-github-coverage.md`.
+
 ## Layout
 
 | Path | What lives there |

@@ -18,4 +18,16 @@ export default defineEnv({
   B2_APPLICATION_KEY: string().optional(),
   B2_READ_KEY_ID: string().optional(),
   B2_READ_APPLICATION_KEY: string().optional(),
+  // GitHub App integration (src/server/github/config.ts). All optional so the
+  // portal deploys with the integration switched off; set them with `void secret put`.
+  GITHUB_APP_ID: string().optional(),
+  // PKCS#8 PEM (`BEGIN PRIVATE KEY`), real newlines or `\n` escapes.
+  GITHUB_APP_PRIVATE_KEY: string().optional(),
+  GITHUB_WEBHOOK_SECRET: string().optional(),
+  GITHUB_APP_CLIENT_ID: string().optional(),
+  GITHUB_APP_CLIENT_SECRET: string().optional(),
+  // base64 of 32 random bytes; enables user-attributed writes.
+  GITHUB_TOKEN_ENCRYPTION_KEY: string().optional(),
+  // Local tests only: points GitHub calls at a fake server. Ignored in production.
+  GITHUB_TEST_API_URL: string().optional(),
 });

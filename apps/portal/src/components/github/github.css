@@ -1,0 +1,626 @@
+.gh-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.gh-label::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gh-label, var(--border-strong));
+}
+
+.gh-labels,
+.gh-links {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gh-labels {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.gh-links {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.gh-avatars {
+  display: inline-flex;
+  align-items: center;
+}
+
+.gh-avatar {
+  display: inline-flex;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-elevated);
+}
+
+.gh-avatar + .gh-avatar,
+.gh-avatar + .gh-avatar-more {
+  margin-left: -2px;
+}
+
+.gh-avatar-more {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.gh-meta,
+.gh-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.gh-due.is-overdue {
+  color: var(--error-text);
+}
+
+.gh-link {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+a.gh-link:hover .gh-link-ref {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+.gh-link-ref {
+  font-weight: 600;
+}
+
+.gh-ref {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.gh-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.gh-pad {
+  padding: 0 clamp(18px, 3vw, 28px);
+}
+
+.gh-pad-bottom {
+  padding-bottom: clamp(18px, 3vw, 28px);
+}
+
+.gh-board {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(248px, 1fr);
+  align-items: start;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+
+.gh-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-soft);
+  scroll-snap-align: start;
+}
+
+.gh-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 0;
+}
+
+.gh-column-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.gh-count {
+  min-width: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.gh-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gh-column-empty {
+  padding: 18px 8px;
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.gh-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-subtle);
+}
+
+.gh-card:hover {
+  border-color: var(--border-green);
+}
+
+.gh-card.is-moving {
+  opacity: 0.6;
+}
+
+.gh-card-head,
+.gh-card-meta,
+.gh-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.gh-card-head {
+  justify-content: space-between;
+}
+
+.gh-card-foot {
+  justify-content: space-between;
+}
+
+.gh-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.gh-card-title:hover {
+  color: var(--accent-text);
+}
+
+.gh-move {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gh-move .select {
+  font-size: 0.875rem;
+}
+
+.gh-move .label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.gh-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.gh-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gh-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 14px clamp(18px, 3vw, 28px);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.gh-row:first-child {
+  border-top: 0;
+}
+
+.gh-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gh-row-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.gh-row-title:hover {
+  color: var(--accent-text);
+}
+
+.gh-row-meta,
+.gh-row-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.gh-row-side {
+  justify-content: flex-end;
+  gap: 6px 10px;
+}
+
+.gh-row-meta .text-link {
+  font-size: 0.8125rem;
+}
+
+.gh-empty-row {
+  padding: 24px clamp(18px, 3vw, 28px);
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 720px) {
+  .gh-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gh-row-side {
+    justify-content: flex-start;
+  }
+}
+
+.gh-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.gh-dialog-form .dialog-actions {
+  --dialog-pad: clamp(18px, 3vw, 28px);
+  position: sticky;
+  bottom: calc(-1 * var(--dialog-pad));
+  margin: 0 0 calc(-1 * var(--dialog-pad));
+  padding: 12px 0 var(--dialog-pad);
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.gh-picker {
+  display: flex;
+  flex-direction: column;
+  max-height: 144px;
+  overflow-y: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+}
+
+.gh-picker-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.gh-picker-group legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.gh-issue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+  gap: 24px;
+}
+
+.gh-issue-main,
+.gh-issue-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.gh-issue-aside {
+  position: sticky;
+  top: calc(var(--header-h) + 16px);
+}
+
+.gh-body {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.gh-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+}
+
+.gh-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gh-facts dt {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.gh-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.gh-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gh-comment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.gh-comment-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gh-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gh-timeline li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  font-size: 0.875rem;
+}
+
+.gh-checks {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gh-checks li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+}
+
+.gh-checks li:first-child {
+  border-top: 0;
+}
+
+@media (max-width: 960px) {
+  .gh-issue {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gh-issue-aside {
+    position: static;
+  }
+}
+
+.gh-milestones {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  gap: 12px;
+  margin: 0;
+  list-style: none;
+}
+
+.gh-milestone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.gh-milestone.is-expanded {
+  grid-column: 1 / -1;
+}
+
+.gh-burndown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.gh-burndown-svg {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+}
+
+.gh-burndown-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.gh-burndown-label {
+  fill: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gh-burndown-actual,
+.gh-burndown-ideal {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.gh-burndown-actual {
+  stroke: var(--accent-text);
+  stroke-width: 2.5;
+}
+
+.gh-burndown-ideal {
+  stroke: var(--text-tertiary);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.gh-burndown-dot {
+  fill: var(--accent-text);
+  stroke: var(--bg-elevated);
+  stroke-width: 2;
+}
+
+.gh-burndown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.gh-burndown-key::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  margin-right: 6px;
+  border-top: 2.5px solid var(--accent-text);
+  vertical-align: middle;
+}
+
+.gh-burndown-key.is-ideal::before {
+  border-top: 1.5px dashed var(--text-tertiary);
+}
+
+.gh-milestone progress {
+  width: 100%;
+  height: 8px;
+  appearance: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+
+.gh-milestone progress::-webkit-progress-bar {
+  background: var(--border);
+}
+
+.gh-milestone progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.gh-milestone progress::-moz-progress-bar {
+  background: var(--accent);
+}
